@@ -1,5 +1,7 @@
 ---
+title: "BSP"
 sidebar_position: 3
+description: "Board Support Package: kernel, modules, firmware, and the supported bootloaders."
 ---
 # BSP
 
@@ -86,3 +88,9 @@ This mode sets Pantavisor up to work with [tryboot_a-b for Raspberry Pi](https:/
 ### grub
 
 In this mode, both Pantavisor and GRUB will write and read to and from a file in [storage](storage.md) that contains the revision information that GRUB needs to boot up at any moment. With that information, Kernel and initrd will be loaded from that same [storage](storage.md) by GRUB.
+
+## Reference
+
+- [State Format → BSP](../reference/pantavisor-state-format-v2.md#2-bsp-bsprunjson) — every `bsp/run.json` field
+- [State Format → Drivers](../reference/pantavisor-state-format-v2.md#3-drivers-bspdriversjson) — the `bsp/drivers.json` alias map
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_BOOTLOADER_*` and `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO`

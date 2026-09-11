@@ -1,0 +1,10 @@
+== ph-logger cloud push config ==
+[1;39m{
+  [0m[1;34m"key"[0m[1;39m: [0m[0;32m"PV_LOG_PUSH"[0m[1;39m,
+  [0m[1;34m"value"[0m[1;39m: [0m[0;32m"1"[0m[1;39m,
+  [0m[1;34m"modified"[0m[1;39m: [0m[0;32m"metadata"[0m[1;39m
+[1;39m}[0m
+== wait for ph-logger to push logs ==
+== fetch device logs from Hub ==
+== logs received from Hub ==
+true

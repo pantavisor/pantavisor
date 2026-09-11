@@ -1,0 +1,47 @@
+name: "Docs"
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "docs/**"
+      - "scripts/check-docs.sh"
+      - "config.c"
+      - "config.h"
+      - "ctrl/**"
+      - "metadata.h"
+      - "metadata.c"
+      - "logserver/**"
+      - "tools/pvcontrol"
+      - ".github/workflows/docs.yaml"
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - "*"
+    paths:
+      - "docs/**"
+      - "scripts/check-docs.sh"
+      - "config.c"
+      - "config.h"
+      - "ctrl/**"
+      - "metadata.h"
+      - "metadata.c"
+      - "logserver/**"
+      - "tools/pvcontrol"
+      - ".github/workflows/docs.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: "check docs against code"
+    runs-on: ["bsp-builder"]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: check docs
+        run: ./scripts/check-docs.sh

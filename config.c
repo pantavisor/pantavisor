@@ -168,6 +168,8 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 5 },
 	{ INT, "PH_ONLINE_REQUEST_THRESHOLD", PH | OEM | RUN, 0, false,
 	  .value.i = 0 },
+	{ INT, "PH_UPDATER_DOWNLOAD_RATE_LIMIT", PH | OEM | RUN, 0, false,
+	  .value.i = 0 },
 	{ INT, "PH_UPDATER_INTERVAL", PH | OEM | RUN, 0, false, .value.i = 5 },
 	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH | OEM | RUN, 0, false,
 	  .value.i = 120 },
@@ -325,7 +327,7 @@ struct pv_config_alias {
 };
 
 static struct pv_config_alias aliases[] = {
-	// LEGACY CONFIG KEY
+	// frozen: keys that predate the env-var scheme only; never add new entries here
 	{ "creds.host", "PH_CREDS_HOST" },
 	{ "creds.id", "PH_CREDS_ID" },
 	{ "creds.port", "PH_CREDS_PORT" },
@@ -377,15 +379,6 @@ static struct pv_config_alias aliases[] = {
 	{ "net.brdev", "PV_NET_BRDEV" },
 	{ "net.brmask4", "PV_NET_BRMASK4" },
 	{ "policy", "PV_POLICY" },
-	{ "power.mode", "PV_POWER_MODE" },
-	{ "power.devmeta.eager_push", "PV_POWER_DEVMETA_EAGER_PUSH" },
-	{ "power.wake.interval", "PV_POWER_WAKE_INTERVAL" },
-	{ "power.wake.run_window", "PV_POWER_WAKE_RUN_WINDOW" },
-	{ "power.autosleep.settle", "PV_POWER_AUTOSLEEP_SETTLE" },
-	{ "power.wake.min_awake", "PV_POWER_WAKE_MIN_AWAKE" },
-	{ "power.wake.max_awake", "PV_POWER_WAKE_MAX_AWAKE" },
-	{ "power.devmeta.max_held", "PV_POWER_DEVMETA_MAX_HELD" },
-	{ "power.sysfs_dir", "PV_POWER_SYSFS_DIR" },
 	{ "revision.retries", "PV_REVISION_RETRIES" },
 	{ "secureboot.checksum", "PV_SECUREBOOT_CHECKSUM" },
 	{ "secureboot.handlers", "PV_SECUREBOOT_HANDLERS" },

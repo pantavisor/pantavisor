@@ -6,18 +6,13 @@ description: "Service mesh manifest formats and mediation patterns."
 
 # Pantavisor xconnect
 
-The `pv-xconnect` service mesh facilitates efficient container-to-container and container-to-host interactions. It uses a plugin-driven architecture to inject resources (Unix sockets, D-Bus proxies, DRM nodes) into consumer containers on demand.
+**Overview:** [Inter-Container Communication](../overview/xconnect.md) explains what the service mesh
+is for, how mediation works, and the security model. This page is the manifest and mediation
+reference.
 
-For information on how to inspect or manage the service mesh via the Pantavisor Control API, see the [Pantavisor Control Socket](pantavisor-commands.md#xconnect-graph) reference.
-
-## Architecture
-
-To manage interactions between containers, a dedicated process called `pv-xconnect` handles the mediation logic via on-demand plugins. It runs as a managed daemon spawned by Pantavisor init and is enabled for all init modes (embedded, standalone, and appengine).
-
-### Core Responsibilities
-- **Discovery & Reconciliation**: Periodically consumes an `xconnect-graph` from Pantavisor's `pv-ctrl` socket and maintains the state of active connects.
-- **Plumbing**: Provides namespace-aware helpers to inject virtual resources (sockets/device nodes) inside the consumer's namespace.
-- **Security**: Acts as the single point of truth for role-based access control.
+To inspect or manage the mesh at runtime, see
+[`/xconnect-graph`](pantavisor-commands.md#xconnect-graph) and
+[`/daemons`](pantavisor-commands.md#daemons).
 
 ## Service Manifests
 
@@ -70,19 +65,20 @@ Containers that consume services define their requirements in `args.json` during
 
 ## Mediation Patterns
 
-### Raw Unix Sockets
-Provides direct proxying of Unix Domain Sockets between containers. It supports high-performance features like FD passing (SCM_RIGHTS) and Shared Memory handles.
+| `type` | What is injected | Notes |
+|--------|------------------|-------|
+| `unix` | A proxied Unix domain socket | Supports FD passing (`SCM_RIGHTS`) and shared-memory handles |
+| `rest` | HTTP over a Unix socket | `X-PV-Client` and `X-PV-Role` headers are injected into the first request so the provider can identify the consumer |
+| `dbus` | A policy-aware system-bus proxy | Role-based identity masquerading, see below |
+| `drm` | A DRM/KMS device node | |
+| `wayland` | A mediated Wayland socket | |
 
-### REST
-Identity-injected HTTP over UDS. `pv-xconnect` automatically injects `X-PV-Client` and `X-PV-Role` headers into the first request, allowing the provider to identify the consumer.
+### D-Bus identity masquerading
 
-### D-Bus
-Policy-aware proxy for the system bus. It performs **Role-Based Identity Masquerading**:
-1. `pv-xconnect` intercepts the D-Bus SASL authentication phase.
-2. It takes the **Role** from the link and looks up the corresponding **UID** in the provider container's `/etc/passwd`.
-3. It replaces the consumer's identity with the resolved UID.
-
-This allows the provider's standard `dbus-daemon` to enforce fine-grained permissions using standard XML policy files based on the assigned role.
+`pv-xconnect` intercepts the D-Bus SASL authentication phase, takes the **Role** from the link,
+looks up the corresponding UID in the provider container's `/etc/passwd`, and substitutes it for
+the consumer's identity. The provider's standard `dbus-daemon` then enforces its own XML policy
+files against that role.
 
 #### Pantavisor-Hosted System Bus
 
@@ -220,8 +216,5 @@ Mediates the Wayland protocol for isolated UI rendering, allowing a containerize
 
 ## Tools
 
-### pvcurl
-A lightweight shell script wrapping `nc` for HTTP-over-Unix-socket communication. It is preferred in App Engine environments where standard `curl` might not be available.
-
-### pvcontrol
-A high-level CLI wrapper around `pvcurl` for common Pantavisor control operations.
+Inspect and drive the mesh with [`pvcontrol`](../tools/pvcontrol.md#xconnect-graph) or, where a full
+`curl` is unavailable, [`pvcurl`](../tools/pantavisor-tools.md#pvcurl).

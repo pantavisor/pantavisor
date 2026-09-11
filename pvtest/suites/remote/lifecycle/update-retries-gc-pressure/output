@@ -1,0 +1,12 @@
+== post large revision (download takes long) ==
+== wait for posted revision to start downloading (retry 1) ==
+{"status":"DOWNLOADING","status-msg":"Downloading update artifacts, retry 1 of 3","progress":25,"retries":1}
+== kill PV (crash 1, triggers retry 2) ==
+{"status":"DOWNLOADING","status-msg":"Downloading update artifacts, retry 2 of 3","progress":25,"retries":2}
+== kill PV (crash 2, triggers WONTGO via cloud) ==
+== cloud step status after max retries ==
+{
+  "status": "WONTGO",
+  "status-msg": "Max update processing retries reached",
+  "retries": 3
+}

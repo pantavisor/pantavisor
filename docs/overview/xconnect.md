@@ -1,5 +1,7 @@
 ---
+title: "Inter-Container Communication"
 sidebar_position: 11
+description: "The xconnect service mesh: service discovery and resource mediation between containers."
 ---
 # Inter-Container Communication
 
@@ -21,6 +23,12 @@ The service mesh operates through a graph of connections maintained by `pv-xconn
 
 This is entirely declarative: no code changes are needed in containers to expose or consume services.
 
+`pv-xconnect` runs as a managed daemon spawned by Pantavisor init, in every init mode. Its three
+jobs are **discovery and reconciliation** — periodically consuming the `xconnect-graph` from the
+`pv-ctrl` socket and maintaining the state of active connects; **plumbing** — namespace-aware
+helpers that inject virtual resources inside the consumer's namespace; and **security** — being the
+single point of truth for role-based access control.
+
 ## Supported Service Types
 
 | Type | Description |
@@ -39,4 +47,9 @@ Pantavisor acts as the security broker. Containers use logical service names rat
 
 The xconnect service mesh can be inspected at runtime through the [/xconnect-graph](../reference/pantavisor-commands.md#xconnect-graph) endpoint of the [Pantavisor control socket](local-control.md). The `pv-xconnect` daemon can be started and stopped via the [/daemons](../reference/pantavisor-commands.md#daemons) endpoint.
 
-For a full reference of service manifest formats and mediation patterns, see the [xconnect reference](../reference/pantavisor-xconnect.md).
+## Reference
+
+- [xconnect](../reference/pantavisor-xconnect.md) — `services.json` and `run.json` manifest formats, mediation patterns, the hosted D-Bus system bus
+- [xconnect Spec](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md) — full technical design and plugin architecture
+- [Control Socket → /xconnect-graph](../reference/pantavisor-commands.md#xconnect-graph) — inspecting the graph at runtime
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED`

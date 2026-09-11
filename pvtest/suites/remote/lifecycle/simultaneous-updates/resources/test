@@ -1,0 +1,36 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME (see
+# automated-workflow.md § Test authoring rules).
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+echo "== post 3 revisions simultaneously =="
+rev1=$(pvr_post_rev -m "first revision" "$trail_url")
+rev2=$(pvr_post_rev -m "second revision" "$trail_url")
+rev3=$(pvr_post_rev -m "third revision" "$trail_url")
+{ [ -n "$rev1" ] && [ -n "$rev2" ] && [ -n "$rev3" ]; } \
+    || { echo "ERROR: could not determine posted revisions" >&2; exit 1; }
+
+cloud_step_url1="$trail_url/steps/$rev1"
+cloud_step_url2="$trail_url/steps/$rev2"
+cloud_step_url3="$trail_url/steps/$rev3"
+
+echo "== first revision =="
+wait_for_value "pvr stepinfo \"$cloud_step_url1\" 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "UPDATED" 60 \
+    || { echo "ERROR: timeout waiting for cloud to reflect UPDATED for $rev1" >&2; exit 1; }
+pvr stepinfo "$cloud_step_url1" | sed -n '/^{/,$p' | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
+echo "== second revision =="
+wait_for_value "pvr stepinfo \"$cloud_step_url2\" 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "UPDATED" 60 \
+    || { echo "ERROR: timeout waiting for cloud to reflect UPDATED for $rev2" >&2; exit 1; }
+pvr stepinfo "$cloud_step_url2" | sed -n '/^{/,$p' | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
+echo "== third revision =="
+wait_for_value "pvr stepinfo \"$cloud_step_url3\" 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "UPDATED" 60 \
+    || { echo "ERROR: timeout waiting for cloud to reflect UPDATED for $rev3" >&2; exit 1; }
+pvr stepinfo "$cloud_step_url3" | sed -n '/^{/,$p' | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'

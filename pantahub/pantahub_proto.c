@@ -64,10 +64,22 @@ struct pv_progress {
 	char *body;
 };
 
+// per-request context for an in-flight object GET; carries whether this
+// attempt asked the Hub to resume from a byte offset, so the response can be
+// checked once for whether the Hub actually honored it
+struct pv_object_download_ctx {
+	const char *id_ref;
+	bool sent_range;
+	bool checked_response;
+};
+
 struct pv_object_transfer {
 	const char *id_ref;
 	bool active;
 	off_t received; // bytes received so far for this object
+	struct evhttp_request *req; // set once active, to allow cancelling
+	struct pv_object_download_ctx
+		*dl_ctx; // done_cb frees it; cancel must too
 	struct dl_list list; // struct pv_object_transfer
 };
 
@@ -89,6 +101,7 @@ struct pv_pantahub_session {
 	bool get_trails_status_active;
 	bool get_pending_steps_active;
 	bool put_progress_active;
+	bool get_step_active;
 
 	struct pv_progress *next_progress;
 
@@ -153,6 +166,7 @@ void pv_pantahub_proto_init()
 	session.get_trails_status_active = false;
 	session.get_pending_steps_active = false;
 	session.put_progress_active = false;
+	session.get_step_active = false;
 
 	session.next_progress = NULL;
 
@@ -336,7 +350,7 @@ bool pv_pantahub_proto_is_trails_unsynced()
 static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 			     const char *token, const char *body,
 			     void (*cb)(struct evhttp_request *, void *),
-			     void *arg)
+			     void *arg, struct evhttp_request **out_req)
 {
 	char *host;
 	int port;
@@ -349,7 +363,8 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 	}
 
 	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, arg);
+						body, NULL, cb, arg, out_req, 0,
+						0);
 }
 
 static void _on_request_unresponsive()
@@ -472,7 +487,7 @@ void pv_pantahub_proto_post_auth()
 	}
 
 	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body,
-			       _recv_post_auth_cb, NULL))
+			       _recv_post_auth_cb, NULL, NULL))
 		session.open_session_active = 1;
 
 	free(body);
@@ -562,7 +577,7 @@ void pv_pantahub_proto_get_trails_status()
 	snprintf(uri, sizeof(uri), "/trails/");
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_trails_status_cb, NULL))
+			       _recv_get_trails_status_cb, NULL, NULL))
 		session.get_trails_status_active = 1;
 }
 
@@ -586,7 +601,7 @@ void pv_pantahub_proto_get_usrmeta()
 		 pv_config_get_str(PH_CREDS_ID));
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_usrmeta_cb, NULL))
+			       _recv_get_usrmeta_cb, NULL, NULL))
 		session.get_usrmeta_active = 1;
 }
 
@@ -655,7 +670,7 @@ void pv_pantahub_proto_set_devmeta()
 	}
 
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
-			       _recv_set_devmeta_cb, NULL)) {
+			       _recv_set_devmeta_cb, NULL, NULL)) {
 		session.set_devmeta_active = 1;
 		free(devmeta_gate.inflight);
 		devmeta_gate.inflight = strdup(json);
@@ -742,12 +757,88 @@ void pv_pantahub_proto_get_pending_steps()
 		 pv_config_get_str(PH_CREDS_ID), QUERY_PENDING_STEPS);
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_pending_steps_cb, NULL)) {
+			       _recv_get_pending_steps_cb, NULL, NULL)) {
 		session.get_pending_steps_active = 1;
 		// keep the device awake for one poll roundtrip; released in
 		// _recv_get_pending_steps_cb on success or failure
 		pv_wakelock_acquire(WL_UPDATE_CHECK);
 	}
+}
+
+static void _recv_get_step_status_cb(struct evhttp_request *req, void *ctx)
+{
+	char *body = NULL, *status = NULL;
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_step_status_cb);
+
+	session.get_step_active = false;
+
+	if (_recv_buffer(req, &body)) {
+		pv_log(DEBUG, "GET step status failed");
+		goto out;
+	}
+	if (!body) {
+		pv_log(DEBUG, "GET step status received empty body");
+		goto out;
+	}
+
+	status = pv_pantahub_msg_parse_step_progress_status(body);
+	if (!status) {
+		pv_log(DEBUG, "could not parse step progress status");
+		goto out;
+	}
+
+	pv_log(DEBUG, "step '%s' status on Hub: %s", pv_update_get_rev(),
+	       status);
+	if (!pv_str_matches(status, strlen(status), "CANCEL",
+			    strlen("CANCEL"))) {
+		// only now report download progress: a PUT racing the poll
+		// would overwrite a CANCEL that landed since the last tick
+		if (pv_update_is_downloading())
+			pv_update_report_download_progress();
+		goto out;
+	}
+
+	pv_log(INFO, "Hub requested cancel of rev '%s'", pv_update_get_rev());
+	pv_pantahub_proto_cancel_transfers();
+	pv_update_cancel();
+out:
+	if (status)
+		free(status);
+	if (body)
+		free(body);
+	pv_pantahub_evaluate_state();
+}
+
+int pv_pantahub_proto_get_step_status(void)
+{
+	char *rev;
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return -1;
+	}
+
+	if (session.get_step_active) {
+		pv_log(DEBUG,
+		       "get_step_active = true; skip sending another request...");
+		return -1;
+	}
+
+	rev = pv_update_get_rev();
+	if (!rev)
+		return -1;
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s",
+		 pv_config_get_str(PH_CREDS_ID), rev);
+
+	if (_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			      _recv_get_step_status_cb, NULL, NULL))
+		return -1;
+
+	session.get_step_active = true;
+	return 0;
 }
 
 void pv_pantahub_proto_init_object_transfer()
@@ -756,6 +847,23 @@ void pv_pantahub_proto_init_object_transfer()
 		pv_log(WARN, "object transfer list found not empty");
 
 	_free_object_transfer_list(&session.object_transfer_list);
+}
+
+void pv_pantahub_proto_cancel_transfers(void)
+{
+	struct pv_object_transfer *o, *tmp;
+
+	dl_list_for_each_safe(o, tmp, &session.object_transfer_list,
+			      struct pv_object_transfer, list)
+	{
+		// evhttp_cancel_request() never runs done_cb, so free our own
+		// bookkeeping here instead of waiting for it
+		if (o->active && o->req)
+			pv_event_rest_cancel_request(o->req);
+		free(o->dl_ctx);
+		dl_list_del(&o->list);
+		free(o);
+	}
 }
 
 static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
@@ -799,7 +907,8 @@ out:
 	pv_pantahub_evaluate_state();
 }
 
-static int _get_object_metadata(const char *id_ref)
+static int _get_object_metadata(const char *id_ref,
+				struct evhttp_request **out_req)
 {
 	pv_log(DEBUG, "requesting object '%s' metadata from Hub", id_ref);
 
@@ -812,7 +921,8 @@ static int _get_object_metadata(const char *id_ref)
 	snprintf(uri, sizeof(uri), "/objects/%s", id_ref);
 
 	return _send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-				 _recv_get_object_metadata_cb, (void *)id_ref);
+				 _recv_get_object_metadata_cb, (void *)id_ref,
+				 out_req);
 }
 
 int pv_pantahub_proto_get_objects_metadata()
@@ -831,7 +941,7 @@ int pv_pantahub_proto_get_objects_metadata()
 			      struct pv_object_transfer, list)
 	{
 		if (!o->active) {
-			if (!_get_object_metadata(o->id_ref))
+			if (!_get_object_metadata(o->id_ref, &o->req))
 				o->active = true;
 		}
 
@@ -847,16 +957,34 @@ static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
 {
 	char path[PATH_MAX];
 	size_t written = 0;
-	const char *id_ref = (char *)ctx;
+	struct pv_object_download_ctx *dctx =
+		(struct pv_object_download_ctx *)ctx;
 	struct pv_object_transfer *o;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
 
-	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
+	pv_storage_set_object_download_path(path, PATH_MAX, dctx->id_ref);
+
+	// on the first chunk of the response, check whether the Hub actually
+	// honored our Range request; if it didn't (plain 200, or 416 because
+	// our on-disk partial no longer lines up), fall back gracefully by
+	// discarding the stale partial before this (full) body gets appended
+	if (!dctx->checked_response) {
+		dctx->checked_response = true;
+
+		int code = evhttp_request_get_response_code(req);
+		if (dctx->sent_range && code != 206) {
+			pv_log(DEBUG,
+			       "object '%s': Hub did not resume (status %d), restarting download from scratch",
+			       dctx->id_ref, code);
+			pv_fs_path_remove(path, false);
+		}
+	}
+
 	if (pv_event_rest_recv_chunk_path(req, path, &written))
 		return;
 
-	o = _search_object_transfer(id_ref);
+	o = _search_object_transfer(dctx->id_ref);
 	if (o)
 		o->received += written;
 	pv_update_add_downloaded((off_t)written);
@@ -867,7 +995,9 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	char path[PATH_MAX];
 	size_t written = 0;
 	int res;
-	const char *id_ref = (char *)ctx;
+	struct pv_object_download_ctx *dctx =
+		(struct pv_object_download_ctx *)ctx;
+	const char *id_ref = dctx->id_ref;
 	struct pv_object_transfer *o;
 	off_t received = 0;
 
@@ -887,44 +1017,88 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	_remove_object_transfer(id_ref);
 
 	if (res == 401) {
+		// token expired mid-transfer: the bytes we have are still
+		// good, just re-auth and resume from here next attempt
 		pv_log(WARN, "GET object unauthorized");
 		_free_token();
-		pv_update_add_downloaded(-received); // roll back partial
-		goto out;
+		pv_update_add_downloaded(
+			-received); // roll back in-flight counter
+		goto out_keep;
 	}
-	if (res != 200) {
-		pv_log(WARN, "GET object returned %d", res);
-		pv_update_add_downloaded(-received); // roll back partial
-		goto out;
+	if (res != 200 && res != 206) {
+		// transient/network failure: keep the partial file so the
+		// next attempt can resume with a Range request
+		pv_log(WARN, "GET object returned %d, will resume next attempt",
+		       res);
+		pv_update_add_downloaded(
+			-received); // roll back in-flight counter
+		goto out_keep;
 	}
-	pv_log(DEBUG, "object downloaded from Hub");
+	pv_log(DEBUG, "object downloaded from Hub (status %d)", res);
 
 	if (pv_update_install_object(path)) {
+		// install failed (e.g. checksum mismatch): the bytes we have
+		// are actually wrong, so they must not be resumed from
 		pv_log(WARN, "object download failed");
-		pv_update_add_downloaded(-received); // roll back partial
-		goto out;
+		pv_update_add_downloaded(
+			-received); // roll back in-flight counter
+		goto out_delete;
 	}
-out:
+
+out_delete:
 	pv_fs_path_remove(path, false);
+out_keep:
 	pv_pantahub_evaluate_state();
+	free(dctx);
 }
 
-static int _get_object(const char *geturl, const char *id_ref)
+static int _get_object(const char *geturl, const char *id_ref,
+		       struct evhttp_request **out_req,
+		       struct pv_object_download_ctx **out_ctx)
 {
 	char path[PATH_MAX];
+	off_t existing;
+	struct pv_object_download_ctx *dctx;
 
 	if (!geturl || !id_ref)
 		return -1;
 
 	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
-	pv_fs_path_remove(path, true);
 
-	pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
+	// objects are immutable and content-addressed by sha256, so any
+	// partial file already at this path (from a prior failed attempt) is
+	// always safe to resume from
+	existing = pv_fs_path_get_size(path);
+	if (existing < 0)
+		existing = 0;
 
-	return pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
-					 _recv_get_object_chunk_cb,
-					 _recv_get_object_done_cb,
-					 (void *)id_ref);
+	dctx = calloc(1, sizeof(*dctx));
+	if (!dctx)
+		return -1;
+	dctx->id_ref = id_ref;
+	dctx->sent_range = (existing > 0);
+
+	if (existing > 0) {
+		pv_log(DEBUG,
+		       "requesting object '%s' from Hub, resuming from byte %jd",
+		       id_ref, (intmax_t)existing);
+		pv_update_add_resume(id_ref);
+	} else {
+		pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
+	}
+
+	if (pv_event_rest_send_by_url(
+		    EVHTTP_REQ_GET, geturl, _recv_get_object_chunk_cb,
+		    _recv_get_object_done_cb, (void *)dctx, out_req,
+		    pv_config_get_int(PH_UPDATER_DOWNLOAD_RATE_LIMIT),
+		    existing)) {
+		free(dctx);
+		return -1;
+	}
+
+	*out_ctx = dctx;
+
+	return 0;
 }
 
 int pv_pantahub_proto_get_objects()
@@ -945,7 +1119,8 @@ int pv_pantahub_proto_get_objects()
 	{
 		if (!o->active) {
 			geturl = pv_update_get_object_geturl(o->id_ref);
-			if (!_get_object(geturl, o->id_ref))
+			if (!_get_object(geturl, o->id_ref, &o->req,
+					 &o->dl_ctx))
 				o->active = true;
 		}
 
@@ -1028,7 +1203,7 @@ static void _put_progress(const char *rev, const char *progress)
 		 pv_config_get_str(PH_CREDS_ID), rev);
 
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, progress,
-			       _recv_put_progress_cb, NULL))
+			       _recv_put_progress_cb, NULL, NULL))
 		session.put_progress_active = true;
 }
 

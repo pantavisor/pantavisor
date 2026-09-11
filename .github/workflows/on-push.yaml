@@ -15,6 +15,10 @@ on:
       - "**"
       - "!docs/**"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     name: "build (${{ matrix.machine_name }})"
@@ -29,7 +33,7 @@ jobs:
           - machine_name: docker-x86_64-scarthgap
             configs: kas/build-configs/release/docker-x86_64-scarthgap.yaml:kas/build-configs/shared-vols.yaml
 
-    runs-on: ["self-hosted"]
+    runs-on: ["bsp-builder"]
     container:
       image: ghcr.io/pantacor/kas/kas:next-v7
       volumes:

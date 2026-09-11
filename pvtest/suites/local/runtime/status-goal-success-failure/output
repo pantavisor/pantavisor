@@ -1,0 +1,10 @@
+== initial revision ==
+locals/local_runtime_status_goal_success_failure
+== post revision with container that signals READY ==
+== locals/success: DONE ==
+{"status":"DONE","status-msg":"Update finished, revision set as rollback point","progress":100,"retries":0}
+locals/success
+== post revision where container never signals READY (triggers rollback) ==
+== locals/failure: ERROR (rolled back) ==
+{"status":"ERROR","status-msg":"Status goal not reached","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"platforms\",\"msg\":\"platform 'pv-example-ready-timeout' status goal timed out after waiting for more than TIMEOUT secs\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"timed out before all goals were met. Rolling back...\"}\n"}
+locals/success

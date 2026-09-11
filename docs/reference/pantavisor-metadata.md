@@ -6,6 +6,9 @@ description: "User-defined and system-managed device metadata reference."
 
 # Pantavisor Metadata
 
+**Overview:** [Storage → Metadata](../overview/storage.md#metadata) explains where metadata lives and how
+it is exchanged with Pantacor Hub.
+
 This page contains reference information about [Pantavisor metadata](../overview/storage.md#metadata).
 
 ## Device metadata
@@ -16,11 +19,10 @@ This is the device metadata created by Pantavisor that will give you useful info
 | --- | ----- | ----------- |
 | `interfaces` | json | network interfaces of the device, keyed by `<iface>.<family>` where family is `ipv4`, `ipv6` or `mac` (see below) |
 | `pantahub.address` | IP:port | Pantacor Hub address the client is communicating with |
-| `pantahub.claimed` | 0 or 1 | 1 if claimed in Pantacor Hub |
+| `pantahub.claimed` | 0 or 1 | `0` while the device is unclaimed, `1` once it has been claimed |
 | `pantahub.online` | 0 or 1 | 1 if connection to Pantacor Hub was established |
 | `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, claim, sync, login, wait hub, report, idle, prep download or download) |
 | `pantavisor.arch` | string | CPU architecture |
-| `pantavisor.claimed` | 0 or 1 | 1 if device has ever been claimed (local or remote) |
 | `pantavisor.cpumodel` | string | CPU model name |
 | `pantavisor.dtmodel` | string | Device Tree model name |
 | `pantavisor.mode` | local or remote | [see operation modes](../overview/pantavisor-architecture.md#communication-with-the-outside-world) |
@@ -102,12 +104,13 @@ The `interfaces` device metadata is a JSON object keyed by `<iface>.<family>`. E
 
 ## User metadata
 
-This is the user metadata that can be set by the user which is parsed and have some actions on Pantavisor:
+This is the user metadata that can be set by the user. Some keys are interpreted by Pantavisor
+itself; others are only consumed by containers running on the device:
 
 | Key | Value | Description |
 | --- | ----- | ----------- |
 | `pvr-sdk.authorized_keys` | SSH pub key | set [public key](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) to get SSH access |
-| `pvr-auto-follow.url` | URL | device will automatically pull every change in the device associated to that [clone URL](../../meta-pantavisor/getting-started/develop/cli-tools/pvr-cli.md) |
+| `pvr-auto-follow.url` | URL | consumed by the `pvr-sdk` container, not by Pantavisor: it pulls every change from the device associated to that [clone URL](../../meta-pantavisor/getting-started/develop/cli-tools/pvr-cli.md) |
 | `pantahub.log.push` | 0 or 1 | disable/enable log pushing to Pantacor Hub. Overrides [PV_LOG_PUSH](pantavisor-configuration.md#summary) |
 | `<config-key>` | config-value | override any [configuration](pantavisor-configuration.md#summary) keys that allow RUN level |
 | `<container>/<key>` | value | send user metadata that can be consumed by one of the containers |

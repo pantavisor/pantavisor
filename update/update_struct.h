@@ -39,6 +39,7 @@ typedef enum {
 	PV_UPDATE_PROGRESS_STATUS_DONE,
 	PV_UPDATE_PROGRESS_STATUS_WONTGO,
 	PV_UPDATE_PROGRESS_STATUS_ERROR,
+	PV_UPDATE_PROGRESS_STATUS_CANCEL,
 	PV_UPDATE_PROGRESS_STATUS_UNKNOWN
 } pv_update_progress_status_t;
 
@@ -70,7 +71,8 @@ typedef enum {
 	PV_UPDATE_PROGRESS_MSG_TESTING_STABILITY_WAIT,
 	PV_UPDATE_PROGRESS_MSG_PREP_DOWNLOAD_PROGRESS,
 	PV_UPDATE_PROGRESS_MSG_DOWNLOAD_PROGRESS,
-	PV_UPDATE_PROGRESS_MSG_ROLLEDBACK
+	PV_UPDATE_PROGRESS_MSG_ROLLEDBACK,
+	PV_UPDATE_PROGRESS_MSG_CANCELLED
 } pv_update_progress_msg_t;
 
 struct pv_download_info {
@@ -79,6 +81,7 @@ struct pv_download_info {
 	off_t reported;
 	off_t start_time;
 	off_t current_time;
+	off_t resumes;
 };
 
 struct pv_update_progress {

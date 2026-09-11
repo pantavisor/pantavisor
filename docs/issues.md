@@ -29,3 +29,12 @@ that resolve both in this repository and in the Docusaurus reference instance on
 docs.pantavisor.io. Links to MkDocs-era how-to pages (`inspect-device.md`,
 `claim-device.md`, `make-a-new-revision.md`, …) now point to the equivalent
 curated pages on https://docs.pantavisor.io.
+
+### Issue 6 — Overview and reference had drifted into each other (resolved 2026-09)
+
+Reference tables (log sinks, timestamp formats, hook points, hook environment, wakelock scopes,
+`PV_POWER_*` keys, disk field requirements, container status values) had accumulated in
+`docs/overview/`, while narrative had accumulated in `docs/reference/`. Content was moved to the
+side that owns it, two reference pages were added (`pantavisor-hooks.md`, `pantavisor-power.md`),
+every page was cross-linked in both directions, and the rules were written down in
+[CONTRIBUTING.md](CONTRIBUTING.md) and enforced by `scripts/check-docs.sh` in CI.

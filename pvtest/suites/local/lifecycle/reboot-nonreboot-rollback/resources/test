@@ -1,0 +1,46 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+echo "== initial revision =="
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+# Per-test isolation: private $HOME + temp checkout dir (see automated-workflow.md § Test authoring rules).
+export HOME="$(mktemp -d)"
+pvr_clone_local_or_die "$HOME/checkout"
+cd "$HOME/checkout"
+
+echo "== post reboot update =="
+sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' pv-example-norole/lxc.container.conf
+pvr add .
+pvr commit > /dev/null 2>&1
+pvr post --rev "locals/reboot" > /dev/null 2>&1
+
+wait_for_revision_state "locals/reboot" "DONE" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/reboot to reach DONE" >&2; exit 1; }
+echo "== locals/reboot: DONE =="
+pvcontrol steps show-progress locals/reboot
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+
+echo "== post non-reboot update =="
+sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' pv-example-app/lxc.container.conf
+pvr add .
+pvr commit > /dev/null 2>&1
+pvr post --rev "locals/nonreboot" > /dev/null 2>&1
+
+wait_for_revision_state "locals/nonreboot" "UPDATED" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/nonreboot to reach UPDATED" >&2; exit 1; }
+echo "== locals/nonreboot: UPDATED =="
+pvcontrol steps show-progress locals/nonreboot
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+
+echo "== post broken update (triggers rollback to locals/reboot) =="
+sed -i 's|lxc\.init\.cmd = /usr/bin/pv-app|lxc.init.cmd = /nonexistingbin|g' pv-example-norole/lxc.container.conf
+pvr add .
+pvr commit > /dev/null 2>&1
+pvr post --rev "locals/error" > /dev/null 2>&1
+
+wait_for_revision_state "locals/reboot" "DONE" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for rollback to locals/reboot DONE" >&2; exit 1; }
+echo "== rolled back to locals/reboot =="
+pvcontrol steps show-progress locals/error | sed 's/\\\"tsec\\\":[0-9]\+/\\\"tsec\\\":0/g; s/\\\"tnano\\\":[0-9]\+/\\\"tnano\\\":0/g; s/\\\"msg\\\":\\\"([a-zA-Z_][a-zA-Z0-9_]*:[0-9]\+) /\\\"msg\\\":\\\"/g'
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'

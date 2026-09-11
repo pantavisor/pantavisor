@@ -1,0 +1,22 @@
+{
+	"#spec": "pv-test@1",
+	"description": "control socket basic (real curl)",
+	"setup": {
+		"cmdline": "",
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0"
+		},
+		"pantavisor.config": "",
+		"pvs": "",
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"ready-script": "",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

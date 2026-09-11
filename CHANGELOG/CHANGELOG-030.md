@@ -8,6 +8,77 @@ which runs automatically in CI (via
 [`tag-changelogs.yaml`](../.github/workflows/tag-changelogs.yaml) when a
 tag is synced from meta-pantavisor) and on demand locally.
 
+## v030
+
+Released: 2026-09-09
+Commit: [`48c582334875`](https://github.com/pantavisor/pantavisor/commit/48c582334875dde17634973049885c7ab6049116)
+
+### Changes
+
+Changes since [`029`](https://github.com/pantavisor/pantavisor/releases/tag/029):
+
+#### Features
+- **pantahub**: report cumulative resume-attempt counter in update progress
+- **pantahub**: resume interrupted object downloads via HTTP Range
+- **pantahub**: add object-download rate-limit knob for testing
+- **update**: honor a Hub-side cancel while queued or downloading
+- **pvtest**: point a whole run at another Hub via PVTEST_HUB_URL
+- **pvtest**: allow relocating the suite root via PVTEST_ROOT
+- **pvtest**: allow relocating utils/common via PVTEST_LIBDIR
+- **pvtest**: name the board re-type mechanism setbootconfig
+- **pantahub**: push devmeta on significant change with a heartbeat floor
+- **logserver**: add key-value protocol to logserver
+- **logserver**: add json protocol to logserver
+- **power**: drain queued revisions without sleeping in between
+- **power**: phase 0 container run window (power.wake.run_window)
+- **appengine**: manual mode; named pvtx installed initial revision; signal handling; exit code management
+- **pvtest**: add volatile and persistent models to runner
+- **tools**: PVTEST_EXEC env to allow exec prefixes to pvcontrol and pventer
+- **power**: degrade locks, fail managed without kernel wakelock support
+- **power**: hold wakelocks across hub roundtrips, updates and debug shell
+- **power**: GET /wakelocks control endpoint
+- **power**: wakelock subsystem with locks and managed autosleep modes
+
+#### Fixes
+- **pantahub**: report download progress only after the step poll returns
+- **pantahub**: POST /devices error being logged as GET
+- **ctrl**: require an exact cgroup name match for caller identity
+- **cgroup**: keep appengine's cgroup ns root and cgroupfs mount root in sync
+- **metadata**: set devmeta change thresholds to the measured noise floor
+- **metadata**: report uptime and idle with two decimals
+- **metadata**: report sysinfo, time and storage as live measurements
+- **metadata**: update devmeta's sysinfo on each request
+- **ctrl**: reply to requests without a body
+- **logserver**: fix null dereference accessing to connection info
+- **logserver**: avoid losing messages from short-lived processes.
+- **power**: always arm the first managed wake alarm
+- **power**: brace the heartbeat-armed if/else in _managed_arm_alarm
+- **shutdown**: make pre-FSM teardown paths safe against uninitialized state
+- **config**: accept symbolic bool values (true/false/yes/no/on/off)
+
+#### CI
+- cancel superseded runs of the same PR
+- run build and docs jobs on runners labelled bsp-builder
+- **on-push**: skip Yocto builds on docs-only changes
+
+#### Docs
+- name the config keys and command behind remote control and updates
+- overview vs reference contract and fixup
+- **wakelocks**: use canonical PV_POWER_* keys and document the pv-ctrl endpoint
+- close config/API gaps from 2026-08-27 code check
+- expand OEM configuration documentation
+- name the watchdog config keys on the overview page
+- **overview**: link Pantahub's licensing/self-host answer from remote-control
+- **overview**: kernel requirements checklist, disambiguate the 4-way "platform" overload
+- **storage**: add hands-on actionable examples
+- **power**: tighten wakelock comments
+- **appengine**: add appengine basic info to docs overview
+- **overview**: point remote-control's object-download step at a size example
+- **power**: wakelocks and power modes overview
+
+#### Other
+- (refactor) **config**: drop the dotted power.* aliases, freeze the legacy key table
+
 ## v030-rc1
 
 Released: 2026-08-25

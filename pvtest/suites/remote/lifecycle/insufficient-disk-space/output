@@ -1,0 +1,10 @@
+== post revision (same content, makes factory rev GC-able) ==
+== reboot to commit revision as current ==
+== post large file (GC_RESERVED=100 ensures WONTGO after GC) ==
+== local step progress ==
+{"status":"WONTGO","status-msg":"Space required 52428800 B, available 0 B","progress":100,"retries":1}
+== cloud step status ==
+{
+  "status": "WONTGO",
+  "status-msg": "Space required 52428800 B, available 0 B"
+}

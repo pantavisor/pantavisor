@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "brief test description",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

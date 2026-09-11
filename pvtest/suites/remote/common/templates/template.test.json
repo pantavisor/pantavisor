@@ -1,0 +1,17 @@
+{
+	"#spec": "pv-test@1",
+	"description": "brief test description",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

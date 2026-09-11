@@ -72,6 +72,8 @@ static const char *_ser_update_progress_status(pv_update_progress_status_t s)
 		return "WONTGO";
 	case PV_UPDATE_PROGRESS_STATUS_ERROR:
 		return "ERROR";
+	case PV_UPDATE_PROGRESS_STATUS_CANCEL:
+		return "CANCEL";
 	default:
 		return "UNKNOWN";
 	}
@@ -121,6 +123,9 @@ static char *_ser_progress(struct pv_update_progress *p)
 					pv_json_ser_key(&js, "current_time");
 					pv_json_ser_number(
 						&js, p->total.current_time);
+					pv_json_ser_key(&js, "total_resumes");
+					pv_json_ser_number(&js,
+							   p->total.resumes);
 					pv_json_ser_object_pop(&js);
 				}
 				pv_json_ser_object_pop(&js);
@@ -183,6 +188,9 @@ static void _set_progress(struct pv_update_progress *p)
 	case PV_UPDATE_PROGRESS_STATUS_ERROR:
 		p->progress = 100;
 		break;
+	case PV_UPDATE_PROGRESS_STATUS_CANCEL:
+		p->progress = 100;
+		break;
 	default:
 		pv_log(WARN, "unknown progress");
 		p->progress = 0;
@@ -234,6 +242,8 @@ _parse_update_progress_status(const char *str)
 		return PV_UPDATE_PROGRESS_STATUS_WONTGO;
 	else if (pv_str_matches(str, len, "ERROR", strlen("ERROR")))
 		return PV_UPDATE_PROGRESS_STATUS_ERROR;
+	else if (pv_str_matches(str, len, "CANCEL", strlen("CANCEL")))
+		return PV_UPDATE_PROGRESS_STATUS_CANCEL;
 
 	return PV_UPDATE_PROGRESS_STATUS_UNKNOWN;
 }
@@ -256,6 +266,7 @@ static void _parse_update_progress_total(const char *json,
 	t->start_time = pv_json_get_value_int(json, "start_time", tokv, tokc);
 	t->current_time =
 		pv_json_get_value_int(json, "current_time", tokv, tokc);
+	t->resumes = pv_json_get_value_int(json, "total_resumes", tokv, tokc);
 out:
 	if (tokv)
 		free(tokv);
@@ -398,6 +409,9 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 	case PV_UPDATE_PROGRESS_MSG_ROLLEDBACK:
 		ret = strdup("Unexpected rollback");
 		break;
+	case PV_UPDATE_PROGRESS_MSG_CANCELLED:
+		ret = strdup("Cancelled as requested by owner");
+		break;
 	default:
 		ret = strdup("Internal error");
 	}
@@ -497,8 +511,17 @@ void pv_update_progress_start_download(struct pv_update_progress *p)
 	p->total.reported = 0;
 	p->total.start_time = time(NULL);
 	p->total.current_time = time(NULL);
+	p->total.resumes = 0;
 
 	_report(p, true);
+}
+
+void pv_update_progress_add_resume(struct pv_update_progress *p)
+{
+	if (!p)
+		return;
+
+	p->total.resumes++;
 }
 
 void pv_update_progress_add_downloaded(struct pv_update_progress *p,

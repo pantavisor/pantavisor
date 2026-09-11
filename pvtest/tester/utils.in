@@ -5,7 +5,15 @@
 
 # pvtest_log, wait_for_status, pvtest_ssh_cmd and pvtest_normalize_cfg come from
 # common, which is shared with the host orchestrator (test.docker.sh)
-. /usr/share/pantavisor/pvtest/common
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/common"
+
+# Hub the whole run targets; pvr and the tests' Hub calls follow it
+: "${PVTEST_HUB_URL:=https://api.pantahub.com}"
+PVTEST_HUB_URL=${PVTEST_HUB_URL%/}
+export PVTEST_HUB_URL PVR_BASEURL="$PVTEST_HUB_URL"
+
+# Device endpoint on the run's Hub; pvr claim/dev delete with a bare id are hard-wired to prod
+pvr_device_url() { printf '%s/devices/%s\n' "$PVTEST_HUB_URL" "$1"; }
 
 pv_exec() {
 	local prog="$1"; shift

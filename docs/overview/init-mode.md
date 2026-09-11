@@ -1,5 +1,7 @@
 ---
-sidebar_position: 13
+title: "Init Mode"
+sidebar_position: 16
+description: "Embedded, standalone, and appengine operational modes, and when to use each."
 ---
 # Init Mode
 
@@ -30,3 +32,8 @@ Some container-specific behaviours worth knowing:
 - **Loop devices:** There is no udev, so `/dev/loop0..1023` are pre-created. Loop devices are host-global, so concurrent appengines each need their own `PV_LOOP_INDEX_BASE` 64 device range reserved. To avoid conflicts with leftover loop devices, the entrypoint reaps stale devices in its own 64-device band, detaching only those whose backing file reads `(deleted)`.
 - **Log location:** Logs live under the storage mount at `<storage>/logs/0/`, not `/run/pantavisor/pv/logs/0/` as on a device so they can be inspected from host. `PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct` additionally streams the internal log to stdout, unbuffered, as each event happens. See [logserver-sockets.md](../reference/logserver-sockets.md).
 - **Named initial revisions:** Pantavisor only auto-commits the revision it boots into when that revision is named `0`. When `PV_APPENGINE_INITIAL_REV` names a different revision, `pv-appengine` writes the `.pv/done` and `.pv/progress` markers the factory path would have written. This is what lets a caller boot straight into a prepared revision with no install and no commit reboot.
+
+## Reference
+
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_SYSTEM_INIT_MODE`, `PV_LOOP_INDEX_BASE` and the appengine-specific keys
+- [Log Sockets](../reference/logserver-sockets.md#log-server-outputs) — the sinks appengine uses to stream to stdout

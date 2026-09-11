@@ -276,7 +276,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// load configuration that lives in revision
 	pv_config_load_update(pv->state->rev, pv->state->bsp.config);
 
-	// power.mode may live in a config level loaded only now (e.g.
+	// PV_POWER_MODE may live in a config level loaded only now (e.g.
 	// pantahub.config on /storage); apply it so managed mode can start
 	pv_wakelock_apply_config();
 

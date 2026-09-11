@@ -1,5 +1,7 @@
 ---
+title: "Updates"
 sidebar_position: 5
+description: "Atomic update flow: progress states, reboot and non-reboot transitions, success and failure paths."
 ---
 # Updates
 
@@ -39,7 +41,7 @@ Pantavisor will only progress to the new revision in case of success. Otherwise,
 * [DONE](#done)
 * [WONTGO](#wontgo)
 * [ERROR](#error)
-* [CANCELLED](#cancelled)
+* [CANCEL](#cancel)
 
 ### NEW
 
@@ -65,6 +67,21 @@ Only valid for [remote](remote-control.md#pantacor-hub) updates.
 
 Downloading the artifacts for the new revision.
 
+Object downloads are resumable: if a transfer is interrupted (dropped
+connection, timeout, or a Hub-side error), Pantavisor keeps the partial file
+on disk and retries with an HTTP `Range` request picking up from the last
+byte received, instead of starting the object over from scratch. Since
+objects are immutable and content-addressed by their sha256, any partial
+file left over from an earlier attempt is always safe to resume from. If the
+Hub does not honor the `Range` request (e.g. an older Hub without range
+support) and answers with a full `200` response instead of `206 Partial
+Content`, Pantavisor falls back gracefully and restarts that object's
+download from scratch. This reuses the same retry loop as before. The step
+progress reports how often a download was resumed in
+`downloads.total.total_resumes`, but that is a counter, not a separate retry
+budget: a stuck object still only stops retrying once the update itself hits
+its overall retry ceiling.
+
 | Messages |
 | ---------|
 Retry X of Y |
@@ -75,7 +92,7 @@ Installing or progressing to this revision. Transitions to new revisions can eit
 
 [Hooks](hooks.md) fire at key points during installation: before and after the bootloader writes the new revision (`system-before-install-update` / `system-after-install-update`), and once the revision has been committed after a successful try-boot (`system-boot-done`).
 
-To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a [configurable](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson) time, Pantavisor will [rollback](#error) the revision.
+To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a configurable time, Pantavisor will [rollback](#error) the revision. The wait is set per group by `timeout` in [groups.json](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson), falling back to [`PV_UPDATER_GOALS_TIMEOUT`](../reference/pantavisor-configuration.md#summary) (seconds, default `120`) for any group that does not set it.
 
 | Messages |
 | ---------|
@@ -108,7 +125,7 @@ In this case, Pantavisor will only stop the containers that were affected by the
 
 Waiting to see if the revision is stable. During this stage, Pantavisor checks if all containers are running and will [rollback](#error) if any of them exits. Besides that, in the case of a [remote](remote-control.md#pantacor-hub) update, it will also [rollback](#error) in case Pantacor Hub communication is lost.
 
-If any container has a [stable_timeout](containers.md#stability-tracking), the commit is held even after the commit delay timer expires, until all containers have survived their stability window. If a container with [auto-recovery](containers.md#auto-recovery) exhausts its `max_retries` during TESTING, a rollback is triggered immediately regardless of the configured `backoff_policy`.
+If any container has a [stable_timeout](containers.md#stability-tracking), the commit is held even after the commit delay timer ([`PV_UPDATER_COMMIT_DELAY`](../reference/pantavisor-configuration.md#summary), seconds, default `25`) expires, until all containers have survived their stability window. If a container with [auto-recovery](containers.md#auto-recovery) exhausts its `max_retries` during TESTING, a rollback is triggered immediately regardless of the configured `backoff_policy`.
 
 | Messages |
 | ---------|
@@ -166,6 +183,19 @@ Status goal not reached | [Status goal](containers.md#status-goal) of a containe
 A container could not be started | A [container](containers.md) failed during LXC start up |
 Unexpected rollback | Crash or power cycle before having the chance to report any meaningful status |
 
-### CANCELLED
+### CANCEL
 
-Only applicable on [remote](remote-control.md#pantacor-hub) updates. The revision has been marked as cancelled by the cloud side.
+Only valid for [remote](remote-control.md#pantacor-hub) updates.
+
+Set by the device owner from the cloud side, and honored by the device while the revision is still [QUEUED](#queued) or [DOWNLOADING](#downloading) — checked every ~6 seconds by polling the device's own step with its device token; the download progress report of that tick is only sent once the poll came back without a cancel, so the device does not overwrite a cancel it has not seen yet. A cancel that lands in the short window between that poll and the progress report is still overwritten by it and has to be issued again. Any object downloads in flight are aborted, but partial objects already on disk are kept so a later re-post of the same revision can resume them instead of starting over. Once the revision reaches [INPROGRESS](#inprogress), the device no longer looks for a cancel: the bootloader may already have been written and containers may already be starting, so stopping midway is no longer safe. A cancel set on the Hub at that point only keeps a device that lost track of the step (for example after a crash before the try was recorded) from fetching and retrying it, which is also what the older owner `wontgo` action does.
+
+| Messages | Possible causes |
+| ---------|---------------- |
+Cancelled as requested by owner | The device owner cancelled the revision from [Pantacor Hub](remote-control.md#pantacor-hub) |
+
+## Reference
+
+- [Control Socket → /steps](../reference/pantavisor-commands.md#steps) — installing revisions and reading update progress
+- [Control Socket → /commands](../reference/pantavisor-commands.md#commands) — `LOCAL_RUN`, `TRY_ONCE`, `LOCAL_RUN_COMMIT` and friends
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_UPDATER_*`, `PH_UPDATER_*` and `PV_REVISION_RETRIES`
+- [Hooks](../reference/pantavisor-hooks.md#hook-points) — the update hook points fired along the way

@@ -1,0 +1,517 @@
+#!/bin/bash
+
+# Host-side helpers shared by test.docker.sh and test.native.sh.
+#
+# Everything here is context-free with respect to *how* a target is brought up:
+# listing and creating tests, installing per-target container tarballs, the
+# device manifest, the ctrl protocol and the run summary are identical whether
+# the tester runs in a container or natively. Anything that knows about docker
+# stays in test.docker.sh; anything that knows about namespaces stays in
+# test.native.sh.
+#
+# NOT the same file as pvtest/common, which is shared with the *tester* half and
+# duplicated byte-for-byte in the pantavisor repo. This one is host-only.
+#
+# Expects the sourcing script to have already sourced pvtest/common and to
+# define: test_dir, work_path, verbose, fail_on_skip, and (for the ctrl service)
+# the device state that _parse_device_manifest fills in.
+
+# --- test selection and creation ---------------------------------------
+
+# Normalized config.env of the test under dir $1
+_test_cfg() { pvtest_normalize_cfg "$(jq -r '.setup.config.env // ""' "$1/test.json")"; }
+
+list_tests() {
+	printf "%-50s %-10s\n" "test" "description"
+	printf "%-50s %-10s\n" "====" "==========="
+	find $test_dir/ -name "test.json" | sort | while read -r json_path; do
+		test_id=$(echo "$json_path" | sed 's|^\./||; s|/test\.json$||')
+		description=$(jq -r '.description' "$json_path")
+		printf "%-50s %-10s\n" "$test_id" "$description"
+	done
+}
+
+add_test() {
+	local test_path=
+
+	if [ -z "$1" ]; then
+		pvtest_log ERROR "Missing test path (scope/category/name)"
+		usage
+		exit 1
+	fi
+	test_path="$1"
+	shift
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			*)
+				pvtest_log ERROR "Unknown argument: $1"
+				usage
+				exit 1
+				;;
+		esac
+	done
+
+	local full_path="$test_dir/$test_path"
+	local scope=$(echo "$test_path" | cut -d'/' -f1)
+
+	if [ -e "$full_path" ]; then
+		pvtest_log ERROR "'$full_path' already exists"
+		exit 1
+	fi
+
+	local common_path="$test_dir/$scope/common"
+	if [ ! -d "$common_path" ]; then
+		pvtest_log ERROR "common directory '$common_path' missing"
+		exit 1
+	fi
+
+	mkdir -p "$full_path/resources"
+	cp "$common_path/templates/template.test.json" "$full_path/test.json"
+	cp "$common_path/templates/template.test" "$full_path/resources/test"
+	chmod +x "$full_path/resources/test"
+	cp "$common_path/templates/template.ready" "$full_path/resources/ready"
+	chmod +x "$full_path/resources/ready"
+
+	pvtest_log INFO "New test created at: $full_path"
+}
+
+# --- target container tarballs -----------------------------------------
+
+_tarball_target=
+
+_install_one_tarball() {
+	local src="$1" scope="$2" name dest action
+	name="$(basename "$src")"
+	dest="$test_dir/targets/$_tarball_target/$scope/$name"
+	[ -e "$dest" ] && action=replaced || action=added
+
+	mkdir -p "$(dirname "$dest")" || return 1
+
+	cp -f "$src" "$dest" || return 1
+	pvtest_log INFO "targets/$_tarball_target/$scope/$name [$action, sha $(sha256sum "$dest" | cut -c1-12)]"
+}
+
+install_tarballs() {
+	local srcs=() found=0
+	_tarball_target=
+
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			-h|--help)  usage; exit 0 ;;
+			-*) pvtest_log ERROR "Unknown install-tarballs option: $1"; exit 1 ;;
+			*)  if [ -z "$_tarball_target" ]; then _tarball_target="$1"; else srcs+=("$1"); fi; shift ;;
+		esac
+	done
+
+	if [ -z "$_tarball_target" ]; then
+		pvtest_log ERROR "install-tarballs needs a target type (the device manifest 'type=' of the board)"
+		pvtest_log ERROR "  usage: $0 install-tarballs <target> [path]..."
+		exit 1
+	fi
+
+	[ ${#srcs[@]} -gt 0 ] || srcs=(".")
+
+	local sp f
+	for sp in "${srcs[@]}"; do
+		if [ ! -e "$sp" ]; then
+			pvtest_log ERROR "no such path: $sp"
+			exit 1
+		fi
+		for f in $([ -d "$sp" ] && find "$sp" -maxdepth 1 -name '*.tgz' | sort || printf '%s\n' "$sp"); do
+			case "$f" in *.tgz) ;; *) pvtest_log WARN "skipping non-tarball: $f"; continue ;; esac
+			_install_one_tarball "$f" local || exit 1
+			_install_one_tarball "$f" remote || exit 1
+			found=$((found+1))
+		done
+	done
+
+	if [ "$found" -eq 0 ]; then
+		pvtest_log ERROR "no *.tgz found in: ${srcs[*]}"
+		exit 1
+	fi
+	pvtest_log INFO "installed $found tarball(s) into targets/$_tarball_target"
+}
+
+# --- host slot allocation ----------------------------------------------
+
+allocate_slot() {
+	slot=0
+	while true; do
+		local sf="/tmp/pv_appengine.slot.${slot}.lock"
+		SLOT_LOCK_FD=
+		# a failed exec leaves SLOT_LOCK_FD empty; check it explicitly or flock/close below run on '' and wreck fd 1
+		if ! exec {SLOT_LOCK_FD}>"$sf"; then
+			pvtest_log ERROR "cannot open lock file '$sf' (owned by another user under /tmp with fs.protected_regular=1, or /tmp not writable)"
+			return 1
+		fi
+		if flock -nx "$SLOT_LOCK_FD"; then
+			return 0
+		fi
+		eval "exec ${SLOT_LOCK_FD}>&-"
+		SLOT_LOCK_FD=
+		slot=$((slot + 1))
+	done
+}
+
+release_slot() {
+	[ -z "$SLOT_LOCK_FD" ] && return
+	eval "exec ${SLOT_LOCK_FD}>&-"
+	SLOT_LOCK_FD=
+}
+
+# --- Hub selection -----------------------------------------------------
+
+# Export PVTEST_HUB_URL from --hub ($1), the env, or the default; pantavisor talks TLS only
+_resolve_hub_url() {
+	PVTEST_HUB_URL="${1:-${PVTEST_HUB_URL:-https://api.pantahub.com}}"
+	PVTEST_HUB_URL="${PVTEST_HUB_URL%/}"
+	case "$PVTEST_HUB_URL" in
+		https://*) ;;
+		*)
+			pvtest_log ERROR "--hub/PVTEST_HUB_URL must be an https:// URL, got '$PVTEST_HUB_URL'"
+			return 1
+			;;
+	esac
+	export PVTEST_HUB_URL
+}
+
+# --- device manifest ---------------------------------------------------
+
+PVTEST_CONFIG_DIR="${PVTEST_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/pvtest}"
+
+_resolve_device_file() {
+	local dir="$PVTEST_CONFIG_DIR/devices"
+
+	# Name in the config dir first, then the value as a path.
+	if [ -f "$dir/$device_file.txt" ]; then
+		device_file="$dir/$device_file.txt"
+		return 0
+	fi
+	[ -f "$device_file" ] && return 0
+
+	pvtest_log ERROR "--device manifest '$device_file' not found (tried $dir/$device_file.txt and the path itself)"
+	return 1
+}
+
+_dev_name= _dev_type= _dev_ip= _dev_exec= _dev_tty= _dev_baud=
+_dev_setbootconfig= _dev_setbootconfig_conf= _dev_setbootconfig_base= _dev_lock_fd=
+
+_parse_device_manifest() {
+	local file="$1" line
+
+	if [ ! -f "$file" ]; then
+		pvtest_log ERROR "--device file '$file' not found"
+		return 1
+	fi
+
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in
+			name=*)
+				if [ -n "$_dev_name" ]; then
+					pvtest_log ERROR "--device supports exactly one device ('$file' declares '$_dev_name' and '${line#name=}')"
+					return 1
+				fi
+				_dev_name="${line#name=}" ;;
+			type=*) _dev_type="${line#type=}" ;;
+			ip=*) _dev_ip="${line#ip=}" ;;
+			exec=*) _dev_exec="${line#exec=}" ;;
+			tty=*) _dev_tty="${line#tty=}" ;;
+			baud=*) _dev_baud="${line#baud=}" ;;
+			hook=*) _dev_setbootconfig="${line#hook=}"; pvtest_log WARN "'hook=' is deprecated in '$file', use 'setbootconfig='" ;;
+			config=*) _dev_setbootconfig_conf="${line#config=}"; pvtest_log WARN "'config=' is deprecated in '$file', use 'setbootconfig_conf='" ;;
+			env=*) _dev_setbootconfig_base="${line#env=}"; pvtest_log WARN "'env=' is deprecated in '$file', use 'setbootconfig_base='" ;;
+			setbootconfig=*) _dev_setbootconfig="${line#setbootconfig=}" ;;
+			setbootconfig_conf=*) _dev_setbootconfig_conf="${line#setbootconfig_conf=}" ;;
+			setbootconfig_base=*) _dev_setbootconfig_base="${line#setbootconfig_base=}" ;;
+			""|\#*) ;;
+			*) pvtest_log WARN "ignoring unrecognized line in '$file': $line" ;;
+		esac
+	done < "$file"
+
+	if [ -z "$_dev_name" ]; then
+		pvtest_log ERROR "no device found in '$file'"
+		return 1
+	fi
+	if [ -z "$_dev_ip" ] || [ -z "$_dev_exec" ] || [ -z "$_dev_tty" ]; then
+		pvtest_log ERROR "device '$_dev_name' in '$file' missing required field(s) (need name/ip/exec/tty)"
+		return 1
+	fi
+	_dev_type="${_dev_type:-$_dev_name}"
+	_dev_baud="${_dev_baud:-115200}"
+	return 0
+}
+
+_lock_device() {
+	local name="$1" safe fd
+
+	# The lock names the board, not the run. That is what makes it mutual exclusion
+	safe=$(printf '%s' "$name" | tr -c 'A-Za-z0-9_' '_')
+	local lf="/tmp/pvtest_device.${safe}.lock"
+	if ! exec {fd}>"$lf"; then
+		pvtest_log ERROR "cannot open lock file '$lf' (owned by another user under /tmp with fs.protected_regular=1, or /tmp not writable)"
+		return 1
+	fi
+	if ! flock -n "$fd"; then
+		eval "exec ${fd}>&-"
+		pvtest_log ERROR "device '$name' is already locked by another test.docker.sh run"
+		return 1
+	fi
+	_dev_lock_fd="$fd"
+	return 0
+}
+
+_unlock_device() {
+	[ -z "$_dev_lock_fd" ] && return
+	eval "exec ${_dev_lock_fd}>&-"
+	_dev_lock_fd=
+}
+
+_start_device_capture() {
+	local name="$1" tty="$2" baud="$3"
+	touch "$work_path/${name}.log"
+	if ! stty -F "$tty" "${baud:-115200}" raw -echo 2>/dev/null; then
+		pvtest_log ERROR "failed to configure tty '$tty' for device '$name'"
+		return 1
+	fi
+	sed -u "s/^\[pantavisor\] /[$name] /" "$tty" >> "$work_path/${name}.log" 2>/dev/null &
+	echo $! > "$work_path/.logpid.$name"
+	return 0
+}
+
+_stop_device_capture() {
+	local name="$1"
+	if [ -f "$work_path/.logpid.$name" ]; then
+		kill "$(cat "$work_path/.logpid.$name")" 2>/dev/null || true
+		rm -f "$work_path/.logpid.$name"
+	fi
+}
+
+_wait_tty_activity() {
+	local log="$1" timeout="${2:-30}" start waited=0
+	start=$(wc -l < "$log" 2>/dev/null || echo 0)
+	while [ "$waited" -lt "$timeout" ]; do
+		[ "$(wc -l < "$log" 2>/dev/null || echo 0)" -gt "$start" ] && return 0
+		sleep 1
+		waited=$((waited + 1))
+	done
+	return 1
+}
+
+_release_device() {
+	_stop_device_capture "$_dev_name"
+	_unlock_device
+}
+
+# --- ctrl protocol -----------------------------------------------------
+
+# ctrl: host<->tester channel — a dir bind-mounted at $PVTEST_CTRL (/work/ctrl)
+# Transport: one key=value file per slot, published by rename (.tmp.<id> -> <id>) so a
+# reader never sees it half-written; req/slot<N> in, resp/slot<N> out, one request in
+# flight per slot (the slot number is the address), state/ and seed/ are host-only.
+# Protocol: slot=,cfg=[,storage=,rev=,seed=] -> status=ready|down|failed|unsupported
+# [,ae=,exec=,host=,log=]. Empty cfg releases the slot; ready names the target in ae=
+# and says how to reach it in exec=/host=, so the tester never builds that itself.
+
+# Reply tester via ctrl
+_retype_reply() {
+	local ctrl="$1" id="$2"
+	shift 2
+	printf '%s\n' "$@" > "$ctrl/resp/.tmp.$id"
+	mv "$ctrl/resp/.tmp.$id" "$ctrl/resp/$id"
+}
+
+# --- re-typing a real device through setbootconfig= ---------------------
+
+# Run the setbootconfig script for retyping real devices with settings from ctrl; contract in docs/testing/device.md
+_retype_handle_device() {
+	local ctrl="$1" id="$2" cfg="$3"
+
+	if [ -z "$cfg" ]; then
+		_retype_reply "$ctrl" "$id" "status=down"
+		return 0
+	fi
+
+	if [ -z "$_dev_setbootconfig" ]; then
+		_retype_reply "$ctrl" "$id" "status=unsupported"
+		return 0
+	fi
+	[ -n "$_dev_setbootconfig_base" ] && cfg="$_dev_setbootconfig_base $cfg"
+
+	# Stop getting tty logs from device
+	_stop_device_capture "$_dev_name"
+
+	# Execute the setbootconfig script itself
+	local sbc_log="$work_path/dev-setbootconfig-${_dev_name}-${id}.log"
+	local -a sbc_args=("$_dev_setbootconfig")
+	[ -n "$_dev_setbootconfig_conf" ] && sbc_args+=(-c "$_dev_setbootconfig_conf")
+	sbc_args+=($cfg)
+	local _sbc_ok=0
+	if "${sbc_args[@]}" > "$sbc_log" 2>&1; then
+		_sbc_ok=1
+	else
+		pvtest_log ERROR "device '$_dev_name' setbootconfig failed (see $sbc_log)"
+	fi
+
+	# Resume tty logs from device
+	_start_device_capture "$_dev_name" "$_dev_tty" "$_dev_baud" \
+		|| pvtest_log ERROR "failed to resume tty capture for device '$_dev_name' after setbootconfig"
+
+	if [ "$_sbc_ok" = 1 ]; then
+		# Best-effort confirm the board is actually mid-reboot before telling the tester it is ready
+		_wait_tty_activity "$work_path/${_dev_name}.log" 30 \
+			|| pvtest_log WARN "no serial activity from '$_dev_name' within 30s after setbootconfig; continuing"
+		_retype_reply "$ctrl" "$id" "ae=$_dev_name" "exec=$_dev_exec" "host=$_dev_ip" \
+			"status=ready" "log=$sbc_log"
+	else
+		_retype_reply "$ctrl" "$id" "status=failed" "log=$sbc_log"
+	fi
+}
+
+# --- ctrl service ------------------------------------------------------
+
+# Receive retype data from tester and perform retype based on $2 at $1
+_retype_service() {
+	local ctrl="$1" mech="$2"
+	mkdir -p "$ctrl/req" "$ctrl/resp" "$ctrl/state"
+	local req id S cfg stor rev seed
+	while [ ! -e "$ctrl/stop" ]; do
+		for req in "$ctrl"/req/slot*; do
+			[ -e "$req" ] || continue
+			id=$(basename "$req")
+			S=$(sed -n 's/^slot=//p' "$req")
+			cfg=$(sed -n 's/^cfg=//p' "$req")
+			stor=$(sed -n 's/^storage=//p' "$req")
+			rev=$(sed -n 's/^rev=//p' "$req")
+			seed=$(sed -n 's/^seed=//p' "$req")
+			rm -f "$req"
+			case "$mech" in
+				# only test.docker.sh defines the container handler
+				container)
+					if ! command -v _retype_handle_appengine > /dev/null 2>&1; then
+						pvtest_log ERROR "retype mechanism 'container' needs a container runtime; use test.docker.sh"
+						_retype_reply "$ctrl" "$id" "status=failed"
+						continue
+					fi
+					( _retype_handle_appengine "$ctrl" "$id" "$S" "$cfg" "$stor" "$rev" "$seed" ) & ;;
+				setbootconfig) ( _retype_handle_device "$ctrl" "$id" "$cfg" ) & ;;
+				*)         _retype_reply "$ctrl" "$id" "status=unsupported" ;;
+			esac
+		done
+		sleep 0.2
+	done
+	wait
+
+	# Only containers are ours to destroy while a board outlives the run
+	[ "$mech" = "container" ] || return 0
+	local st ae
+	for st in "$ctrl"/state/slot*.ae; do
+		[ -e "$st" ] || continue
+		ae=$(cat "$st" 2>/dev/null)
+		[ -n "$ae" ] && _stop_appengine "$ae"
+	done
+}
+
+# --- run summary -------------------------------------------------------
+
+# Print the SUMMARY block from log $1 and diffs looked up under results/
+_print_summary() {
+	local logfile="$1"
+
+	set +x
+
+	# Construct a structured result table from run.log
+	local merged_file
+	merged_file=$(mktemp)
+	awk '
+		BEGIN { sq = sprintf("%c", 39) }       # single quote
+		function rank(r){ if(r=="FAILED")return 5; if(r=="ABORTED")return 4;
+			if(r=="PASSED")return 3; if(r=="SKIPPED")return 2;
+			if(r=="RECORDED")return 1;
+			# Slot device claims show in the SUMMARY next to the test results too.
+			if(r=="claimed")return 1; return 0 }
+		{
+			n = split($0, q, sq)               # "...: \x27tid\x27 RESULT (..)"
+			if (n >= 3) {
+				tid = q[2]
+				split(q[3], a, " ")            # " RESULT (..)" -> a[1]=RESULT
+				res = a[1]
+				# Keep the parenthetical only when it is a duration "(N s)", so a
+				# reason like "(claim failed: ...)" is never shown as a time. For
+				# SKIPPED, surface a short reason tag derived from the message.
+				if (match(q[3], /\([0-9]+ s\)/)) tm = substr(q[3], RSTART, RLENGTH)
+				else if (res == "SKIPPED") {
+					if (q[3] ~ /not in:/)              tm = "(devices)"
+					else if (q[3] ~ /required-config/) tm = "(env)"
+					else if (q[3] ~ /skip:true/)       tm = "(skip)"
+					else if (q[3] ~ /PH_USER/)         tm = "(creds)"
+					else                               tm = ""
+				}
+				else tm = ""
+				rk = rank(res)
+				if (rk > 0) {
+					if (rk > best[tid]) { best[tid]=rk; result[tid]=res; time[tid]=tm }
+				}
+			}
+		}
+		END { for (t in result) printf "%s\t%s\t%s\n", t, result[t], time[t] }
+	' "$logfile" 2>/dev/null | sort > "$merged_file"
+
+	echo "======================================================="
+	echo "======================= SUMMARY ======================="
+	echo "======================================================="
+
+	# Firstly, print framework errors (not belonging to any test)
+	local runerr_file test_errs
+	runerr_file=$(mktemp); test_errs=$(mktemp)
+	find "$work_path/results" -name test.log -exec \
+		grep -hE '^\[[^]]*\] .*ERROR[[:space:]]*-- ' {} + 2>/dev/null \
+		| sed -E 's/^\[[^]]*\] (\[pantavisor\] )?[0-9]+ //' | sort -u > "$test_errs"
+	grep -hE '^\[[^]]*\] .*ERROR[[:space:]]*-- ' "$logfile" 2>/dev/null \
+		| sed -E 's/^\[[^]]*\] (\[pantavisor\] )?[0-9]+ //' | sort -u \
+		| grep -vxF -f "$test_errs" 2>/dev/null \
+		| grep -vE "ERROR -- \[[^]]*\]: '[^']*' (FAILED|ABORTED|PASSED|SKIPPED|RECORDED)" \
+		> "$runerr_file" || true
+	if [ -s "$runerr_file" ]; then
+		printf -- "--- run errors ---\n"
+		cat "$runerr_file"
+		printf '%s\n\n' "--- end run errors ---"
+	fi
+	rm -f "$runerr_file" "$test_errs"
+
+	# Secondly, print each of the test result lines
+	local skip_fail_seen=0
+	if [ -s "$merged_file" ]; then
+		# Print diff/error block right before its result line
+		while IFS=$'\t' read -r test_id result time; do
+			[ -n "$test_id" ] || continue
+			if [ "$result" = "FAILED" ] || [ "$result" = "ABORTED" ]; then
+				local diff_file="$work_path/results/$test_id/diff"
+				local tlog="$work_path/results/$test_id/test.log"
+				if [ -s "$diff_file" ]; then
+					printf -- "--- diff: %s ---\n" "$test_id"
+					cat "$diff_file"
+					printf '%s\n\n' "--- end diff ---"
+				elif [ -s "$tlog" ]; then
+					# No diff (the ABORT case, or a FAILED with no diff): surface the
+					# test's own pvtest_log ERROR lines so the reason is inline.
+					printf -- "--- errors: %s ---\n" "$test_id"
+					grep -E '^\[[^]]*\] .*ERROR[[:space:]]*-- ' "$tlog" 2>/dev/null
+					printf '%s\n\n' "--- end errors ---"
+				fi
+			fi
+			# Print test result line
+			printf "'%s' %s%s\n" "$test_id" "$result" "${time:+ $time}"
+			# Arm --fail-on-skip
+			[ "$result" = "SKIPPED" ] && skip_fail_seen=1
+		done < "$merged_file"
+	fi
+	rm -f "$merged_file"
+	echo "======================================================="
+
+	if [ "$fail_on_skip" = "true" ] && [ "$skip_fail_seen" = "1" ]; then
+		pvtest_log ERROR "--fail-on-skip: one or more tests were SKIPPED"
+		return 1
+	fi
+	return 0
+}

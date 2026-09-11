@@ -1,0 +1,9 @@
+== post remote update 1 (non-reboot) ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":1}
+REMOTE_REV_1
+== post local update (non-reboot) ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":0}
+locals/test-303
+== post remote update 2 (applied immediately; REMOTE_ALWAYS=1 keeps Hub open) ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":1}
+REMOTE_REV_2

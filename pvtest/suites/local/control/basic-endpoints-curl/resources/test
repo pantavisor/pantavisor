@@ -1,0 +1,30 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+export CURL_CMD=curl
+
+echo "== containers (test-owned) =="
+# the device baseline containers differ per target; keep the listing
+# device-agnostic by reporting only the container this test installs
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app"))' | tr -d '\r'
+echo "== groups (built-in) =="
+# custom groups and per-group tuning (e.g. auto_recovery) are device policy;
+# report only the built-in groups' universal fields
+pvcontrol groups ls | jq -M '[.[] | select(.name | IN("data", "root", "platform", "app")) | {name, status_goal, restart_policy, status}]' | tr -d '\r'
+echo "== user-meta =="
+# keys present are device/tooling-dependent; assert the endpoint answers with an object
+echo "user-meta is object: $(pvcontrol usrmeta ls | jq -M 'type == "object"' | tr -d '\r')"
+echo "== device-meta =="
+# whitelist the keys with target-independent values
+pvcontrol devmeta ls | jq -M '{"pantavisor.mode": .["pantavisor.mode"], "pantavisor.revision": .["pantavisor.revision"], "pantavisor.status": .["pantavisor.status"]}' | tr -d '\r'
+echo "object count > 0: $(pvcontrol objects ls | jq -M 'length > 0' | tr -d '\r')"
+echo "== steps (current revision) =="
+current_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+# No reset between tests: rollback-point status (DONE) vs UPDATED is position-dependent,
+# so drop status/status-msg and keep only the deterministic progress/retries.
+pvcontrol steps ls | jq -M --arg r "$current_rev" 'map(select(.name == $r) | del(.date) | del(.progress.status, .progress["status-msg"]))' | tr -d '\r'
+echo "== config =="
+# the full conf dump is target-dependent; assert shape and one universal key
+echo "config entries well-formed: $(pvcontrol conf ls | jq -M 'length > 0 and all(has("key") and has("value") and has("modified"))' | tr -d '\r')"
+echo "has PV_STORAGE_MNTPOINT: $(pvcontrol conf ls | jq -M 'any(.key == "PV_STORAGE_MNTPOINT")' | tr -d '\r')"

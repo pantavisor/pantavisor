@@ -1,5 +1,7 @@
 ---
+title: "Remote Control"
 sidebar_position: 8
+description: "Pantacor Hub client, cloud-initiated updates, and other remote controllers."
 ---
 # Remote Control
 
@@ -13,7 +15,13 @@ To interact with Pantacor Hub, you can either use the [web user interface](https
 
 ### Pantacor Hub Client
 
-Pantavisor includes a build-in Pantacor Hub client which is [enabled by default](../reference/pantavisor-configuration.md#summary). To begin remote control and monitoring of devices with [Pantacor Hub](https://hub.pantacor.com), it is necessary to create an account and [claim the device to it](../../meta-pantavisor/getting-started/operate/device-access/remote-pantahub.md). From that moment on, the device will be attached to that account and will try to keep the connection with Pantacor Hub opened, except if a [local revision](../reference/pantavisor-commands.md#steps) is installed. In that case, the device will turn to [local control](local-control.md) until a [go remote command](../reference/pantavisor-commands.md#commands) is issued. This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary).
+Pantavisor includes a build-in Pantacor Hub client which is [enabled by default](../reference/pantavisor-configuration.md#summary) (`PV_CONTROL_REMOTE`, default `1`). To begin remote control and monitoring of devices with [Pantacor Hub](https://hub.pantacor.com), it is necessary to create an account and [claim the device to it](../../meta-pantavisor/getting-started/operate/device-access/remote-pantahub.md). From that moment on, the device will be attached to that account and will try to keep the connection with Pantacor Hub opened, except if a [local revision](../reference/pantavisor-commands.md#steps) is installed. In that case, the device will turn to [local control](local-control.md) until a [go remote command](../reference/pantavisor-commands.md#commands) is issued:
+
+```bash
+pvcontrol cmd go-remote
+```
+
+This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary) (`PV_CONTROL_REMOTE_ALWAYS`, default `0`).
 
 The main features offered by remote control are:
 
@@ -55,3 +63,9 @@ for an illustrative example (not a measured benchmark).
 It is also possible to control Pantavisor using any other server. For that, it is necessary to implement a container that performs the communication between the server itself and [Pantavisor](local-control.md).
 
 One example of this kind of setup is our [Azure IoT Hub client](https://github.com/Azure/iot-hub-device-update/tree/contributor/pantacor%2FPVContainer-ci).
+
+## Reference
+
+- [Configuration](../reference/pantavisor-configuration.md#summary) — every `PH_*` key, plus `PV_CONTROL_REMOTE` and `PV_CONTROL_REMOTE_ALWAYS`
+- [Metadata](../reference/pantavisor-metadata.md) — what the device reports up and what it reads back down
+- [State Format](../reference/pantavisor-state-format-v2.md) — the revision format the trail is made of

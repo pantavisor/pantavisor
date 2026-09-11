@@ -1,15 +1,31 @@
 ---
 title: "Reference"
-sidebar_position: 2
+sidebar_position: 0
 description: "Exact specifications for state formats, configuration, commands, and schemas."
 ---
 
 # Reference
 
-- [State Format](pantavisor-state-format-v2.md) — `state.json` schema (v2): root keys, BSP manifest, container manifest, device and groups manifests, signature manifest, and all field definitions
-- [Pantavisor Configuration](pantavisor-configuration.md) — All `pantavisor.json` keys, default values, value types, and the configuration level at which each key is effective
-- [Control Socket](pantavisor-commands.md) — pv-ctrl HTTP-over-Unix-socket endpoints: containers, groups, signals, daemons, and xconnect graph
-- [xconnect](pantavisor-xconnect.md) — Service mesh manifest format: `services.json` export declarations and `run.json` requirement declarations for Unix sockets, D-Bus, DRM, and Wayland
-- [Metadata](pantavisor-metadata.md) — User-defined and system-managed device metadata: key namespaces, update API, and persistence
-- [Log Sockets](logserver-sockets.md) — Logserver Unix socket paths, message format, and how containers attach to the log stream
-- [IPAM](pantavisor-ipam.md) — IP address management configuration: address pools, container address assignment, and namespace configuration
+Complete, enumerable specifications. Every accepted value, default and field is listed here; the
+[Technical Overview](../overview/index.md) explains what they mean.
+
+## Formats
+
+- [State Format](pantavisor-state-format-v2.md) — `state.json` schema (v2): root keys, BSP, drivers, infrastructure, groups, disks, container, service-mesh and signature manifests, with a complete example
+
+## Runtime interfaces
+
+- [Control Socket](pantavisor-commands.md) — pv-ctrl HTTP-over-Unix-socket endpoints: containers, groups, wakelocks, signals, commands, storage, objects, steps, metadata, xconnect graph, config and drivers
+- [Log Sockets](logserver-sockets.md) — `pv-ctrl-log` and `pv-fd-log`, the `/dev/log` syslog protocols, output sinks and timestamp formats
+- [Metadata](pantavisor-metadata.md) — device and user metadata keys, formats, refresh behaviour and change thresholds
+
+## Configuration
+
+- [Pantavisor Configuration](pantavisor-configuration.md) — every configuration key, its accepted values, built-in default, and the levels it may be set at
+
+## Subsystems
+
+- [Hooks](pantavisor-hooks.md) — hook directory rules, hook points, hook environment variables and failure semantics
+- [Power](pantavisor-power.md) — power modes, wakelock scopes, `PV_POWER_*` keys and the `/wakelocks` response
+- [IPAM](pantavisor-ipam.md) — pool and per-container network schemas, lease lifecycle, backend plugin hooks, NAT backend and error handling
+- [xconnect](pantavisor-xconnect.md) — `services.json` and `run.json` service manifests, mediation patterns and the hosted D-Bus system bus

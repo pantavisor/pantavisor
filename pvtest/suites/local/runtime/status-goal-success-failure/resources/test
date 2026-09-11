@@ -1,0 +1,51 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+echo "== initial revision =="
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+# Per-test isolation: private $HOME + temp checkout dir (see automated-workflow.md § Test authoring rules).
+export HOME="$(mktemp -d)"
+pvr_clone_local_or_die "$HOME/checkout"
+cd "$HOME/checkout"
+
+# Merge a container pvrexport tarball (from the staged common tarballs) into the
+# checkout. The update-under-test must arrive as a posted revision, so these
+# containers are deliberately NOT part of the setup tarballs (and nothing is
+# downloaded from the Hub mid-test).
+merge_tarball() {
+    dir=$(mktemp -d)
+    tar xzf "$1" -C "$dir" > /dev/null 2>&1 \
+        || { echo "ERROR: failed to extract $1" >&2; exit 1; }
+    pvr merge "$dir" > /dev/null 2>&1 \
+        || { echo "ERROR: pvr merge failed for $1" >&2; exit 1; }
+    rm -rf "$dir"
+}
+
+echo "== post revision with container that signals READY =="
+merge_tarball ${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-ready.pvrexport.tgz
+pvr checkout > /dev/null 2>&1
+pvr commit > /dev/null 2>&1
+pvr post --rev "locals/success" > /dev/null 2>&1
+
+wait_for_revision_state "locals/success" "DONE" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/success to reach DONE" >&2; exit 1; }
+echo "== locals/success: DONE =="
+pvcontrol steps show-progress locals/success
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+
+echo "== post revision where container never signals READY (triggers rollback) =="
+# pv-example-ready-timeout has status_goal READY but never sends the signal, so
+# the update deterministically times out its goals and rolls back.
+merge_tarball ${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-ready-timeout.pvrexport.tgz
+pvr checkout > /dev/null 2>&1
+pvr commit > /dev/null 2>&1
+pvr post --rev "locals/failure" > /dev/null 2>&1
+
+wait_for_value "pvcontrol steps show-progress locals/failure | jq -r '.status'" "ERROR" 900 > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/failure to reach ERROR" >&2; exit 1; }
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantavisor.status\"'" "READY" 90 > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for pantavisor.status READY after rollback" >&2; exit 1; }
+echo "== locals/failure: ERROR (rolled back) =="
+pvcontrol steps show-progress locals/failure | sed 's/\\\"tsec\\\":[0-9]\+/\\\"tsec\\\":0/g; s/\\\"tnano\\\":[0-9]\+/\\\"tnano\\\":0/g; s/\\\"msg\\\":\\\"([a-zA-Z_][a-zA-Z0-9_]*:[0-9]\+) /\\\"msg\\\":\\\"/g; s/waiting for more than [0-9]\+ secs/waiting for more than TIMEOUT secs/g'
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'

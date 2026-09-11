@@ -1,0 +1,94 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME.
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+echo "== post one large object (download throttled to 1 MB/s) =="
+# 100 MB incompressible object, throttled via PH_UPDATER_DOWNLOAD_RATE_LIMIT
+# in test.json: ~100 s of transfer, a wide window to crash pantavisor mid-object.
+dd if=/dev/urandom of=pv-example-app/bigfile.bin bs=1M count=100 2>/dev/null
+object_sha=$(sha256sum pv-example-app/bigfile.bin | awk '{print $1}')
+pvr add pv-example-app/bigfile.bin > /dev/null 2>&1
+pvr commit -m "add large file to exercise download-resume" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "download resume on crash test" "$trail_url")
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+
+storage=$(pv_storage_dir)
+partial_path="$storage/objects/${object_sha}.tmp"
+
+echo "== wait for the posted revision to start downloading =="
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev to start DOWNLOADING" >&2; exit 1; }
+pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads)'
+
+# Wait up to 60 s for more than 5 MiB of the partial object, so the crash
+# below lands mid-transfer with real bytes on disk.
+size_before_kill=0
+for i in $(seq 1 60); do
+    size_before_kill=$(pv_exec wc -c "$partial_path" 2>/dev/null | awk '{print $1}')
+    [ -z "$size_before_kill" ] && size_before_kill=0
+    [ "$size_before_kill" -gt 5242880 ] 2>/dev/null && break
+    sleep 1
+done
+if ! [ "$size_before_kill" -gt 0 ] 2>/dev/null; then
+    echo "ERROR: no partial bytes observed before kill" >&2
+    exit 1
+fi
+echo "partial-object-on-disk-before-crash: 1"
+
+echo "== crash PV mid-download =="
+pv_crash
+wait_for_down 30 \
+    || { echo "ERROR: pv-ctrl never went down after crash" >&2; exit 1; }
+wait_for_target_ready \
+    || { echo "ERROR: timeout waiting for device to come back after crash" >&2; exit 1; }
+pvcontrol commands go-remote > /dev/null
+
+echo "== wait for retry 2 to pick the download up =="
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.retries'" "2" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev retries to reach 2" >&2; exit 1; }
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev to resume DOWNLOADING" >&2; exit 1; }
+pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads)'
+
+# The partial file must survive the restart: a resumed download never makes
+# it smaller, a download from scratch truncates it.
+size_after_restart=$(pv_exec wc -c "$partial_path" 2>/dev/null | awk '{print $1}')
+[ -z "$size_after_restart" ] && size_after_restart=0
+if [ "$size_after_restart" -ge "$size_before_kill" ] 2>/dev/null; then
+    echo "object-tmp-file-no-reset: 1"
+else
+    echo "object-tmp-file-no-reset: 0 ($size_after_restart < $size_before_kill)"
+fi
+
+# Progress carries a cumulative resume-attempt counter; the new attempt asked
+# the Hub for a Range. The counter reaches the on-disk progress file with the
+# next download heartbeat, so wait for it rather than sampling once.
+if wait_for_value "pvcontrol steps show-progress $rev | jq -r '(.downloads.total.total_resumes // 0) >= 1'" "true" 60; then
+    echo "resume-attempt-counted: 1"
+else
+    echo "resume-attempt-counted: 0 ($(pvcontrol steps show-progress $rev | jq -r '.downloads.total.total_resumes // 0'))"
+fi
+
+echo "== wait for the update to finish =="
+wait_for_revision_state "$rev" "UPDATED" \
+    || { echo "ERROR: timeout waiting for revision $rev to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads) | {status, progress}'
+
+# Proof the Hub honoured the Range request (206) rather than the graceful
+# restart-from-scratch fallback: the log line is written by the attempt that
+# completed the object, so it is on disk by now. Every boot keeps its own log
+# dir, so grep the whole tree rather than resolving "current".
+if pv_exec grep -rq "object.*downloaded.*from.*Hub.*status.*206" "$storage/logs" 2>/dev/null; then
+    echo "hub-honored-range: 1"
+else
+    echo "hub-honored-range: 0"
+fi

@@ -1,0 +1,40 @@
+#!/bin/sh
+#
+# pv-ctrl replies to object PUTs that carry no body.
+# Covers testplan-pvctrl.md Test 16b.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+SOCK=/run/pantavisor/pv/pv-ctrl
+EMPTY=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+put_empty() {
+	pvcurl -s -o /dev/null -w '%{http_code}\n' --max-time 10 \
+		--unix-socket "$SOCK" -X PUT "$@" \
+		http://localhost/objects/$EMPTY
+}
+
+present() {
+	pvcontrol objects ls | jq -r --arg s "$EMPTY" 'any(.[]; .sha256 == $s)' |
+		tr -d '\r'
+}
+
+empty=$(mktemp)
+: > "$empty"
+empty_staged=$(pv_stage_file "$empty")
+
+echo "== PUT empty object with Content-Length: 0 =="
+put_empty -H "Content-Length: 0" -T "$empty_staged"
+echo "empty object present: $(present)"
+
+echo "== PUT again, taking the already-exists branch =="
+put_empty -H "Content-Length: 0" -T "$empty_staged"
+
+echo "== PUT with neither body nor content-length =="
+put_empty
+
+echo "== object survived all three PUTs =="
+echo "empty object present: $(present)"
+
+pv_unstage_file "$empty_staged"
+rm -f "$empty"

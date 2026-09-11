@@ -43,7 +43,7 @@ enum wl_scope {
 };
 
 int pv_wakelock_init(void);
-// Re-evaluate power.mode once config levels that load after pv_wakelock_init()
+// Re-evaluate PV_POWER_MODE once config levels that load after pv_wakelock_init()
 // (e.g. pantahub.config on /storage) are available.
 void pv_wakelock_apply_config(void);
 
@@ -57,7 +57,7 @@ void pv_wakelock_acquire(enum wl_scope scope);
 void pv_wakelock_release(enum wl_scope scope);
 
 // The devmeta scope is dirty-gated: held from a local pv-ctrl mutation until it
-// syncs to Hub or power.devmeta.max_held elapses. A generation counter keeps a
+// syncs to Hub or PV_POWER_DEVMETA_MAX_HELD elapses. A generation counter keeps a
 // change that lands mid-flight from releasing early.
 void pv_wakelock_devmeta_dirty(void);
 void pv_wakelock_devmeta_sent(void);

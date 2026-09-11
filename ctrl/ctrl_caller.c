@@ -30,7 +30,6 @@
 #include <event2/http.h>
 #include <event2/bufferevent.h>
 
-#include <ctype.h>
 #include <string.h>
 
 #define MODULE_NAME "ctrl-caller"
@@ -48,7 +47,7 @@ int pv_ctrl_caller_init(struct pv_ctrl_caller *caller,
 {
 	pid_t pid = pv_socket_get_sender_pid(ctrl_caller_get_fd(req));
 	if (pid < 0) {
-		pv_log(WARN, "error requesting pid: %s (%d)", strerror(errno));
+		pv_log(WARN, "error requesting pid: %s", strerror(errno));
 		return -1;
 	}
 
@@ -63,32 +62,14 @@ int pv_ctrl_caller_init(struct pv_ctrl_caller *caller,
 
 	struct pantavisor *pv = pv_get_instance();
 	caller->plat = pv_state_fetch_platform(pv->state, name);
-	if (!caller->plat && pv_config_get_system_init_mode() == IM_APPENGINE) {
-		/* In appengine mode LXC may append -N to a container name when
-		 * the cgroup slot is already taken by a parallel test run.
-		 * Strip the suffix and retry so pvr-sdk-1 resolves to pvr-sdk. */
-		char *base = strdup(name);
-		if (base) {
-			char *dash = strrchr(base, '-');
-			if (dash) {
-				const char *p = dash + 1;
-				while (*p && isdigit((unsigned char)*p))
-					p++;
-				if (*p == '\0') {
-					*dash = '\0';
-					caller->plat = pv_state_fetch_platform(
-						pv->state, base);
-				}
-			}
-			free(base);
-		}
-	}
-	if (!caller->plat && strncmp(name, "_pv_", strlen(name))) {
+	bool is_pv = !strcmp(name, "_pv_");
+
+	if (!caller->plat && !is_pv) {
 		pv_log(WARN, "platform %s not found in current state", name);
 		goto out;
 	}
 
-	if (!strncmp(name, "_pv_", strlen(name)))
+	if (is_pv)
 		caller->is_privileged = true;
 	else
 		caller->is_privileged =

@@ -1,0 +1,72 @@
+# Device Manifest
+#
+# Contains the configuration for identifying and communicating with a real
+# device by pvtest framework. One board per manifest: give each board its own
+# file and pick one with --device <name>.
+#
+# Install it in the host's pvtest config dir, then fill and uncomment:
+#
+#   mkdir -p ~/.config/pvtest/devices
+#   cp device.txt ~/.config/pvtest/devices/<name>.txt
+#
+# See README.md for how to run.
+#
+# That directory — and only that one — is bind-mounted into the tester, so a key
+# named in exec= belongs beside the manifest there. Anything setbootconfig=/
+# setbootconfig_conf= reads is host-side only: keep it out of devices/, e.g.
+# ~/.config/pvtest/<board>.conf.
+#
+#   name=   identifies this one runner. Unique per board, e.g. dev-01, dev-02.
+#   type=   class of target. Shared by every board of the same kind (e.g.
+#           appengine). Used to filter test on "devices" from test.json.
+#   ip=     device IP.
+#   exec=   command prefix to run on the device (e.g. ssh).
+#   tty=    host serial device path. Prefer stable /dev/serial/by-id/... over
+#           /dev/ttyUSBN.
+#   baud=   optional. Default 115200.
+#   setbootconfig=      optional. Default will do best effort, SKIPping the
+#           test that do not meet the boot-config requirements from
+#           test.json. When set, it is invoked whenever a test needs a
+#           retype: that is, when test.json requires a boot config that is
+#           not set on the running device.
+#   setbootconfig_conf= optional. Config file for the setbootconfig= command.
+#   setbootconfig_base= optional. Base boot config for the device.
+#           Space-separated KEY=VALUE, prepended to the specific test.json
+#           config before it is passed to setbootconfig=.
+#
+# setbootconfig contract
+# Invocation:  <setbootconfig> [-c <setbootconfig_conf>] KEY=VALUE ...
+# Inputs
+#   argv    the complete set of boot-config tokens the board must boot with:
+#           setbootconfig_base= tokens first, then the test's config.env tokens.
+#           A later token wins on a duplicate key. An empty value (KEY=) means
+#           "unset, use the default". Write them as a whole; do not merge with
+#           whatever the board currently has.
+#   -c      setbootconfig_conf=, if set. Opaque to the runner.
+#   env     the runner's own environment (under a lab wrapper that includes
+#           whatever it exports, e.g. power-port commands). No PVTEST_* is
+#           guaranteed. stdin is closed. cwd is unspecified: use absolute paths.
+#   console the runner releases tty= before the call and re-opens it after, so
+#           the script may open the serial device exclusively.
+# Outputs
+#   exit 0  the tokens are the board's persistent boot config (they survive the
+#           reboots a test itself triggers, until the next call) AND a reboot or
+#           power-cycle has been started. Return as soon as it has; do not wait
+#           for the board to come back, the runner fences READY itself.
+#   exit !0 failure. The runner reports the target as failed for that test.
+#   stdout/stderr  captured to <workspace>/dev-setbootconfig-<name>-<id>.log.
+# Must not: contact the board over exec= (it is rebooting), change keys it was
+# not given (other than by restoring setbootconfig_base=), require a TTY on
+# stdin, or leave the serial device open on exit.
+# Timing: no timeout is enforced; the runner only WARNs if the console shows no
+# activity within 30 s of return.
+
+#name=dev-01
+#type=<machine>
+#ip=192.168.1.50
+#exec=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2 -i /keys/dev.pem root@192.168.1.50
+#tty=/dev/serial/by-id/usb-FTDI_FT232R_USB_UART-if00-port0
+#baud=115200
+#setbootconfig=
+#setbootconfig_conf=
+#setbootconfig_base=

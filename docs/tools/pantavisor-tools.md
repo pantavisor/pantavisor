@@ -6,6 +6,9 @@ description: "On-device CLI tools: pventer, pvcurl, pvcontrol, and pvtx."
 
 # Pantavisor Tools
 
+**Overview:** [Local Control](../overview/local-control.md) explains what these tools talk to. For the
+endpoints behind them, see the [Control Socket reference](../reference/pantavisor-commands.md).
+
 On-device CLI tools shipped with Pantavisor for development, debugging, and container control.
 
 ## pventer
@@ -88,7 +91,6 @@ pvcontrol daemons restart <name>
 
 # Status signals (sent by a container to signal readiness)
 pvcontrol signal ready               # signal container is ready
-pvcontrol signal alive               # signal container is alive (watchdog)
 
 # System commands
 pvcontrol cmd reboot [message]

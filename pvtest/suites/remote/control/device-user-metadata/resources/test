@@ -1,0 +1,58 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
+
+USRMETA_KEY="pvtest-usrmeta-key"
+USRMETA_VALUE="pvtest-usrmeta-value"
+DEVMETA_KEY="pvtest-devmeta-key"
+DEVMETA_VALUE="pvtest-devmeta-value"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+bearer=$(cat "$HOME/.pvr/auth.json" 2>/dev/null | jq -r 'first(.tokens[]) | .["access-token"] // empty')
+
+echo "== wait for device idle =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+
+echo "== push user-meta from cloud and device-meta from device =="
+curl -s -X PUT \
+    -H "Authorization: Bearer $bearer" \
+    -H "Content-Type: application/json" \
+    -d "{\"$USRMETA_KEY\": \"$USRMETA_VALUE\"}" \
+    "$PVTEST_HUB_URL/devices/$device_id/user-meta" > /dev/null
+pvcontrol devmeta save "$DEVMETA_KEY" "$DEVMETA_VALUE"
+
+echo "== poll Hub for device-meta sync =="
+i=0
+hub_devmeta=""
+while [ $i -lt 3 ]; do
+    hub_devmeta=$(curl -s \
+        -H "Authorization: Bearer $bearer" \
+        "$PVTEST_HUB_URL/devices/$device_id" | \
+        jq -r ".\"device-meta\".\"$DEVMETA_KEY\"")
+    [ "$hub_devmeta" = "$DEVMETA_VALUE" ] && break
+    sleep "${PH_METADATA_DEVMETA_INTERVAL:-10}"
+    i=$((i + 1))
+done
+[ "$hub_devmeta" != "$DEVMETA_VALUE" ] \
+    && { echo "ERROR: timeout waiting for dev-meta at Hub" >&2; exit 1; }
+
+echo "== poll device for user-meta sync =="
+i=0
+local_usrmeta=""
+while [ $i -lt 3 ]; do
+    local_usrmeta=$(pvcontrol usrmeta ls | jq -r ".\"$USRMETA_KEY\"")
+    [ "$local_usrmeta" = "$USRMETA_VALUE" ] && break
+    sleep "${PH_METADATA_USRMETA_INTERVAL:-10}"
+    i=$((i + 1))
+done
+[ "$local_usrmeta" != "$USRMETA_VALUE" ] \
+    && { echo "ERROR: timeout waiting for user-meta at device" >&2; exit 1; }
+
+echo "== verified values =="
+pvcontrol usrmeta ls | jq -r ".\"$USRMETA_KEY\""
+curl -s \
+    -H "Authorization: Bearer $bearer" \
+    "$PVTEST_HUB_URL/devices/$device_id" | \
+    jq -r ".\"device-meta\".\"$DEVMETA_KEY\""

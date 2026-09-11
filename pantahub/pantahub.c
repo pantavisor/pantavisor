@@ -316,7 +316,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 	// If registered, override in-memory PantaHub credentials
 	if (!res) {
-		pv_log(WARN, "HTTP request GET %s could not be initialized",
+		pv_log(WARN, "HTTP request POST %s could not be initialized",
 		       req->path);
 	} else if (res->code == THTTP_STATUS_OK && res->body) {
 		char *val;
@@ -333,10 +333,10 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 		free(tokv);
 		ret = 1;
 	} else if (!res->code) {
-		pv_log(WARN, "HTTP request GET %s got no response", req->path);
+		pv_log(WARN, "HTTP request POST %s got no response", req->path);
 	} else {
 		pv_log(WARN,
-		       "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
+		       "HTTP request POST %s returned HTTP error (code=%d; body='%s')",
 		       req->path, res->code, res->body);
 	}
 
@@ -792,6 +792,9 @@ static void _prep_download_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(TRACE, "run event: cb=%p", (void *)_prep_download_cb);
 
+	// poll for a Hub-side cancel before issuing more requests
+	pv_pantahub_proto_get_step_status();
+
 	if (pv_pantahub_proto_get_objects_metadata()) {
 		_next_state(PH_STATE_IDLE);
 		return;
@@ -820,14 +823,15 @@ static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(TRACE, "run event: cb=%p", (void *)_download_objects_cb);
 
+	// poll for a Hub-side cancel before issuing more requests
+	pv_pantahub_proto_get_step_status();
+
 	if (pv_pantahub_proto_get_objects()) {
 		_next_state(PH_STATE_IDLE);
 		return;
 	}
-
-	// push the current byte counter to the trail-dir file and Hub, ~every
-	// REQ_INTERVAL seconds; skipped internally if no bytes moved
-	pv_update_report_download_progress();
+	// download progress is reported from the step poll callback, after it
+	// came back without a cancel, so the PUT cannot overwrite a fresh CANCEL
 }
 
 static void _run_state_download()

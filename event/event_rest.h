@@ -22,21 +22,32 @@
 #ifndef PV_EVENT_REST_H
 #define PV_EVENT_REST_H
 
+#include <sys/types.h>
+
 #include <event2/event.h>
 #include <event2/http.h>
 
 int pv_event_rest_init(void);
 void pv_event_rest_cleanup(void);
 
+// out_req, when non-NULL, receives the request handle on success (untouched
+// on failure); NULL-tolerant for callers that never need to cancel
 int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
 	const char *endpoint, const char *token, const char *body,
 	void (*chunk_cb)(struct evhttp_request *, void *),
-	void (*done_cb)(struct evhttp_request *, void *), void *ctx);
+	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
+	struct evhttp_request **out_req, size_t rate_limit_bytes_per_sec,
+	off_t resume_from);
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
-			      void *ctx);
+			      void *ctx, struct evhttp_request **out_req,
+			      size_t rate_limit_bytes_per_sec,
+			      off_t resume_from);
+
+// drops any download pacer for req, then evhttp_cancel_request()s it
+void pv_event_rest_cancel_request(struct evhttp_request *req);
 
 int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 			      size_t max_len);

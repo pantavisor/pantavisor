@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+# Per-test isolation: private $HOME + temp checkout dir (see automated-workflow.md §
+# Test authoring rules). Delete this block if the test does not clone.
+export HOME="$(mktemp -d)"
+pvr_clone_local_or_die "$HOME/checkout"
+cd "$HOME/checkout"
+
+# write your test here. Post local revisions by name and wait for them, e.g.:
+#   pvr post --rev "locals/example" > /dev/null 2>&1
+#   wait_for_revision_state "locals/example" "UPDATED"
+# Output is diffed byte-for-byte: pipe JSON through `jq -M`, strip `\r`, and mask
+# volatile fields (timestamps, PIDs, object hashes, $HOME paths).

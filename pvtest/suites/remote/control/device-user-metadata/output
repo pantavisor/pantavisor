@@ -1,0 +1,8 @@
+== wait for device idle ==
+== push user-meta from cloud and device-meta from device ==
+
+== poll Hub for device-meta sync ==
+== poll device for user-meta sync ==
+== verified values ==
+pvtest-usrmeta-value
+pvtest-devmeta-value

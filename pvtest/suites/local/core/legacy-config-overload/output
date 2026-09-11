@@ -1,0 +1,18 @@
+== pv conf file ==
+2
+== ph conf file ==
+api.pantahub.com
+== cmdline ==
+15
+== env ==
+test
+== policy ==
+true
+== oem config ==
+30
+== metadata (before write) ==
+4
+== update log.level via user-meta ==
+
+== metadata (after write) ==
+5

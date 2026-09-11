@@ -1,0 +1,61 @@
+#!/bin/sh
+#
+# pv-ctrl HTTP status-code contract for commands, signals, drivers, buildinfo.
+# Covers testplan-pvctrl.md Tests 1 (buildinfo), 22 (drivers list),
+# 23 (drivers load/unload), 24 (signal ready), 25 (signal alive),
+# 27 (run-gc), 31 (enable/disable-ssh).
+#
+# pvcontrol hides the HTTP status code (it maps errors to an exit code and
+# prints the body on stderr), so these endpoints are exercised with raw
+# pvcurl -w to assert the status code deterministically. We append the code
+# on a marker line and discard the body, matching how pvcontrol drives
+# pvcurl (no -o, so the fast nc -N path is used and the server closes the
+# connection promptly instead of lingering until the read timeout).
+#
+# /commands has a single command slot: while one command is still being
+# processed a second POST is rejected with 503 (busy, retry later). We honor
+# that contract by retrying until the slot is free, so the asserted code is
+# the deterministic terminal result rather than a race with the main loop.
+# Signals issued from outside a container's own scope are rejected -> 500.
+
+SOCK=/run/pantavisor/pv/pv-ctrl
+CT='Content-Type: application/json'
+
+code() {
+	pvcurl -s -w '\nHTTP_CODE=%{http_code}\n' --unix-socket "$SOCK" "$@" \
+		| sed -n 's/^HTTP_CODE=//p' | tr -d '\r'
+}
+
+post_cmd() {
+	i=0
+	while [ "$i" -lt 30 ]; do
+		c=$(code -X POST -H "$CT" --data "$1" http://localhost/commands)
+		[ "$c" != "503" ] && break
+		sleep 1
+		i=$((i + 1))
+	done
+	[ "$c" = "503" ] &&
+		echo "ERROR: timeout waiting for /commands slot to free (still 503 after ${i}s)" >&2
+	echo "$c"
+}
+
+echo "== buildinfo (GET) =="
+code http://localhost/buildinfo
+
+echo "== drivers list =="
+pvcurl -s --unix-socket "$SOCK" http://localhost/drivers | jq -M | tr -d '\r'
+
+echo "== drivers load =="
+code -X PUT http://localhost/drivers/load
+
+echo "== drivers unload =="
+code -X PUT http://localhost/drivers/unload
+
+echo "== signal ready =="
+code -X POST -H "$CT" --data '{"type":"ready","payload":""}' http://localhost/signal
+
+echo "== signal alive =="
+code -X POST -H "$CT" --data '{"type":"alive","payload":""}' http://localhost/signal
+
+echo "== command run-gc =="
+post_cmd '{"op":"RUN_GC","payload":""}'

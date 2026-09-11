@@ -1,0 +1,22 @@
+#!/bin/sh
+
+echo "== pv conf file =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_SYSTEM_INIT_MODE")' | tr -d '\r'
+echo "== ph conf file =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PH_CREDS_HOST")' | tr -d '\r'
+echo "== cmdline =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PH_METADATA_DEVMETA_INTERVAL")' | tr -d '\r'
+echo "== env =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_POLICY")' | tr -d '\r'
+echo "== policy =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_LOG_CAPTURE_DMESG")' | tr -d '\r'
+echo "== oem config =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PH_METADATA_USRMETA_INTERVAL")' | tr -d '\r'
+echo "== metadata (before write) =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_LOG_LEVEL")' | tr -d '\r'
+echo "== update PV_LOG_LEVEL via user-meta =="
+pvcontrol usrmeta save PV_LOG_LEVEL 5
+echo "== metadata (after write) =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_LOG_LEVEL")' | tr -d '\r'
+# No reset between tests: user-meta is device-persistent, so clean up our key.
+pvcontrol usrmeta delete PV_LOG_LEVEL > /dev/null 2>&1

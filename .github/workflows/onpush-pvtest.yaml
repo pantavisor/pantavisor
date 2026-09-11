@@ -1,0 +1,296 @@
+# Build the appengine distro from this pantavisor revision and run the pvtest
+# suite against it.
+#
+# Scope is picked from what changed: `local` normally, and `local` + `remote`
+# when the push touches pantahub/, the Hub client the remote suite exercises.
+# Remote tests register real devices on a Hub, so they need the PH_USER/PH_PASS
+# repository secrets; the run fails fast with a clear message if they are unset.
+#
+# It builds against meta-pantavisor master. The workflow_dispatch meta_ref input
+# overrides that, for a change that spans both repos and needs the other side's
+# branch to be green.
+
+name: "onpush: pvtest"
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'docs/**'
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+    paths:
+      - "**"
+      - "!docs/**"
+
+  workflow_dispatch:
+    inputs:
+      meta_ref:
+        description: 'meta-pantavisor ref to build against (default: master)'
+        required: false
+        type: string
+      test_scope:
+        description: 'Scope to run (auto = from changed paths)'
+        required: false
+        type: choice
+        default: auto
+        options: [auto, local, remote, all]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check-draft:
+    runs-on: ubuntu-latest
+    outputs:
+      is_draft: ${{ steps.check.outputs.is_draft }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          draft=$(gh pr list --repo ${{ github.repository }} --head ${{ github.head_ref || github.ref_name }} --json isDraft --jq '.[0].isDraft // false')
+          echo "is_draft=$draft" >> $GITHUB_OUTPUT
+
+  scope:
+    needs: check-draft
+    if: needs.check-draft.outputs.is_draft != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      paths: ${{ steps.pick.outputs.paths }}
+    steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCOPE_INPUT: ${{ inputs.test_scope }}
+          PH_USER: ${{ secrets.PH_USER }}
+          PH_PASS: ${{ secrets.PH_PASS }}
+        run: |
+          set -euo pipefail
+
+          case "${SCOPE_INPUT:-auto}" in
+            local)  paths='["local"]' ;;
+            remote) paths='["remote"]' ;;
+            all)    paths='["local","remote"]' ;;
+            *)      paths= ;;
+          esac
+
+          if [ -z "$paths" ]; then
+            pr='${{ github.event.pull_request.number }}'
+            if [ -n "$pr" ]; then
+              files=$(gh api --paginate \
+                "repos/${{ github.repository }}/pulls/$pr/files" --jq '.[].filename')
+            else
+              base='${{ github.event.before }}'
+              case "$base" in
+                ''|0000000000000000000000000000000000000000)
+                  # new branch, or a force-push whose base is gone: no diff to
+                  # trust, so run everything rather than silently skip remote
+                  files='pantahub/' ;;
+                *)
+                  files=$(gh api "repos/${{ github.repository }}/compare/$base...${{ github.sha }}" \
+                    --jq '.files[].filename')
+                  if [ "$(printf '%s\n' "$files" | grep -c .)" -ge 300 ]; then
+                    files='pantahub/'
+                  fi ;;
+              esac
+            fi
+
+            if printf '%s\n' "$files" | grep -qE '^pantahub/'; then
+              paths='["local","remote"]'
+            else
+              paths='["local"]'
+            fi
+          fi
+
+          case "$paths" in
+            *'"remote"'*)
+              if [ -z "${PH_USER:-}" ] || [ -z "${PH_PASS:-}" ]; then
+                echo "::error::scope includes the remote suite, which registers devices on a Hub, but the PH_USER and PH_PASS repository secrets are not set on ${{ github.repository }}"
+                exit 1
+              fi ;;
+          esac
+
+          echo "paths=$paths" >> "$GITHUB_OUTPUT"
+          echo "### pvtest scope: \`$paths\`" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: [check-draft, scope]
+    if: needs.check-draft.outputs.is_draft != 'true'
+    name: "build (docker-x86_64-scarthgap)"
+    env:
+      TMPDIR: "tmp-scarthgap"
+      configs: kas/build-configs/release/docker-x86_64-scarthgap.yaml:kas/build-configs/shared-vols.yaml
+      PV_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    runs-on: ["self-hosted"]
+    container:
+      image: ghcr.io/pantacor/kas/kas:next-v7
+      volumes:
+        - shared:/shared
+      options: --user root
+    steps:
+      - name: checkout meta-pantavisor
+        uses: actions/checkout@v6
+        with:
+          repository: pantavisor/meta-pantavisor
+          ref: ${{ inputs.meta_ref || 'master' }}
+
+      - name: setup workspace
+        run: |
+          git config --global --add safe.directory '*'
+          chown -R builder:builder $RUNNER_WORKSPACE
+          chown -R builder:builder /__w
+          mkdir -p /shared/sstate && chown builder:builder /shared/sstate
+          mkdir -p /shared/dldir && chown builder:builder /shared/dldir
+
+      - name: build appengine distro against this pantavisor revision
+        run: |
+          su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ env.configs }} -c '
+            devtool modify pantavisor &&
+            cd workspace/sources/pantavisor &&
+            git fetch origin ${{ env.PV_SHA }} &&
+            git checkout ${{ env.PV_SHA }} &&
+            cd ../../../ &&
+            bitbake -c build pantavisor-appengine-distro'"
+
+      - name: stage distro for the test job
+        run: |
+          chmod -R 777 $GITHUB_WORKSPACE
+          BUILD_BASE_DIR=$(echo build/${{ env.TMPDIR }}/deploy/images/*)
+          UNPACKED_DIR=$(find "${BUILD_BASE_DIR}" -maxdepth 1 -type d -name "pantavisor-appengine-distro-*" | head -1)
+          if [ ! -d "$UNPACKED_DIR" ]; then
+            echo "no unpacked appengine distro under ${BUILD_BASE_DIR}" >&2
+            exit 1
+          fi
+          mkdir -p pvtest-distro
+          cp -r "${UNPACKED_DIR}/." ./pvtest-distro/
+
+      - name: Archive pvtest distro
+        uses: actions/upload-artifact@v7
+        with:
+          name: pvtest-distro-docker-x86_64-scarthgap
+          path: pvtest-distro/
+
+  pvtest:
+    needs: [build, scope]
+    name: "pvtest (${{ matrix.scope }})"
+    runs-on: ["pvtest-runner"]
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: ${{ fromJSON(needs.scope.outputs.paths) }}
+    # scope-keyed so two legs on the same runner never share a workspace
+    env:
+      WORKSPACE: /tmp/workspace-${{ github.run_id }}-${{ matrix.scope }}
+      PVTEST_WORKSPACE: /tmp/pvtest-workspace-${{ github.run_id }}-${{ matrix.scope }}
+    steps:
+      - name: Download pvtest distro
+        uses: actions/download-artifact@v7
+        with:
+          name: pvtest-distro-docker-x86_64-scarthgap
+          path: ${{ env.WORKSPACE }}
+
+      - name: Load Docker images
+        working-directory: ${{ env.WORKSPACE }}
+        run: |
+          chmod +x test.docker.sh
+          CI_MODE=true ./test.docker.sh install-docker
+
+      - name: Run pvtests
+        working-directory: ${{ env.WORKSPACE }}
+        env:
+          PH_USER: ${{ secrets.PH_USER }}
+          PH_PASS: ${{ secrets.PH_PASS }}
+          SCOPE: ${{ matrix.scope }}
+        run: |
+          echo "=== AppEngine Test Run started at $(date) ==="
+          # remote tests share one Hub trail, so they run serial -- no -p
+          if [ "$SCOPE" = remote ]; then
+            ./test.docker.sh run remote -V --model volatile --fail-on-skip -w $PVTEST_WORKSPACE
+          else
+            ./test.docker.sh run "$SCOPE" -V -p 6 --model volatile --fail-on-skip -w $PVTEST_WORKSPACE
+          fi
+
+      - name: Show Tests Summary
+        working-directory: ${{ env.WORKSPACE }}
+        if: always()
+        run: |
+          echo "## ${{ matrix.scope }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f run.log ] && grep -q 'SUMMARY' run.log; then
+            {
+              echo '```'
+              sed -n '/SUMMARY/,$p' run.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ -f run.log ]; then
+            echo "Tests Run Failed (no summary in run log)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          else
+            echo "Tests Run Failed (no log found)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Show test.log issues
+        if: always()
+        run: |
+          found=0
+          while IFS= read -r -d '' logfile; do
+            test_name="${logfile#${{ env.PVTEST_WORKSPACE }}/}"
+            test_name="${test_name%/test.log}"
+            issues=$(grep -E "^\[pvtest\] [0-9]+ (WARN|ERROR) --" "$logfile" 2>/dev/null || true)
+            if [ -n "$issues" ]; then
+              if [ "$found" -eq 0 ]; then
+                echo "## Test log issues" >> "$GITHUB_STEP_SUMMARY"
+                found=1
+              fi
+              printf '\n### %s\n```\n%s\n```\n' "$test_name" "$issues" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < <(find "${{ env.PVTEST_WORKSPACE }}" -name "test.log" -print0 2>/dev/null)
+
+      - name: Prepare pvtest workspace
+        if: always()
+        run: |
+          sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "PVTEST_ARTIFACT_NAME=pvtest-workspace-${sha:0:7}-${{ matrix.scope }}" >> $GITHUB_ENV
+          sudo chown -R $(id -u):$(id -g) $PVTEST_WORKSPACE || true
+
+      - name: Upload pvtest workspace
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PVTEST_ARTIFACT_NAME }}
+          path: |
+            ${{ env.PVTEST_WORKSPACE }}/README.md
+            ${{ env.PVTEST_WORKSPACE }}/run.log
+            ${{ env.PVTEST_WORKSPACE }}/results
+            ${{ env.PVTEST_WORKSPACE }}/valgrind
+            ${{ env.PVTEST_WORKSPACE }}/*.log
+          if-no-files-found: ignore
+
+      - name: Clean up
+        if: always()
+        run: |
+          busy=0
+          for f in /tmp/pv_appengine.slot.*.lock; do
+            [ -e "$f" ] || continue
+            flock -n "$f" true || busy=1
+          done
+
+          if [ "$busy" = 0 ]; then
+            docker ps -aq \
+            | xargs -r docker inspect --format '{{.Config.Image}} {{.ID}}' \
+            | grep -E 'pantavisor-appengine(-netsim|-tester)?' \
+            | awk '{print $2}' \
+            | xargs -r docker rm -f
+
+            docker images --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E '^pantavisor-appengine(-netsim|-tester)?:' \
+            | xargs -r docker rmi -f
+          else
+            echo "another pvtest run holds a slot on this runner; skipping the docker sweep"
+          fi
+
+          rm -rf $WORKSPACE
+          sudo rm -rf $PVTEST_WORKSPACE

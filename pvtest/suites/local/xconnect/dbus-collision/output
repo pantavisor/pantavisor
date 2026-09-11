@@ -1,0 +1,6 @@
+== initial revision ==
+locals/local_xconnect_dbus_collision
+== post revision with two owners of org.pantavisor.Example ==
+== locals/collision: ERROR (rolled back) ==
+{"status":"ERROR","status-msg":"A container could not be started","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"dbus-daemon\",\"msg\":\"well-known name 'org.pantavisor.Example' on bus 'system-bus' is owned by more than one app\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"a platform did not work as expected. Tearing down...\"}\n"}
+locals/local_xconnect_dbus_collision

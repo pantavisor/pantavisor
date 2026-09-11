@@ -1,6 +1,7 @@
 ---
 title: "Configuration Levels"
-sidebar_position: 12
+sidebar_position: 15
+description: "The precedence hierarchy for configuration across factory, device, and container scopes."
 ---
 # Configuration Levels
 
@@ -22,6 +23,10 @@ There are several ways to set Pantavisor configuration, depending on when it can
 ## pantavisor.config
 
 Configuration file for [Pantavisor](pantavisor-architecture.md). It can only be changed at [build time](../../meta-pantavisor/overview/get-started.md).
+
+:::note
+Keys use the unified `PV_*`/`PH_*` env-var-style syntax; the older dotted syntax is legacy and frozen, so any key added since (e.g. `PV_POWER_*`) only exists in this form.
+:::
 
 ## pantahub.config
 
@@ -131,3 +136,8 @@ It is important to notice that these changes will not persist after a device reb
 :::
 
 The [Pantavisor control socket](local-control.md), or consequently the [PVControl tool](local-control.md#pvcontrol), offers another way to change a very limited subset of configuration values. Specifically, using the [command](../reference/pantavisor-commands.md#commands) endpoint.
+
+## Reference
+
+- [Configuration](../reference/pantavisor-configuration.md) — every key, its accepted values, its default, and the levels it may be set at
+- [State Format](../reference/pantavisor-state-format-v2.md#1-root-level-statejson) — where the OEM config file sits in a revision

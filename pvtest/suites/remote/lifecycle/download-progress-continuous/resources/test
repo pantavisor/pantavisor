@@ -1,0 +1,85 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME.
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+echo "== post one large object (download throttled to 1 MB/s) =="
+# Exactly ONE new object: a single object is what separates "progress moves
+# mid-object" from "progress jumps at object boundaries". 50 MB at the 1 MB/s
+# throttle from test.json spans many 6 s download heartbeats.
+dd if=/dev/urandom of=pv-example-app/bigfile.bin bs=1M count=50 2>/dev/null
+pvr add pv-example-app/bigfile.bin > /dev/null 2>&1
+pvr commit -m "add single large object to exercise download progress" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "download progress continuous test" "$trail_url")
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+hub_step_url="$trail_url/steps/$rev"
+
+echo "== wait for the posted revision to start downloading =="
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev to start DOWNLOADING" >&2; exit 1; }
+
+echo "== sample progress through the download window =="
+# Read the progress while the download runs: on the device every second
+# through pvcontrol, on the Hub every five seconds through pvr stepinfo. The
+# byte counts depend on timing, so only three yes/no answers per side reach
+# the golden: was a value strictly between 0 and the total ever seen, did the
+# value ever decrease, did it ever exceed the total.
+device_saw_partial=0; device_never_decreased=1; device_never_exceeded_total=1; device_last=0
+hub_saw_partial=0; hub_never_decreased=1; hub_never_exceeded_total=1; hub_last=0
+for i in $(seq 1 240); do
+    device_progress=$(pvcontrol steps show-progress $rev 2>/dev/null)
+    device_status=$(echo "$device_progress" | jq -r '.status' 2>/dev/null)
+    if [ "$device_status" != "DOWNLOADING" ]; then
+        [ "$device_status" = "NEW" ] || [ "$device_status" = "QUEUED" ] || break
+        sleep 1; continue
+    fi
+
+    device_downloaded=$(echo "$device_progress" | jq -r '.downloads.total.total_downloaded // 0')
+    device_total=$(echo "$device_progress" | jq -r '.downloads.total.total_size // 0')
+    [ "$device_downloaded" -ge "$device_last" ] 2>/dev/null || device_never_decreased=0
+    if [ "$device_total" -gt 0 ] 2>/dev/null; then
+        [ "$device_downloaded" -le "$device_total" ] 2>/dev/null || device_never_exceeded_total=0
+        [ "$device_downloaded" -gt 0 ] 2>/dev/null && [ "$device_downloaded" -lt "$device_total" ] 2>/dev/null && device_saw_partial=1
+    fi
+    device_last="$device_downloaded"
+
+    if [ $((i % 5)) -eq 0 ]; then
+        hub_step=$(pvr stepinfo "$hub_step_url" 2>/dev/null | sed -n '/^{/,$p')
+        hub_status=$(echo "$hub_step" | jq -r '.progress.status // empty' 2>/dev/null)
+        if [ "$hub_status" = "DOWNLOADING" ]; then
+            hub_downloaded=$(echo "$hub_step" | jq -r '.progress.downloads.total.total_downloaded // 0')
+            hub_total=$(echo "$hub_step" | jq -r '.progress.downloads.total.total_size // 0')
+            [ "$hub_downloaded" -ge "$hub_last" ] 2>/dev/null || hub_never_decreased=0
+            if [ "$hub_total" -gt 0 ] 2>/dev/null; then
+                [ "$hub_downloaded" -le "$hub_total" ] 2>/dev/null || hub_never_exceeded_total=0
+                [ "$hub_downloaded" -gt 0 ] 2>/dev/null && [ "$hub_downloaded" -lt "$hub_total" ] 2>/dev/null && hub_saw_partial=1
+            fi
+            hub_last="$hub_downloaded"
+        fi
+    fi
+    sleep 1
+done
+
+echo "local-intermediate-progress-observed: $device_saw_partial"
+echo "local-monotonic-non-decreasing: $device_never_decreased"
+echo "local-no-overshoot: $device_never_exceeded_total"
+echo "cloud-intermediate-progress-observed: $hub_saw_partial"
+echo "cloud-monotonic-non-decreasing: $hub_never_decreased"
+echo "cloud-no-overshoot: $hub_never_exceeded_total"
+
+echo "== wait for the update to finish locally and on the Hub =="
+wait_for_revision_state "$rev" "UPDATED" \
+    || { echo "ERROR: timeout waiting for revision $rev to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads) | {status, progress}'
+
+wait_for_value "pvr stepinfo $hub_step_url 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "UPDATED" 120 \
+    || { echo "ERROR: timeout waiting for cloud UPDATED" >&2; exit 1; }
+echo "cloud-final-status: UPDATED"

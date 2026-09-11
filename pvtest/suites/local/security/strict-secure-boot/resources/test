@@ -1,0 +1,30 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+echo "== initial revision =="
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+# Per-test isolation: private $HOME + temp checkout dir (see automated-workflow.md § Test authoring rules).
+export HOME="$(mktemp -d)"
+pvr_clone_local_or_die "$HOME/checkout"
+cd "$HOME/checkout"
+
+echo "== secureboot mode =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_SECUREBOOT_MODE") | del(.modified)'
+
+echo "== post unsigned update (expect rejection) =="
+# drop one signature from the cloned checkout — any element of the device
+# baseline works, so pick the first deterministically instead of hardcoding
+# a container name
+rm "$(ls _sigs/*.json | head -n1)"
+pvr add .
+pvr commit > /dev/null 2>&1
+# No reset between tests: drop the non-deterministic "Posting object info" line, keep the rejection.
+pvr post --rev "locals/error" 2>&1 >/dev/null | grep -v 'Posting object info for:'
+
+echo "== step progress after rejection =="
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_SECUREBOOT_MODE") | del(.modified)'
+# the error body goes to pvcontrol's stderr; merge it so the assertion is in the
+# compared stdout, dropping device-pvcontrol INFO noise (authoring rule 12)
+pvcontrol steps show-progress locals/error 2>&1 | grep -v '^INFO:'

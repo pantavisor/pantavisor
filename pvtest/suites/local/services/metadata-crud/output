@@ -1,0 +1,29 @@
+== device-meta initial ==
+{
+  "pantahub.online": "0",
+  "pantavisor.mode": "local",
+  "pantavisor.revision": "locals/local_services_metadata_crud",
+  "pantavisor.status": "READY"
+}
+== device-meta save ==
+
+"test-value-123"
+== device-meta update ==
+
+"updated-value-456"
+== device-meta delete ==
+
+test-key present after delete: false
+== device-meta delete non-existent key (expect 404) ==
+404
+== user-meta initial ==
+my-key present initially: false
+== user-meta save ==
+
+"my-value"
+== user-meta update ==
+
+"new-value"
+== user-meta delete ==
+
+my-key present after delete: false

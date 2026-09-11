@@ -1,0 +1,52 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME (see
+# automated-workflow.md § Test authoring rules).
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+echo "== post large revision (download takes long) =="
+dd if=/dev/urandom of=pv-example-app/bigfile.bin bs=1M count=50 2>/dev/null
+pvr add pv-example-app/bigfile.bin > /dev/null 2>&1
+pvr commit -m "add large file to exercise download phase" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "trigger retry test" "$trail_url")
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+cloud_step_url="$PVTEST_HUB_URL/trails/$device_id/steps/$rev"
+
+echo "== wait for posted revision to start downloading (retry 1) =="
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev to start DOWNLOADING" >&2; exit 1; }
+pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads)'
+
+echo "== kill PV (crash 1, triggers retry 2) =="
+pv_crash
+wait_for_down 30 \
+    || { echo "ERROR: pv-ctrl never went down after crash" >&2; exit 1; }
+wait_for_target_ready \
+    || { echo "ERROR: timeout waiting for device to come back after kill (1)" >&2; exit 1; }
+pvcontrol commands go-remote > /dev/null
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.retries'" "2" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev retries to reach 2" >&2; exit 1; }
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev to start DOWNLOADING" >&2; exit 1; }
+pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads)'
+
+echo "== kill PV (crash 2, triggers WONTGO via cloud) =="
+pv_crash
+wait_for_down 30 \
+    || { echo "ERROR: pv-ctrl never went down after crash" >&2; exit 1; }
+wait_for_target_ready \
+    || { echo "ERROR: timeout waiting for device to come back after kill (2)" >&2; exit 1; }
+pvcontrol commands go-remote > /dev/null
+
+echo "== cloud step status after max retries =="
+wait_for_value "pvr stepinfo $cloud_step_url 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "WONTGO" 60 \
+    || { echo "ERROR: timeout waiting for cloud to reflect WONTGO" >&2; exit 1; }
+pvr stepinfo "$cloud_step_url" | sed -n '/^{/,$p' | jq -M '{status: .progress.status, "status-msg": .progress."status-msg", retries: .progress.retries}'

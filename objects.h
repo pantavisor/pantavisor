@@ -35,6 +35,7 @@ struct pv_object {
 	struct pv_platform *plat;
 	struct dl_list list;
 	bool uploaded;
+	int resumes;
 };
 
 int pv_objects_id_in_step(struct pv_state *s, char *id);
