@@ -31,6 +31,7 @@
 #define PVCTRL_FNAME "pv-ctrl"
 #define LOGCTRL_FNAME "pv-ctrl-log"
 #define LOGFD_FNAME "pv-fd-log"
+#define LOGPLAT_DNAME "pv-plat-log"
 #define PHCONFIG_DNAME "phconfig"
 #define UNCLAIMED_FNAME "phconfig/unclaimed.config"
 #define PANTAHUB_FNAME "phconfig/pantahub.config"

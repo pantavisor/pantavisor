@@ -301,6 +301,20 @@ out:
 	return ret;
 }
 
+// keeps the inode so bind mounts of the file see the new content
+int pv_fs_file_write_inplace(const char *fname, const char *data, mode_t mode)
+{
+	int fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
+	if (fd < 0)
+		return -1;
+
+	ssize_t len = strlen(data);
+	ssize_t ret = write(fd, data, len);
+	close(fd);
+
+	return ret == len ? 0 : -1;
+}
+
 ssize_t pv_fs_file_copy_fd(int src, int dst, bool close_src)
 {
 	lseek(src, 0, SEEK_SET);
@@ -670,55 +684,57 @@ out:
 
 int pv_fs_path_copy_recursive_no_sync(const char *src, const char *dst)
 {
-        struct stat st;
-        if (stat(src, &st) != 0)
-                return -1;
+	struct stat st;
+	if (stat(src, &st) != 0)
+		return -1;
 
-        // If source is not a directory, just copy the file
-        if (!S_ISDIR(st.st_mode)) {
-                return pv_fs_file_copy_no_sync(src, dst, st.st_mode);
-        }
+	// If source is not a directory, just copy the file
+	if (!S_ISDIR(st.st_mode)) {
+		return pv_fs_file_copy_no_sync(src, dst, st.st_mode);
+	}
 
-        // Create destination directory
-        if (mkdir(dst, st.st_mode) != 0 && errno != EEXIST)
-                return -1;
+	// Create destination directory
+	if (mkdir(dst, st.st_mode) != 0 && errno != EEXIST)
+		return -1;
 
-        DIR *dir = opendir(src);
-        if (!dir)
-                return -1;
+	DIR *dir = opendir(src);
+	if (!dir)
+		return -1;
 
-        int ret = -1;
-        struct dirent *entry = NULL;
-        while ((entry = readdir(dir)) != NULL) {
-                if (strcmp(entry->d_name, ".") == 0 ||
-                    strcmp(entry->d_name, "..") == 0) {
-                        continue;
-                }
+	int ret = -1;
+	struct dirent *entry = NULL;
+	while ((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry->d_name, ".") == 0 ||
+		    strcmp(entry->d_name, "..") == 0) {
+			continue;
+		}
 
-                char src_path[PATH_MAX] = { 0 };
-                char dst_path[PATH_MAX] = { 0 };
-                pv_fs_path_concat(src_path, 2, src, entry->d_name);
-                pv_fs_path_concat(dst_path, 2, dst, entry->d_name);
+		char src_path[PATH_MAX] = { 0 };
+		char dst_path[PATH_MAX] = { 0 };
+		pv_fs_path_concat(src_path, 2, src, entry->d_name);
+		pv_fs_path_concat(dst_path, 2, dst, entry->d_name);
 
-                if (entry->d_type == DT_DIR) {
-                        if (pv_fs_path_copy_recursive_no_sync(src_path, dst_path) != 0)
-                                goto out;
-                } else {
-                        struct stat file_st;
-                        if (stat(src_path, &file_st) != 0)
-                                goto out;
-                        if (pv_fs_file_copy_no_sync(src_path, dst_path, file_st.st_mode) != 0)
-                                goto out;
-                }
-        }
+		if (entry->d_type == DT_DIR) {
+			if (pv_fs_path_copy_recursive_no_sync(src_path,
+							      dst_path) != 0)
+				goto out;
+		} else {
+			struct stat file_st;
+			if (stat(src_path, &file_st) != 0)
+				goto out;
+			if (pv_fs_file_copy_no_sync(src_path, dst_path,
+						    file_st.st_mode) != 0)
+				goto out;
+		}
+	}
 
-        // Preserve permissions on the directory
-        chmod(dst, st.st_mode);
+	// Preserve permissions on the directory
+	chmod(dst, st.st_mode);
 
-        ret = 0;
+	ret = 0;
 out:
-        closedir(dir);
-        return ret;
+	closedir(dir);
+	return ret;
 }
 
 int pv_fs_rename_safe_noatomic(const char *oldpath, const char *newpath)
