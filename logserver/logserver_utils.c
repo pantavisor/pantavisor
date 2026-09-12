@@ -29,8 +29,10 @@
 #include "proto/logserver_proto.h"
 #include "config.h"
 #include "utils/fs.h"
+#include "buffer.h"
 #include "log.h"
 #include "utils/json.h"
+#include "wall.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -217,7 +219,6 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 	if (!ts_fmt)
 		return dprintf(fd, tmpl, log->data.len, log->data.buf);
 
-
 	char ts[256] = { 0 };
 	if (logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt) != 0)
 		strncpy(ts, "--", 3);
@@ -238,6 +239,26 @@ int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 	return print_pvfmt_log(
 		fd, log, src,
 		pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT), lf);
+}
+
+void logserver_utils_wall_msg(int level, const char *src, const char *msg,
+			      va_list args)
+{
+	const char *tmpl_base = "[%5ld.%06ld] [PANTAVISOR] [%s] %s: %s";
+	struct buffer *tmpl = pv_buffer_get(false);
+	if (!tmpl) {
+		pv_vwall(msg, args);
+		return;
+	}
+
+	struct timespec tm;
+	clock_gettime(CLOCK_MONOTONIC, &tm);
+	snprintf(tmpl->buf, tmpl->size, tmpl_base, (long)tm.tv_sec,
+		 (long)tm.tv_nsec / 1000, src, pv_log_level_name(level), msg);
+
+	pv_vwall(tmpl->buf, args);
+
+	pv_buffer_drop(tmpl);
 }
 
 int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)

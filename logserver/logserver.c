@@ -1223,6 +1223,19 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 	return ret;
 }
 
+void pv_logserver_console_log(int level, const char *src, const char *msg, ...)
+{
+	if (!pv_config_get_bool(PV_LOG_CONSOLE_ALERTS))
+		return;
+
+	va_list args;
+	va_start(args, msg);
+
+	logserver_utils_wall_msg(level, src, msg, args);
+
+	va_end(args);
+}
+
 static void logserver_close_socket(int sockd, const char *name)
 {
 	if (sockd < 0)

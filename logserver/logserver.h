@@ -34,6 +34,7 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *rev);
 
 int pv_logserver_init(const char *rev);
 
+void pv_logserver_console_log(int level, const char *src, const char *msg, ...);
 int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 			  int level, const char *msg, ...);
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
