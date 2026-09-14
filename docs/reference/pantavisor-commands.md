@@ -358,10 +358,21 @@ On success, returns `200` with an empty body. On failure:
 
 ## /xconnect-graph
 
-This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](pantavisor-xconnect.md) reference.
+This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](pantavisor-xconnect.md) reference. The array mixes link, activatable and `consumes` elements — see [Graph Output](pantavisor-xconnect.md#graph-output) for the full field list per element kind.
 
 ```
-curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect-graph"
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect-graph"
+[
+  { "consumer": "pv-example-unix-client", "consumer_pid": 1234,
+    "provider": "pv-example-unix-server", "provider_pid": 5678,
+    "name": "raw", "type": "unix", "role": "any", "interface": "unix",
+    "target": "/run/pv/services/raw.sock", "socket": "/run/example/raw.sock" },
+  { "activatable": "org.example.Foo", "bus": "system-bus",
+    "owner": "foo-app", "socket": "/run/pv/dbus/system_bus_socket" },
+  { "consumes": "net.connman", "bus": "system-bus", "consumer": "my-ui",
+    "owner": "connman", "activation": "on-owner",
+    "socket": "/run/pv/dbus/system_bus_socket" }
+]
 ```
 
 On a build without the `PANTAVISOR_XCONNECT` feature, this endpoint returns `404` with
