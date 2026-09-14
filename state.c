@@ -744,9 +744,12 @@ static int pv_state_validate_service_names(struct pv_state *s,
 		}
 
 		bool allowed = false;
-		for (int i = 0; i < owner_exp->allow_count; i++) {
-			if (owner_exp->allow[i] && svc->role &&
-			    !strcmp(owner_exp->allow[i], svc->role)) {
+		struct pv_platform_service_allow *al, *al_tmp;
+		dl_list_for_each_safe(al, al_tmp, &owner_exp->allow,
+				      struct pv_platform_service_allow, list)
+		{
+			if (al->role && svc->role &&
+			    !strcmp(al->role, svc->role)) {
 				allowed = true;
 				break;
 			}

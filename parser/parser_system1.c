@@ -969,6 +969,168 @@ static int parse_platform_services(struct pv_state *s, struct pv_platform *p,
 	return 1;
 }
 
+// Parse a plain string array field (e.g. "interfaces"/"members"/"paths" inside
+// an allow object) into a freshly allocated char**; *out_count is 0 and the
+// return is NULL when the key is absent or the array is empty.
+static char **parse_str_array_field(const char *obj_s, jsmntok_t *ov, int oc,
+				    const char *key, int *out_count)
+{
+	*out_count = 0;
+	char *arr_s = pv_json_get_value(obj_s, key, ov, oc);
+	if (!arr_s)
+		return NULL;
+
+	char **out = NULL;
+	jsmntok_t *atokv = NULL;
+	int atokc;
+	if (jsmnutil_parse_json(arr_s, &atokv, &atokc) > 0) {
+		int acount = jsmnutil_array_count(arr_s, atokv);
+		if (acount > 0) {
+			out = calloc(acount, sizeof(char *));
+			if (out) {
+				int rem = acount;
+				jsmntok_t *at = atokv + 1;
+				int n = 0;
+				for (int j = 0; j < acount; j++) {
+					char *e = pv_json_array_get_one_str(
+						arr_s, &rem, &at);
+					if (e)
+						out[n++] = e;
+				}
+				*out_count = n;
+			}
+		}
+		free(atokv);
+	}
+	free(arr_s);
+	return out;
+}
+
+static void free_str_array(char **arr, int count)
+{
+	for (int i = 0; i < count; i++)
+		free(arr[i]);
+	free(arr);
+}
+
+// Parse one "allow" array element (string or object form) and attach it to
+// `se`. String form is a bare role name; object form is
+// {"role":..., "interfaces":[...], "members":[...], "paths":[...]}, all three
+// optional — absent means unnarrowed for that dimension.
+static void service_export_allow_add(struct pv_platform_service_export *se,
+				     const char *owns, const char *buf,
+				     jsmntok_t *t)
+{
+	int el_len = t->end - t->start;
+
+	if (t->type == JSMN_STRING) {
+		char *role = calloc(el_len + 1, 1);
+		if (!role)
+			return;
+		memcpy(role, buf + t->start, el_len);
+		pv_platform_service_export_add_allow(se, role, NULL, 0, NULL, 0,
+						     NULL, 0);
+		free(role);
+		return;
+	}
+
+	if (t->type != JSMN_OBJECT) {
+		pv_log(ERROR, "unexpected 'allow' entry type for name '%s'",
+		       owns ? owns : "(unknown)");
+		return;
+	}
+
+	char *obj_s = calloc(el_len + 1, 1);
+	if (!obj_s)
+		return;
+	memcpy(obj_s, buf + t->start, el_len);
+
+	int oc;
+	jsmntok_t *ov;
+	if (jsmnutil_parse_json(obj_s, &ov, &oc) > 0) {
+		char *role = pv_json_get_value(obj_s, "role", ov, oc);
+		if (!role) {
+			// Caught again (and failing the deploy) in
+			// pv_dbus_daemon_validate(); flagged here for the log.
+			pv_log(ERROR,
+			       "'allow' object for name '%s' has no 'role'",
+			       owns ? owns : "(unknown)");
+		} else {
+			int ic = 0, mc = 0, pc = 0;
+			char **ifaces = parse_str_array_field(
+				obj_s, ov, oc, "interfaces", &ic);
+			char **members = parse_str_array_field(obj_s, ov, oc,
+							       "members", &mc);
+			char **paths = parse_str_array_field(obj_s, ov, oc,
+							     "paths", &pc);
+			pv_platform_service_export_add_allow(
+				se, role, ifaces, ic, members, mc, paths, pc);
+			free_str_array(ifaces, ic);
+			free_str_array(members, mc);
+			free_str_array(paths, pc);
+			free(role);
+		}
+		free(ov);
+	}
+	free(obj_s);
+}
+
+// Parse a platform's top-level "roles" map ({"role": {"uid": N}, ...}) and
+// pin each entry via pv_platform_add_role_pin(); validated device-wide (owner
+// requirement, pool collisions) in pv_dbus_daemon_validate().
+static int platform_roles_add(struct pv_platform *p, const char *buf)
+{
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+		return 0;
+	if (tokc <= 0 || tokv[0].type != JSMN_OBJECT)
+		goto out;
+
+	int n = tokv[0].size;
+	jsmntok_t *t = tokv + 1;
+	jsmntok_t *tok_end = tokv + tokc;
+	for (int i = 0; i < n && t < tok_end; i++) {
+		int klen = t->end - t->start;
+		char *role = calloc(klen + 1, 1);
+		if (!role)
+			break;
+		memcpy(role, buf + t->start, klen);
+
+		t++; // move from key to value token
+		if (t >= tok_end) {
+			free(role);
+			break;
+		}
+		int el_start = t->start;
+		int el_end = t->end;
+		int el_len = el_end - el_start;
+		char *vobj = calloc(el_len + 1, 1);
+		if (vobj) {
+			memcpy(vobj, buf + el_start, el_len);
+			int oc;
+			jsmntok_t *ov;
+			if (jsmnutil_parse_json(vobj, &ov, &oc) > 0) {
+				int uid = pv_json_get_value_int(vobj, "uid", ov,
+								oc);
+				pv_platform_add_role_pin(p, role, uid);
+				free(ov);
+			}
+			free(vobj);
+		}
+		free(role);
+
+		t++;
+		while (t < tok_end && t->start < el_end)
+			t++;
+	}
+	ret = 1;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
 static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 				 char *buf)
 {
@@ -980,6 +1142,15 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
 		return 0;
+
+	// Top-level "roles" map (new format only; a legacy bare array has no
+	// "roles" key to match). Uses the original document buf/tokv/tokc,
+	// before `buf` is redirected to the services array text below.
+	char *roles_str = pv_json_get_value(buf, "roles", tokv, tokc);
+	if (roles_str) {
+		platform_roles_add(p, roles_str);
+		free(roles_str);
+	}
 
 	// Try new object format: {"#spec": "...", "services": [...]}
 	services_buf = pv_json_get_value(buf, "services", tokv, tokc);
@@ -1036,47 +1207,6 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 							      svc_c);
 				char *role = pv_json_get_value(svc_s, "role",
 							       sv, svc_c);
-				char **allow = NULL;
-				int allow_count = 0;
-				char *allow_str = pv_json_get_value(
-					svc_s, "allow", sv, svc_c);
-				if (allow_str) {
-					jsmntok_t *atokv = NULL;
-					int atokc;
-					if (jsmnutil_parse_json(allow_str,
-								&atokv,
-								&atokc) > 0) {
-						int acount =
-							jsmnutil_array_count(
-								allow_str,
-								atokv);
-						if (acount > 0) {
-							allow = calloc(
-								acount,
-								sizeof(char *));
-							if (allow) {
-								int rem =
-									acount;
-								jsmntok_t *at =
-									atokv +
-									1;
-								for (int j = 0;
-								     j < acount;
-								     j++) {
-									char *e = pv_json_array_get_one_str(
-										allow_str,
-										&rem,
-										&at);
-									if (e)
-										allow[allow_count++] =
-											e;
-								}
-							}
-						}
-						free(atokv);
-					}
-					free(allow_str);
-				}
 
 				// activation:{"mode":"on-demand"|"always"};
 				// default "always" (start at boot). Only the
@@ -1103,13 +1233,48 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 					free(act_str);
 				}
 
-				pv_platform_add_service_owns(
-					p, service_str_to_type(t_s), bus, owns,
-					role, allow, allow_count, activatable);
+				struct pv_platform_service_export *exp =
+					pv_platform_add_service_owns(
+						p, service_str_to_type(t_s),
+						bus, owns, role, activatable);
 
-				for (int j = 0; j < allow_count; j++)
-					free(allow[j]);
-				free(allow);
+				// allow: array of role strings and/or
+				// {"role":...,"interfaces":[...],
+				//  "members":[...],"paths":[...]} objects.
+				char *allow_str = pv_json_get_value(
+					svc_s, "allow", sv, svc_c);
+				if (allow_str && exp) {
+					jsmntok_t *atokv = NULL;
+					int atokc;
+					if (jsmnutil_parse_json(allow_str,
+								&atokv,
+								&atokc) > 0) {
+						int acount =
+							jsmnutil_array_count(
+								allow_str,
+								atokv);
+						jsmntok_t *at = atokv + 1;
+						jsmntok_t *at_end =
+							atokv + atokc;
+						for (int j = 0;
+						     j < acount && at < at_end;
+						     j++) {
+							int allow_el_end =
+								at->end;
+							service_export_allow_add(
+								exp, owns,
+								allow_str, at);
+							at++;
+							while (at < at_end &&
+							       at->start <
+								       allow_el_end)
+								at++;
+						}
+						free(atokv);
+					}
+				}
+				if (allow_str)
+					free(allow_str);
 				if (bus)
 					free(bus);
 				if (role)
