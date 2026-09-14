@@ -137,6 +137,11 @@ struct pv_platform_service_export {
 	// the owner is started on first message to `owns` rather than at boot.
 	// Meaningful only on an `owns` dbus export; false ("always") otherwise.
 	bool activatable;
+	// Optional raw D-Bus policy fragment path, relative to this platform's
+	// trail directory (xconnect/XCONNECT.md "Policy Fragments"); valid only
+	// alongside `owns` on the hosted system bus, enforced in
+	// pv_dbus_daemon_validate().
+	char *policy;
 	struct dl_list list;
 };
 
@@ -254,9 +259,9 @@ pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 struct pv_platform_service_name *
 pv_platform_service_add_name(struct pv_platform_service *svc, const char *name,
 			     bool on_owner, bool activation_unknown);
-void pv_platform_add_service_export(struct pv_platform *p,
-				    service_type_t svc_type, char *name,
-				    char *socket);
+struct pv_platform_service_export *
+pv_platform_add_service_export(struct pv_platform *p, service_type_t svc_type,
+			       char *name, char *socket);
 struct pv_platform_service_export *
 pv_platform_add_service_owns(struct pv_platform *p, service_type_t svc_type,
 			     const char *bus, const char *owns,
@@ -265,6 +270,8 @@ struct pv_platform_service_allow *pv_platform_service_export_add_allow(
 	struct pv_platform_service_export *se, const char *role,
 	char **interfaces, int interfaces_count, char **members,
 	int members_count, char **paths, int paths_count);
+void pv_platform_service_export_set_policy(
+	struct pv_platform_service_export *se, const char *policy);
 struct pv_platform_role_pin *
 pv_platform_add_role_pin(struct pv_platform *p, const char *role, int uid);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
