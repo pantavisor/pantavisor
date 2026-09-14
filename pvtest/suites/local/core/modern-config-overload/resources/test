@@ -3,7 +3,7 @@
 echo "== pv conf file =="
 pvcontrol conf ls | jq -M '.[] | select(.key == "PV_SYSTEM_INIT_MODE")' | tr -d '\r'
 echo "== ph conf file =="
-pvcontrol conf ls | jq -M '.[] | select(.key == "PH_CREDS_HOST")' | tr -d '\r'
+pvcontrol conf ls | jq -M '.[] | select(.key == "PH_CREDS_PORT")' | tr -d '\r'
 echo "== cmdline =="
 pvcontrol conf ls | jq -M '.[] | select(.key == "PH_METADATA_DEVMETA_INTERVAL")' | tr -d '\r'
 echo "== env =="

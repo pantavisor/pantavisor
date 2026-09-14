@@ -6,8 +6,8 @@
 }
 == ph conf file ==
 {
-  "key": "PH_CREDS_HOST",
-  "value": "api.pantahub.com",
+  "key": "PH_CREDS_PORT",
+  "value": "443",
   "modified": "ph conf file"
 }
 == cmdline ==
