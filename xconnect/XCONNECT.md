@@ -574,6 +574,399 @@ Added to the existing state validation (`pv_state_validate_services()`), so a co
 5. **Dependency engine** (Pantavisor): behind the endpoint, resolve required services, recursively activate passive dependencies, wait for readiness, handle cycles/timeout/failure. Perform the `STAGED → STARTED` transition by flipping the platform goal and re-injecting it into the reconcile loop (`set_status_goal(STARTED)` + `set_installed`); the existing `pv_state_run` then starts the container, skipping volumes already mounted at staging. Note the per-service dependency activation here is genuinely new — the existing prev-group goal ordering (`pv_state_check_goal_prev_group`) sequences *groups*, not on-demand per-service dependencies.
 6. **Tests**: passive service not started at boot; client call activates it transparently; chained activation starts the dependency first; activation fails with a typed D-Bus error when a dependency is unavailable; duplicate owned names rejected; `NO_AUTO_START` is not activated; always-on behavior unchanged.
 
+## Name-Based D-Bus Requirements, Consumer Activation and Policy (Design)
+
+This section extends the hosted system bus and D-Bus service activation with
+four related pieces:
+
+1. consumers declare the **well-known names** they use, not just the bus socket;
+2. a consumer can stay passive until a name it needs **has an owner**;
+3. a role can be **pinned to a real uid** for legacy authorization;
+4. providers can **refine the generated bus policy**, declaratively or with a
+   validated policy fragment.
+
+Everything here builds on what already exists: `owns`/`allow` exports, the
+role-per-socket rule, the generated default-deny policy, `status_goal: MOUNTED`
+as the passive state, and the ownership monitor in `pv-xconnect`. No new
+lifecycle state and no new daemon.
+
+### Motivation
+
+Today a consumer's requirement says only *who I am when I dial this socket*
+(`role`). It does not say *what I am going to talk to*. The `interface` field
+exists but carries no runtime meaning. That leaves four gaps:
+
+- **No dependency graph.** `pvcontrol graph ls` links a consumer to
+  `system-bus`, not to the service it actually uses.
+- **No validation.** A consumer whose role is missing from the provider's
+  `allow`, or that needs a name nobody owns, deploys fine and fails at runtime.
+- **No consumer-side activation.** Pantavisor cannot start a container "when
+  service X is available" because nothing tells it which X.
+- **No way to express legacy policy.** The generated policy covers owner and
+  callers per name; it cannot express per-interface restrictions or real uids
+  that legacy daemons check.
+
+### Settled Decisions
+
+These were agreed and are not open for re-discussion in the implementation:
+
+- **One target socket carries exactly one role.** D-Bus negotiates identity
+  once per connection, so a socket is an identity. Several names may be reached
+  through one socket; a different role needs a different socket.
+- **Names are the unit of dependency.** Bus and socket are derived from the
+  name's owner; the author does not have to write them.
+- **The JSON declaration is the source of truth** for who talks to whom. Policy
+  fragments may only narrow or detail *how*, never widen *who*.
+- **Role uids stay synthetic by default.** Pinning a role to a real uid is
+  explicit, per role, and validated for conflicts.
+- **The legacy socket form keeps working unchanged.** Nothing existing has to
+  move.
+
+### Authoring Model
+
+#### Provider export (unchanged shape, extended `allow` and new `roles`)
+
+```json
+{
+  "#spec": "service-manifest-xconnect@1",
+  "services": [
+    {
+      "type": "dbus",
+      "bus": "system-bus",
+      "owns": "net.connman",
+      "role": "connman",
+      "allow": [
+        "monitor",
+        { "role": "operator",
+          "interfaces": ["net.connman.Manager"],
+          "members": ["GetProperties", "GetServices"] }
+      ],
+      "activation": { "mode": "on-demand" },
+      "policy": "dbus/connman-policy.xml"
+    }
+  ],
+  "roles": {
+    "admin": { "uid": 0 }
+  }
+}
+```
+
+- `allow` entries are either a role string (full send/receive access to the
+  name, as today) or an object that narrows that role. Optional keys
+  `interfaces`, `members`, `paths` map one-to-one onto the daemon's
+  `send_interface`, `send_member`, `send_path` attributes. An object with none
+  of them is the same as the string form.
+- `policy` (optional) names a policy fragment shipped in the container's trail
+  directory. See [Policy Fragments](#policy-fragments).
+- `roles` (optional, top level) pins role names to real uids. See
+  [Role UID Pinning](#role-uid-pinning).
+
+#### Consumer requirement (new `names`, derived bus and socket)
+
+```json
+{
+  "PV_SERVICES_REQUIRED": [
+    {
+      "type": "dbus",
+      "role": "operator",
+      "names": [
+        { "name": "net.connman", "activation": { "mode": "on-owner" } },
+        "org.freedesktop.Avahi"
+      ]
+    }
+  ]
+}
+```
+
+- `names` lists the well-known names reached through this entry. A string is
+  shorthand for `{ "name": "...", "activation": { "mode": "none" } }`.
+- `bus` is derived: every name must resolve to an export with `owns` in the
+  state, and all names in one entry must resolve to the same bus. Today that is
+  always `system-bus`.
+- `name` (the link name) is derived from the bus and may be omitted.
+- `target` is derived per bus. For `system-bus` it defaults to
+  `/run/dbus/system_bus_socket`, the path stock clients dial. Only one entry per
+  bus may take the default; further entries must set `target` explicitly and no
+  two entries may share a path.
+- `role` stays required. It is the identity `allow` lists are written against
+  and roles are shared across containers by design, so it cannot be derived.
+- `interface` is deprecated in favour of `names`. It is still accepted and
+  still means nothing.
+
+The legacy form (`name`, `type`, `role`, `target`, no `names`) is untouched and
+is the right form for a provider-owned bus that pantavisor knows nothing about.
+
+#### Multiple identities in one container
+
+One entry per role, one socket per entry:
+
+```json
+"PV_SERVICES_REQUIRED": [
+  { "type": "dbus", "role": "operator", "names": ["org.freedesktop.Avahi"] },
+  { "type": "dbus", "role": "admin", "names": ["net.connman"],
+    "target": "/run/pv/dbus/admin.sock" }
+]
+```
+
+Processes opt into the second identity by dialing that socket, typically via
+`DBUS_SYSTEM_BUS_ADDRESS`.
+
+### Consumer Activation (`on-owner`)
+
+A consumer with at least one name marked `activation.mode: on-owner` is
+authored with `status_goal: MOUNTED`, exactly like an on-demand provider. It
+stays passive (volumes mounted, no process) until **every** `on-owner` name in
+its requirements has an owner on the bus. Names without `on-owner` do not gate
+startup.
+
+This is the mirror image of provider activation and shares its machinery:
+
+- The ownership monitor in `pv-xconnect` already watches `NameOwnerChanged`.
+  It gains a second waiter kind: instead of "release a held call when this name
+  is owned", it is "tell pantavisor to start this container when all of its
+  names are owned".
+- At start and after a monitor reconnect the waiters are seeded from
+  `ListNames`, so a name owned before `pv-xconnect` came up still fires.
+- The promotion path is the existing one: `POST /xconnect/dbus/activate` with
+  `{"container": "<name>"}` performs `MOUNTED -> STARTED` through
+  `set_status_goal` + `set_installed`. The endpoint accepts either `name` (a
+  bus name, today's provider activation) or `container`.
+- There is no held call, no timer and no synthesized error. The only failure
+  mode is "the name never appears", and the correct behaviour is to keep
+  waiting.
+
+Interactions, all intended:
+
+- **Passive consumer waiting on a passive provider**: nothing starts until an
+  always-on container makes the first call. That is the low-power outcome the
+  feature exists for, not a deadlock. Document it, do not "fix" it.
+- **Owner goes away later**: the consumer is not stopped. Deactivation remains
+  out of scope, as for providers.
+- **Group ordering**: a `MOUNTED` consumer satisfies its group's goal
+  immediately, so it never delays later groups.
+- **`on-owner` and `on-demand` are independent.** A consumer wakes when the
+  name appears, however it came to be owned.
+
+### Role UID Pinning
+
+Role uids are allocated from a persistent pool starting at 90000
+(`/storage/config/dbus-role-uids.json`). That is invisible to well-behaved
+software, because identity is decided at the connection by the proxy. It breaks
+legacy daemons that authorize on the caller's uid (`GetConnectionUnixUser`,
+polkit): they see 90001 where they expect 0.
+
+The `roles` map in a provider export pins a role to a real uid:
+
+```json
+"roles": { "admin": { "uid": 0 } }
+```
+
+- A pinned role is handed that uid by `pv_dbus_daemon_role_uid()` instead of one
+  from the pool. Nothing else in the masquerade or policy path changes.
+- Pins are device-wide by role name. Two containers pinning the same role to
+  different uids, or pinning a role to a uid already used by the pool, fail
+  validation.
+- Only providers may pin, since the provider is the thing doing the check. A
+  consumer cannot promote its own identity.
+- The pool stays the default so nobody presents root on the bus by accident.
+
+Note that `GetConnectionUnixProcessID` still returns `pv-xconnect`'s pid. That
+is not addressed here.
+
+### Policy Generation
+
+The generated policy stays deny-by-default and per role. The `allow` object
+form adds narrowing on the same `<allow>` line:
+
+```xml
+<policy user="pv-role-operator">
+  <allow send_destination="net.connman"
+         send_interface="net.connman.Manager"
+         send_member="GetProperties"/>
+  <allow send_destination="net.connman"
+         send_interface="net.connman.Manager"
+         send_member="GetServices"/>
+  <allow receive_sender="net.connman"/>
+</policy>
+```
+
+One line per member (or per path, per interface) because the daemon matches
+attributes on a single rule conjunctively. `receive_sender` is never narrowed;
+replies and signals from the service must always reach an allowed caller.
+
+Deny-by-default is stricter than what distributions ship, where
+`context="default"` allows sending to nearly everything. A legacy client that
+was never listed anywhere fails until its role appears in an `allow`. This is
+intended and belongs in the migration notes.
+
+### Policy Fragments
+
+For the cases the declarative vocabulary does not cover, a provider may ship a
+raw fragment for its own names, referenced by `policy` in its export. The
+fragment is a plain `<busconfig>` with `<policy>` elements, using
+`@role:<name>@` placeholders wherever a user is meant:
+
+```xml
+<busconfig>
+  <policy user="@role:operator@">
+    <deny send_destination="net.connman"
+          send_interface="net.connman.Manager"
+          send_member="SetProperty"/>
+  </policy>
+</busconfig>
+```
+
+Pantavisor substitutes placeholders with the generated user names and appends
+the result to the policy directory after the generated rules.
+
+#### Validation
+
+Fragments are validated at state validation time, so a bad one rolls back the
+deploy like a duplicate owner does. Three levels:
+
+1. **Well-formedness, by the daemon itself.** The candidate policy directory
+   (generated rules plus all fragments) is assembled in a temporary location
+   with a temporary `busconfig` that listens on a throwaway socket and uses the
+   same generated passwd as the real daemon. `dbus-daemon --config-file=<tmp>
+   --nofork --print-address` is run with a short timeout. Printing an address
+   means the configuration parsed; the instance is then killed. A non-zero exit
+   fails validation and its stderr is the diagnostic. This catches unknown
+   elements and attributes with line numbers.
+2. **Our rules, by a small attribute scanner.** Because step 1 guarantees the
+   grammar, this only walks `policy`, `allow` and `deny` attributes:
+   - `policy` may carry only `user="@role:<name>@"` where the role is declared
+     in the state. No `group`, `at_console` or `context`.
+   - `allow`/`deny` may carry only `send_*`, `receive_*`, `own` and
+     `own_prefix`. `eavesdrop` is rejected.
+   - `own`, `own_prefix`, `send_destination` and `receive_sender` must name one
+     of this container's own `owns`. A fragment cannot grant or touch someone
+     else's name.
+   - Any element other than `busconfig`, `policy`, `allow`, `deny` is rejected
+     (`include`, `includedir`, `listen`, `type`, `auth`, `servicedir`, `limit`,
+     `selinux`, `apparmor`).
+3. **Consistency with the declaration.** A role granted access in a fragment
+   must appear in the export's `allow`. The JSON says *who*; the fragment may
+   only narrow or detail *how*.
+
+Unknown users are a warning in the daemon, not an error, so step 2 must reject
+any placeholder that does not resolve before the daemon ever sees it.
+
+#### Reload
+
+When a state goes live the policy is reloaded through
+`org.freedesktop.DBus.ReloadConfig` on the ownership-monitor connection, not
+SIGHUP. The method returns an error if the new configuration fails to parse;
+that error fails the state transition. The throwaway instance is the pre-flight
+check, the reload result is the confirmation, and there is no window in which a
+broken policy is silently ignored.
+
+### Validation Rules (summary)
+
+Added to `pv_state_validate_services()`:
+
+- every entry in `names` resolves to exactly one export with `owns` in the
+  state; a name nobody owns fails;
+- the entry's `role` is present in that export's `allow` (string or object
+  form);
+- all names in one entry resolve to the same bus;
+- at most one entry per bus takes the default `target`; explicit targets are
+  unique per container;
+- a container with any `on-owner` name has `status_goal: MOUNTED` (warned, not
+  rejected, matching the `restart_policy` recommendation for providers);
+- role pins are consistent device-wide and do not collide with the pool;
+- policy fragments pass the three validation levels above.
+
+### Graph Exposure
+
+`GET /xconnect-graph` gains, per resolved name, a descriptor alongside links
+and activatable entries:
+
+```json
+{ "consumes": "net.connman", "bus": "system-bus",
+  "consumer": "my-ui", "owner": "connman", "activation": "on-owner" }
+```
+
+This is what `pvcontrol graph ls` shows and what the consumer-activation
+waiters in `pv-xconnect` are built from.
+
+### Scope Boundaries
+
+- Hosted `system-bus` only, as for provider activation.
+- No deactivation when an owner disappears.
+- No `eavesdrop`, no group or console based policy.
+- `GetConnectionUnixProcessID` is not masqueraded.
+
+### Implementation Plan
+
+Each phase is one PR-sized unit and leaves the tree working. Phases 1 to 3 are
+independent of 4 and 5 and can be built in parallel.
+
+1. **Names in the state model** (pantavisor: `parser/parser_system1.c`,
+   `platforms.h`, `state.c`).
+   Parse `names` (string and object forms) into `pv_platform_service`; keep
+   `interface` parsed but unused. Resolve each name to its owner export at
+   validation, derive `bus`, link `name` and default `target`; apply the
+   validation rules above. Emit the `consumes` descriptors in the graph.
+   Existing goldens for `local/xconnect/*` must not change.
+   Acceptance: a consumer with `names` and no `target` gets the default
+   socket; a name nobody owns fails validation; two default targets in one
+   container fail validation.
+
+2. **pvr template and meta examples** (pvr `templates/builtin-lxc-docker.go`;
+   meta `recipes-containers/pv-examples`, `recipes-containers/pantavisor`).
+   Render `names` from `PV_SERVICES_REQUIRED` outside the `MOUNTED` gate (see
+   the `status_goal` pitfall in `container-pvrexport.bbclass`). Move
+   `pv-avahi-browse` and `pv-example-system-dbus-client` to the `names` form.
+   Acceptance: rebuilt containers carry `names` in `run.json`; `local/xconnect`
+   suite still green.
+
+3. **Consumer activation** (pantavisor: `xconnect/dbus_activation.c`,
+   `xconnect/main.c`, `ctrl/ctrl_xconnect_activate_ep.c`, `dbus_daemon.c`).
+   Add the container waiter kind fed from `consumes` descriptors with
+   `on-owner`; seed from `ListNames`; fire when all names are owned; extend the
+   activate endpoint with `container`; reuse `pv_dbus_daemon_activate`'s
+   promotion. New pvtest `local/xconnect/dbus-consumer-activation`: passive
+   consumer, always-on provider, consumer reaches `STARTED` only after the
+   provider owns its name; plus the passive-on-passive case stays idle.
+
+4. **Policy vocabulary and role pins** (pantavisor: `parser_system1.c`,
+   `dbus_daemon.c`).
+   Parse `allow` objects and the `roles` map. Generate narrowed `<allow>` lines.
+   Honour pins in `pv_dbus_daemon_role_uid()` with the conflict checks.
+   pvtests: a narrowed role can call the listed member and is denied another;
+   a pinned role shows the pinned uid via `GetConnectionUnixUser`.
+
+5. **Policy fragments** (pantavisor: `dbus_daemon.c`, new
+   `dbus_policy_check.c`, `xconnect/dbus_activation.c` for `ReloadConfig`).
+   Copy fragments from the trail, substitute placeholders, run the throwaway
+   `dbus-daemon` pre-flight, run the attribute scanner and the consistency
+   check, switch live reload to `ReloadConfig` and fail the transition on
+   error. pvtests: a fragment that narrows a member is enforced; a fragment
+   with `include`, with a foreign `own`, or with an unknown role placeholder
+   fails validation and rolls back.
+
+6. **Docs and migration notes** (pantavisor `docs/`, meta `docs/`).
+   Update the manifest reference, `pvcontrol graph ls` output, and write the
+   migration note about deny-by-default versus distribution policies and the
+   uid-checking legacy daemons.
+
+Facts an implementer should not have to rediscover:
+
+- Roles are a device-wide vocabulary by string equality; the map lives in
+  `/storage/config/dbus-role-uids.json` and is append-only.
+- `pv_dbus_daemon_role_uid()` is the single choke point for role to uid; pins
+  belong there.
+- The generated passwd is what makes `policy user=` resolvable; the throwaway
+  validator instance must see the same one.
+- `pvr app add --status-goal MOUNTED` drops `type`/`config` and skips the LXC
+  render; set `status_goal` via `PVR_APP_POST_FIXUP` instead.
+- Test tarballs come from `PV_PVTEST_CONTAINERS_XCONNECT` in
+  `pantavisor-appengine-distro.bb`; a new example container must be added
+  there to reach the tester.
+- Test usrmeta is applied after the initial revision boots, so tests must not
+  rely on it to keep a container idle at boot.
+
+
 ## Tools
 
 ### pvcurl
