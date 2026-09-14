@@ -80,6 +80,21 @@ typedef enum {
 	SERVICE_MANUAL = (1 << 2)
 } plat_service_t;
 
+// One well-known name a consumer requirement depends on (see
+// "Name-Based D-Bus Requirements" in xconnect/XCONNECT.md). bus/owner are
+// resolved against the state's exports at pv_state_validate_services() time,
+// not parsed.
+struct pv_platform_service_name {
+	char *name;
+	bool on_owner;
+	// true when the JSON gave an activation.mode this build does not
+	// recognize; caught as a validation error, not silently ignored.
+	bool activation_unknown;
+	char *bus;
+	char *owner;
+	struct dl_list list;
+};
+
 struct pv_platform_service {
 	plat_service_t type;
 	service_type_t svc_type;
@@ -87,6 +102,7 @@ struct pv_platform_service {
 	char *role;
 	char *interface;
 	char *target;
+	struct dl_list names; // pv_platform_service_name
 	struct dl_list list;
 };
 
@@ -208,9 +224,13 @@ void pv_platform_free(struct pv_platform *p);
 
 void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
 			    char *value);
-void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
-			     service_type_t svc_type, char *name, char *role,
-			     char *interface, char *target);
+struct pv_platform_service *
+pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			service_type_t svc_type, char *name, char *role,
+			char *interface, char *target);
+struct pv_platform_service_name *
+pv_platform_service_add_name(struct pv_platform_service *svc, const char *name,
+			     bool on_owner, bool activation_unknown);
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
 				    char *socket);

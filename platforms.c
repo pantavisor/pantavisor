@@ -369,6 +369,18 @@ void pv_platform_free(struct pv_platform *p)
 			free(s->interface);
 		if (s->target)
 			free(s->target);
+		struct pv_platform_service_name *nm, *nm_tmp;
+		dl_list_for_each_safe(nm, nm_tmp, &s->names,
+				      struct pv_platform_service_name, list)
+		{
+			if (nm->name)
+				free(nm->name);
+			if (nm->bus)
+				free(nm->bus);
+			if (nm->owner)
+				free(nm->owner);
+			free(nm);
+		}
 		free(s);
 	}
 	dl_list_init(&p->services);
@@ -1669,14 +1681,15 @@ void pv_platform_ref_free(struct pv_platform_ref *pr)
 	free(pr);
 }
 
-void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
-			     service_type_t svc_type, char *name, char *role,
-			     char *interface, char *target)
+struct pv_platform_service *
+pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			service_type_t svc_type, char *name, char *role,
+			char *interface, char *target)
 {
 	struct pv_platform_service *s =
 		calloc(1, sizeof(struct pv_platform_service));
 	if (!s)
-		return;
+		return NULL;
 
 	s->type = type;
 	s->svc_type = svc_type;
@@ -1688,8 +1701,28 @@ void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 		s->interface = strdup(interface);
 	if (target)
 		s->target = strdup(target);
+	dl_list_init(&s->names);
 	dl_list_init(&s->list);
 	dl_list_add_tail(&p->services, &s->list);
+	return s;
+}
+
+struct pv_platform_service_name *
+pv_platform_service_add_name(struct pv_platform_service *svc, const char *name,
+			     bool on_owner, bool activation_unknown)
+{
+	struct pv_platform_service_name *n =
+		calloc(1, sizeof(struct pv_platform_service_name));
+	if (!n)
+		return NULL;
+
+	if (name)
+		n->name = strdup(name);
+	n->on_owner = on_owner;
+	n->activation_unknown = activation_unknown;
+	dl_list_init(&n->list);
+	dl_list_add_tail(&svc->names, &n->list);
+	return n;
 }
 
 void pv_platform_add_service_export(struct pv_platform *p,
