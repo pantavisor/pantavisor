@@ -1,9 +1,41 @@
 #!/bin/sh
 
+# pantahub.config holds defaults unless written, so set a PH-only key no other level touches
+phconf=/run/pantavisor/pv/phconfig/pantahub.config
+tmp=$(mktemp -d)
+
+# Copy tester file $1 over the device pantahub.config and reboot so it is loaded
+set_phconf() {
+	local staged rev
+	staged=$(pv_stage_file "$1") || return 1
+	pv_exec cp "$staged" "$phconf" || return 1
+	pv_unstage_file "$staged"
+	rev=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+	pvcontrol commands reboot "pvtest: $2" > /dev/null 2>&1
+	wait_for_down 30 && wait_for_target_ready "$2" "$rev" DONE >&2
+}
+
+# No reset between tests: put the original pantahub.config back
+restore_phconf() {
+	set_phconf "$tmp/orig" "after ph conf restore" \
+		|| { echo "ERROR: could not restore pantahub.config" >&2; rm -rf "$tmp"; exit 1; }
+	rm -rf "$tmp"
+}
+
+pv_fetch_file "$phconf" "$tmp/orig" && [ -s "$tmp/orig" ] \
+	|| { echo "ERROR: could not fetch pantahub.config" >&2; rm -rf "$tmp"; exit 1; }
+trap restore_phconf EXIT
+{
+	grep -v -e '^PH_UPDATER_NETWORK_TIMEOUT=' -e '^updater\.network_timeout=' "$tmp/orig"
+	echo "updater.network_timeout=180"
+} > "$tmp/new"
+set_phconf "$tmp/new" "after ph conf write" \
+	|| { echo "ERROR: device did not come back after writing pantahub.config" >&2; exit 1; }
+
 echo "== pv conf file =="
 pvcontrol config ls | jq -M -r '.["system.init.mode"]' | tr -d '\r'
 echo "== ph conf file =="
-pvcontrol config ls | jq -M -r '.["creds.port"]' | tr -d '\r'
+pvcontrol config ls | jq -M -r '.["updater.network_timeout"]' | tr -d '\r'
 echo "== cmdline =="
 pvcontrol config ls | jq -M -r '.["metadata.devmeta.interval"]' | tr -d '\r'
 echo "== env =="

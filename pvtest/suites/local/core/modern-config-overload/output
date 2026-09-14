@@ -6,8 +6,8 @@
 }
 == ph conf file ==
 {
-  "key": "PH_CREDS_PORT",
-  "value": "443",
+  "key": "PH_UPDATER_NETWORK_TIMEOUT",
+  "value": "180",
   "modified": "ph conf file"
 }
 == cmdline ==
