@@ -146,10 +146,42 @@ as `org.freedesktop.Avahi`), **not** a D-Bus interface. A single owned name
 typically exposes many interfaces on many object paths — for example
 `org.freedesktop.Avahi` serves `org.freedesktop.Avahi.Server`,
 `.ServiceBrowser`, `.ServiceResolver`, `.EntryGroup` and more — but the daemon
-owns only the one bus name. The generated policy authorises by **destination**
-(`send_destination`), so owning a name covers *all* of its interfaces and object
-paths at once; there is no per-interface or per-method granularity. Declare one
-`owns` per bus name the app actually acquires, not one per interface.
+owns only the one bus name. Declare one `owns` per bus name the app actually
+acquires, not one per interface.
+
+A plain role string in `allow` grants that role full `send_destination` access
+to *all* of the name's interfaces and object paths at once. To narrow a
+caller's access, use the object form instead of a string: `{"role": ...,
+"interfaces": [...], "members": [...], "paths": [...]}`. Any of the three
+arrays may be omitted; an object with none of them behaves exactly like the
+plain string. For example:
+
+```json
+{
+  "type": "dbus",
+  "bus": "system-bus",
+  "owns": "org.freedesktop.Avahi",
+  "role": "avahi",
+  "allow": [
+    { "role": "operator",
+      "interfaces": ["org.freedesktop.Avahi.Server"],
+      "members": ["GetVersionString"] }
+  ]
+}
+```
+
+generates one `<allow>` per combination of the listed interfaces and members
+(the daemon matches a rule's attributes conjunctively), plus the usual
+unnarrowed `receive_sender` so replies and signals still reach the caller:
+
+```xml
+<policy user="pv-dbus-operator">
+  <allow send_destination="org.freedesktop.Avahi"
+         send_interface="org.freedesktop.Avahi.Server"
+         send_member="GetVersionString"/>
+  <allow receive_sender="org.freedesktop.Avahi"/>
+</policy>
+```
 
 ##### Multiple names and roles
 
