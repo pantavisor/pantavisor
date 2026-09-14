@@ -36,6 +36,10 @@ struct pv_state;
 #define PV_DBUS_SYSTEMBUS_CONF PV_DBUS_SYSTEMBUS_DIR "/system.conf"
 #define PV_DBUS_SYSTEMBUS_POLICYDIR PV_DBUS_SYSTEMBUS_DIR "/policy.d"
 
+// Default in-container target for a names-form requirement that omits
+// "target" — the path stock D-Bus clients dial (see XCONNECT.md).
+#define PV_DBUS_SYSTEMBUS_DEFAULT_TARGET "/run/dbus/system_bus_socket"
+
 // Private passwd bind-mounted over /etc/passwd in the daemon's mount jail so it
 // can resolve the per-role masquerade uids that the generated policy keys on,
 // without touching the rootfs /etc/passwd. See pv_dbus_daemon_generate().

@@ -172,6 +172,14 @@ static struct pvx_link *parse_link(const char *json, jsmntok_t *itok,
 
 static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 {
+	// "consumes" descriptors ({consumes,bus,consumer,owner,activation}) are
+	// not links either — phase 3 (consumer activation) acts on them.
+	char *consumes = pv_json_get_value(json, "consumes", itok, obj_tokc);
+	if (consumes) {
+		free(consumes);
+		return;
+	}
+
 	// Activatable-name descriptors ({activatable,bus,owner,socket}) are not
 	// links — collect the name (and the bus socket the ownership monitor
 	// connects to) into the activation set and stop.
