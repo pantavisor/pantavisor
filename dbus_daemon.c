@@ -493,20 +493,15 @@ static int dbus_policy_build(struct pv_state *s, char **pw_buf, size_t *pw_len,
 
 // One resolved "policy" declaration: the owning platform/export and the
 // trail-relative fragment's absolute path (same trail-file mechanism as a
-// platform's own lxc.container.conf, see pv_platform_start()) plus the
-// deterministic, collision-free name it gets inside the live policy
-// directory.
+// platform's own lxc.container.conf, see pv_platform_start()).
 struct pv_dbus_frag_entry {
 	struct pv_platform *p;
 	struct pv_platform_service_export *exp;
 	char abspath[PATH_MAX];
-	char filename[128];
 };
 
 // Walk the state collecting every declared "policy" fragment. Returns the
-// count (capped at PV_DBUS_FRAG_MAX); the per-platform index in the
-// generated filename keeps it deterministic and collision-free across
-// generation passes as long as a platform's export order is stable.
+// count, capped at PV_DBUS_FRAG_MAX.
 static int fragments_collect(struct pv_state *s, struct pv_dbus_frag_entry *out,
 			     int max)
 {
@@ -514,7 +509,6 @@ static int fragments_collect(struct pv_state *s, struct pv_dbus_frag_entry *out,
 	struct pv_platform *p, *tmp_p;
 	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
 	{
-		int idx = 0;
 		struct pv_platform_service_export *exp, *tmp_exp;
 		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
 				      struct pv_platform_service_export, list)
@@ -530,12 +524,9 @@ static int fragments_collect(struct pv_state *s, struct pv_dbus_frag_entry *out,
 			pv_paths_storage_trail_plat_file(out[n].abspath,
 							 PATH_MAX, s->rev,
 							 p->name, exp->policy);
-			snprintf(out[n].filename, sizeof(out[n].filename),
-				 "pv-frag-%s-%d.conf", p->name, idx);
 			out[n].p = p;
 			out[n].exp = exp;
 			n++;
-			idx++;
 		}
 	}
 	return n;
@@ -654,15 +645,77 @@ static char *policy_fragment_substitute(const char *in, size_t *out_len)
 	return buf;
 }
 
+// Locate the <policy>...</policy> (and friends) content inside a fragment's
+// outer <busconfig> wrapper, i.e. what dbus_policy_merge_fragments() splices
+// into pv-generated.conf. `xml` must already be substituted. Returns a
+// pointer into `xml` and its length, or NULL if there is no <busconfig>
+// wrapper (a fragment-authoring error, checked by the caller).
+static const char *policy_fragment_inner(const char *xml, size_t *inner_len)
+{
+	const char *open = strstr(xml, "<busconfig");
+	if (!open)
+		return NULL;
+	const char *gt = strchr(open, '>');
+	if (!gt)
+		return NULL;
+	gt++;
+	const char *close = strstr(gt, "</busconfig>");
+	if (!close)
+		return NULL;
+	*inner_len = (size_t)(close - gt);
+	return gt;
+}
+
+// Splice every substituted fragment's <policy> content into *pol_buf (built
+// by dbus_policy_build(), ending in "</busconfig>\n"), appending it after the
+// generated rules and replacing *pol_buf/*pol_len with the merged result
+// (the old buffer is freed). This — not <includedir> file-sort order — is
+// what makes a fragment's narrowing take effect: D-Bus applies "last
+// matching rule wins" only within one assembled config, and a separate
+// per-fragment file loaded via <includedir> has no defined position relative
+// to pv-generated.conf. See xconnect/XCONNECT.md "Policy Fragments".
+static int dbus_policy_merge_fragments(char **pol_buf, size_t *pol_len,
+				       char **subst, size_t *subst_len, int n)
+{
+	static const char closing[] = "</busconfig>\n";
+	size_t closing_len = sizeof(closing) - 1;
+	if (*pol_len < closing_len ||
+	    memcmp(*pol_buf + *pol_len - closing_len, closing, closing_len)) {
+		pv_log(ERROR,
+		       "generated dbus policy has no closing </busconfig>; cannot splice fragments");
+		return -1;
+	}
+
+	char *merged = NULL;
+	size_t merged_len = 0;
+	FILE *f = open_memstream(&merged, &merged_len);
+	if (!f)
+		return -1;
+
+	fwrite(*pol_buf, 1, *pol_len - closing_len, f);
+	for (int i = 0; i < n; i++) {
+		size_t inner_len = 0;
+		const char *inner = policy_fragment_inner(subst[i], &inner_len);
+		if (inner)
+			fwrite(inner, 1, inner_len, f);
+	}
+	fputs(closing, f);
+	fclose(f);
+
+	free(*pol_buf);
+	*pol_buf = merged;
+	*pol_len = merged_len;
+	return 0;
+}
+
 // Bounded wall-clock budget for the throwaway dbus-daemon parse check, so a
 // broken fragment can never block the caller (the controller mainloop) for
 // longer than this.
 #define PV_DBUS_POLICY_PREFLIGHT_TIMEOUT_MS 2000
 
 // Generous bound for a path built by concatenating a temp-dir path (itself
-// PATH_MAX) with a fixed suffix or a fragment filename, sized with enough
-// slack that the compiler's format-truncation check can prove it always
-// fits (a fragment filename is bounded by struct pv_dbus_frag_entry.filename).
+// PATH_MAX) with a fixed suffix, sized with enough slack that the compiler's
+// format-truncation check can prove it always fits.
 #define PV_DBUS_PREFLIGHT_PATH_MAX (PATH_MAX + 512)
 
 // Fork a throwaway dbus-daemon against `conf` (which references `passwd` via
@@ -820,15 +873,16 @@ static int dbus_policy_preflight_run(const char *conf, const char *passwd,
 	return -1;
 }
 
-// Assemble the candidate policy (generated rules plus every substituted
-// fragment) in a temporary directory, alongside a throwaway busconfig that
-// listens on a private socket and shares the real generated passwd, then run
-// the preflight above. Removes the temporary directory on every path.
+// Assemble the candidate policy (the already-merged pv-generated.conf
+// content, fragments spliced in by dbus_policy_assemble()) in a temporary
+// directory, alongside a throwaway busconfig that listens on a private
+// socket and shares the real generated passwd, then run the preflight
+// above. This is exactly the single-file layout pv_dbus_daemon_generate()
+// writes live, so the preflight validates what actually ships. Removes the
+// temporary directory on every path.
 static int dbus_policy_preflight(const char *pw_buf, size_t pw_len,
 				 const char *pol_buf, size_t pol_len,
-				 struct pv_dbus_frag_entry *frags, char **subst,
-				 size_t *subst_len, int n, char *errbuf,
-				 size_t errbuf_len)
+				 char *errbuf, size_t errbuf_len)
 {
 	char tmp[PATH_MAX];
 	if (pv_fs_path_tmpdir(PV_DBUS_SYSTEMBUS_DIR "/preflight", tmp)) {
@@ -861,15 +915,6 @@ static int dbus_policy_preflight(const char *pw_buf, size_t pw_len,
 			 tmp);
 		goto out;
 	}
-	for (int i = 0; i < n; i++) {
-		char fp[PV_DBUS_PREFLIGHT_PATH_MAX];
-		snprintf(fp, sizeof(fp), "%s/policy.d/%s", tmp,
-			 frags[i].filename);
-		if (write_inplace(fp, subst[i], subst_len[i])) {
-			snprintf(errbuf, errbuf_len, "could not write %s", fp);
-			goto out;
-		}
-	}
 
 	FILE *cf = fopen(conf, "w");
 	if (!cf) {
@@ -896,10 +941,18 @@ out:
 	return ret;
 }
 
-// Levels 2 (attribute scanner) and 3 (consistency) per fragment, then level 1
-// (the daemon preflight) on the whole assembled candidate — see
-// xconnect/XCONNECT.md "Validation". Any failure rejects the state.
-static int dbus_policy_fragments_validate(struct pv_state *s)
+// Read, (when `check`) scan and check consistency of, substitute, and splice
+// every declared "policy" fragment into *pol_buf/*pol_len (see
+// dbus_policy_merge_fragments()). Shared by validation (check=true: also
+// runs the attribute scanner and the state/allow-list role checks) and
+// generation (check=false: the state was already validated, so this just
+// re-derives the identical merged content from the same trail files) —
+// using one function for both guarantees the preflighted candidate and the
+// live pv-generated.conf are assembled exactly the same way. Returns 0
+// (buffer replaced, or untouched if there were no fragments), or -1 on any
+// fragment error (logged).
+static int dbus_policy_assemble(struct pv_state *s, char **pol_buf,
+				size_t *pol_len, bool check)
 {
 	struct pv_dbus_frag_entry frags[PV_DBUS_FRAG_MAX];
 	int n = fragments_collect(s, frags, PV_DBUS_FRAG_MAX);
@@ -907,17 +960,15 @@ static int dbus_policy_fragments_validate(struct pv_state *s)
 		return 0;
 
 	int ret = -1;
-	char *pw_buf = NULL, *pol_buf = NULL;
-	size_t pw_len = 0, pol_len = 0;
 	char *subst[PV_DBUS_FRAG_MAX] = { 0 };
 	size_t subst_len[PV_DBUS_FRAG_MAX] = { 0 };
 
 	const char *known_roles[PV_DBUS_FRAG_MAX * 4];
-	int known_n = known_roles_collect(
-		s, known_roles, sizeof(known_roles) / sizeof(known_roles[0]));
-
-	if (dbus_policy_build(s, &pw_buf, &pw_len, &pol_buf, &pol_len))
-		return -1;
+	int known_n =
+		check ? known_roles_collect(s, known_roles,
+					    sizeof(known_roles) /
+						    sizeof(known_roles[0])) :
+			0;
 
 	for (int i = 0; i < n; i++) {
 		size_t raw_len = 0;
@@ -930,22 +981,25 @@ static int dbus_policy_fragments_validate(struct pv_state *s)
 			goto out;
 		}
 
-		const char *owns_names[PV_DBUS_FRAG_MAX];
-		int owns_n = owns_names_collect(frags[i].p, owns_names,
-						sizeof(owns_names) /
-							sizeof(owns_names[0]));
-		const char *allow_roles[PV_DBUS_FRAG_MAX];
-		int allow_n = allow_roles_collect(
-			frags[i].exp, allow_roles,
-			sizeof(allow_roles) / sizeof(allow_roles[0]));
+		if (check) {
+			const char *owns_names[PV_DBUS_FRAG_MAX];
+			int owns_n = owns_names_collect(
+				frags[i].p, owns_names,
+				sizeof(owns_names) / sizeof(owns_names[0]));
+			const char *allow_roles[PV_DBUS_FRAG_MAX];
+			int allow_n = allow_roles_collect(
+				frags[i].exp, allow_roles,
+				sizeof(allow_roles) / sizeof(allow_roles[0]));
 
-		int rc = pv_dbus_policy_check(frags[i].p->name,
-					      frags[i].exp->policy, raw,
-					      owns_names, owns_n, known_roles,
-					      known_n, allow_roles, allow_n);
-		if (rc) {
-			free(raw);
-			goto out; // pv_dbus_policy_check() already logged
+			int rc = pv_dbus_policy_check(frags[i].p->name,
+						      frags[i].exp->policy, raw,
+						      owns_names, owns_n,
+						      known_roles, known_n,
+						      allow_roles, allow_n);
+			if (rc) {
+				free(raw);
+				goto out; // already logged
+			}
 		}
 
 		subst[i] = policy_fragment_substitute(raw, &subst_len[i]);
@@ -956,89 +1010,86 @@ static int dbus_policy_fragments_validate(struct pv_state *s)
 			       frags[i].p->name, frags[i].exp->policy);
 			goto out;
 		}
+
+		size_t inner_len = 0;
+		if (!policy_fragment_inner(subst[i], &inner_len)) {
+			pv_log(ERROR,
+			       "platform '%s' policy fragment '%s' must be wrapped in a single <busconfig> element",
+			       frags[i].p->name, frags[i].exp->policy);
+			goto out;
+		}
 	}
 
+	ret = dbus_policy_merge_fragments(pol_buf, pol_len, subst, subst_len,
+					  n);
+
+out:
+	for (int i = 0; i < n; i++)
+		free(subst[i]);
+	return ret;
+}
+
+// Level 2 (attribute scanner) and level 3 (consistency) per fragment via
+// dbus_policy_assemble(), then level 1 (the daemon preflight) on the merged
+// candidate — see xconnect/XCONNECT.md "Validation". Any failure rejects
+// the state.
+static int dbus_policy_fragments_validate(struct pv_state *s)
+{
+	struct pv_dbus_frag_entry frags[PV_DBUS_FRAG_MAX];
+	if (fragments_collect(s, frags, PV_DBUS_FRAG_MAX) == 0)
+		return 0; // nothing declared: skip the daemon spawn entirely
+
+	int ret = -1;
+	char *pw_buf = NULL, *pol_buf = NULL;
+	size_t pw_len = 0, pol_len = 0;
+	if (dbus_policy_build(s, &pw_buf, &pw_len, &pol_buf, &pol_len))
+		return -1;
+
+	if (dbus_policy_assemble(s, &pol_buf, &pol_len, true))
+		goto out; // already logged
+
 	char errbuf[PV_DBUS_PREFLIGHT_PATH_MAX + 256];
-	if (dbus_policy_preflight(pw_buf, pw_len, pol_buf, pol_len, frags,
-				  subst, subst_len, n, errbuf,
+	if (dbus_policy_preflight(pw_buf, pw_len, pol_buf, pol_len, errbuf,
 				  sizeof(errbuf))) {
 		pv_log(ERROR,
-		       "dbus-daemon rejected the assembled policy (generated rules plus %d fragment(s)): %s",
-		       n, errbuf);
+		       "dbus-daemon rejected the assembled policy (generated rules plus fragments): %s",
+		       errbuf);
 		goto out;
 	}
 
 	ret = 0;
 
 out:
-	for (int i = 0; i < n; i++)
-		free(subst[i]);
 	free(pw_buf);
 	free(pol_buf);
 	return ret;
 }
 
-// Reconcile the live policy directory's fragment files with the state's
-// current "policy" declarations: (re)write every substituted fragment, only
-// touching disk when its content changed, and remove any previously written
-// fragment file this pass did not re-derive — so the directory always
-// matches the state exactly. Returns true if anything changed.
-static bool dbus_policy_fragments_generate(struct pv_state *s)
+// Earlier builds shipped each fragment as its own file included via
+// <includedir> (pv-frag-*.conf); dbus_policy_assemble() splices fragments
+// into pv-generated.conf instead, both because that is the only way to make
+// "after the generated rules" deterministic (<includedir> has no defined
+// ordering relative to a sibling file) and because a leftover pv-frag-*.conf
+// from an upgraded device would otherwise keep applying stale rules. Prune
+// them unconditionally. Returns true if anything was removed.
+static bool dbus_policy_prune_legacy_fragment_files(void)
 {
-	struct pv_dbus_frag_entry frags[PV_DBUS_FRAG_MAX];
-	int n = fragments_collect(s, frags, PV_DBUS_FRAG_MAX);
 	bool changed = false;
+	DIR *d = opendir(PV_DBUS_SYSTEMBUS_POLICYDIR);
+	if (!d)
+		return false;
 
-	for (int i = 0; i < n; i++) {
-		size_t raw_len = 0;
-		char *raw = pv_fs_file_read(frags[i].abspath, &raw_len);
-		if (!raw) {
-			pv_log(ERROR,
-			       "platform '%s' policy fragment '%s' could not be re-read from '%s'; leaving the previous version live",
-			       frags[i].p->name, frags[i].exp->policy,
-			       frags[i].abspath);
+	struct dirent *de;
+	while ((de = readdir(d))) {
+		if (strncmp(de->d_name, "pv-frag-", 8))
 			continue;
-		}
-		size_t sub_len = 0;
-		char *sub = policy_fragment_substitute(raw, &sub_len);
-		free(raw);
-		if (!sub)
-			continue;
-
 		char fp[PATH_MAX];
 		snprintf(fp, sizeof(fp), "%s/%s", PV_DBUS_SYSTEMBUS_POLICYDIR,
-			 frags[i].filename);
-		if (file_differs(fp, sub, sub_len)) {
-			write_inplace(fp, sub, sub_len);
-			changed = true;
-		}
-		free(sub);
+			 de->d_name);
+		pv_fs_path_remove(fp, false);
+		changed = true;
 	}
-
-	DIR *d = opendir(PV_DBUS_SYSTEMBUS_POLICYDIR);
-	if (d) {
-		struct dirent *de;
-		while ((de = readdir(d))) {
-			if (strncmp(de->d_name, "pv-frag-", 8))
-				continue;
-			bool live = false;
-			for (int i = 0; i < n; i++) {
-				if (!strcmp(de->d_name, frags[i].filename)) {
-					live = true;
-					break;
-				}
-			}
-			if (live)
-				continue;
-			char fp[PATH_MAX];
-			snprintf(fp, sizeof(fp), "%s/%s",
-				 PV_DBUS_SYSTEMBUS_POLICYDIR, de->d_name);
-			pv_fs_path_remove(fp, false);
-			changed = true;
-		}
-		closedir(d);
-	}
-
+	closedir(d);
 	return changed;
 }
 
@@ -1366,6 +1417,18 @@ void pv_dbus_daemon_generate(struct pv_state *s)
 	if (dbus_policy_build(s, &pw_buf, &pw_len, &pol_buf, &pol_len))
 		return;
 
+	// Policy fragments were already validated (scanner, consistency and
+	// the daemon preflight) in pv_dbus_daemon_validate(); splice them into
+	// pol_buf the same way (dbus_policy_assemble()) so the file written
+	// below is exactly what was preflighted.
+	if (dbus_policy_assemble(s, &pol_buf, &pol_len, false)) {
+		pv_log(ERROR,
+		       "could not re-assemble dbus policy fragments; keeping the previous generated policy live");
+		free(pw_buf);
+		free(pol_buf);
+		return;
+	}
+
 	char polpath[PATH_MAX];
 	snprintf(polpath, sizeof(polpath), "%s/pv-generated.conf",
 		 PV_DBUS_SYSTEMBUS_POLICYDIR);
@@ -1378,11 +1441,9 @@ void pv_dbus_daemon_generate(struct pv_state *s)
 		write_inplace(polpath, pol_buf, pol_len);
 	}
 
-	// Policy fragments were already validated (scanner, consistency and
-	// the daemon preflight) in pv_dbus_daemon_validate(); re-derive them
-	// here from the same trail files so the live directory always
-	// matches the current state exactly, pruning any that are now stale.
-	if (dbus_policy_fragments_generate(s))
+	// One-time migration cleanup: an upgraded device may still carry
+	// fragment files from before splicing existed.
+	if (dbus_policy_prune_legacy_fragment_files())
 		changed = true;
 
 	if (changed) {
