@@ -39,6 +39,8 @@ char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
 			int tokc);
 const char *pv_json_get_value_ref(const char *buf, const char *key,
 				  jsmntok_t *tok, int tokc, int *len);
+char *pv_json_get_value_top(const char *buf, const char *key, jsmntok_t *tok,
+			    int tokc);
 
 char *pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
 

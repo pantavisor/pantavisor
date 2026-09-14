@@ -893,19 +893,24 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 
 		int svc_c;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
-			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
-			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
-			char *r = pv_json_get_value(svc_s, "role", sv, svc_c);
-			char *iface = pv_json_get_value(svc_s, "interface", sv,
-							svc_c);
-			char *target =
-				pv_json_get_value(svc_s, "target", sv, svc_c);
+			// depth-aware: "name"/"role"/etc may also appear nested,
+			// e.g. inside a "names" array entry object
+			char *n =
+				pv_json_get_value_top(svc_s, "name", sv, svc_c);
+			char *t_s =
+				pv_json_get_value_top(svc_s, "type", sv, svc_c);
+			char *r =
+				pv_json_get_value_top(svc_s, "role", sv, svc_c);
+			char *iface = pv_json_get_value_top(svc_s, "interface",
+							    sv, svc_c);
+			char *target = pv_json_get_value_top(svc_s, "target",
+							     sv, svc_c);
 			struct pv_platform_service *svc =
 				pv_platform_add_service(
 					p, type, service_str_to_type(t_s), n, r,
 					iface, target);
-			char *names =
-				pv_json_get_value(svc_s, "names", sv, svc_c);
+			char *names = pv_json_get_value_top(svc_s, "names", sv,
+							    svc_c);
 			if (names) {
 				if (svc)
 					platform_service_names_add(svc, names);
@@ -1146,7 +1151,7 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 	// Top-level "roles" map (new format only; a legacy bare array has no
 	// "roles" key to match). Uses the original document buf/tokv/tokc,
 	// before `buf` is redirected to the services array text below.
-	char *roles_str = pv_json_get_value(buf, "roles", tokv, tokc);
+	char *roles_str = pv_json_get_value_top(buf, "roles", tokv, tokc);
 	if (roles_str) {
 		platform_roles_add(p, roles_str);
 		free(roles_str);
@@ -1195,24 +1200,27 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 
 		int svc_c;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
-			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
+			// depth-aware: an "allow" entry object can carry its
+			// own nested "role" (and similarly-named) keys
+			char *t_s =
+				pv_json_get_value_top(svc_s, "type", sv, svc_c);
 			char *owns =
-				pv_json_get_value(svc_s, "owns", sv, svc_c);
+				pv_json_get_value_top(svc_s, "owns", sv, svc_c);
 
 			if (owns) {
 				// Hosted system-bus name declaration:
 				// {type:"dbus", bus:"system-bus",
 				//  owns:"org.x.Foo", role:"...", allow:[...]}
-				char *bus = pv_json_get_value(svc_s, "bus", sv,
-							      svc_c);
-				char *role = pv_json_get_value(svc_s, "role",
-							       sv, svc_c);
+				char *bus = pv_json_get_value_top(svc_s, "bus",
+								  sv, svc_c);
+				char *role = pv_json_get_value_top(
+					svc_s, "role", sv, svc_c);
 
 				// activation:{"mode":"on-demand"|"always"};
 				// default "always" (start at boot). Only the
 				// nested "mode" string is consulted.
 				bool activatable = false;
-				char *act_str = pv_json_get_value(
+				char *act_str = pv_json_get_value_top(
 					svc_s, "activation", sv, svc_c);
 				if (act_str) {
 					jsmntok_t *atv = NULL;
@@ -1241,7 +1249,7 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 				// allow: array of role strings and/or
 				// {"role":...,"interfaces":[...],
 				//  "members":[...],"paths":[...]} objects.
-				char *allow_str = pv_json_get_value(
+				char *allow_str = pv_json_get_value_top(
 					svc_s, "allow", sv, svc_c);
 				if (allow_str && exp) {
 					jsmntok_t *atokv = NULL;
@@ -1281,10 +1289,10 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 					free(role);
 				free(owns);
 			} else {
-				char *n = pv_json_get_value(svc_s, "name", sv,
-							    svc_c);
-				char *sock = pv_json_get_value(svc_s, "socket",
-							       sv, svc_c);
+				char *n = pv_json_get_value_top(svc_s, "name",
+								sv, svc_c);
+				char *sock = pv_json_get_value_top(
+					svc_s, "socket", sv, svc_c);
 				pv_platform_add_service_export(
 					p, service_str_to_type(t_s), n, sock);
 				if (n)
