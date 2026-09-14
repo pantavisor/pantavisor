@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# Declarative D-Bus policy vocabulary: allow-list narrowing and role UID
+# pinning on the hosted system bus.
+#
+# pv-avahi's allow list mixes plain role strings ("operator", "monitor", full
+# access to org.freedesktop.Avahi) with a narrowing object:
+#   {"role":"avahi-reader","interfaces":["org.freedesktop.Avahi.Server"],
+#    "members":["GetVersionString"]}
+# which maps onto send_interface/send_member on the generated <allow> line, so
+# "avahi-reader" may call only that one interface/member on the owned name.
+# pv-avahi also carries a top-level "roles" map pinning "avahi-service" to a
+# real uid (4242) instead of one from pantavisor's synthetic pool (base
+# 90000), for legacy daemons that authorise callers via
+# GetConnectionUnixUser.
+#
+# The consumer is pv-example-system-dbus-reader (role "avahi-reader", names
+# form, always-on). pv-avahi is on-demand / status_goal MOUNTED, so the
+# reader's first call is also the cold call that activates it (same fence as
+# avahi-systembus).
+
+ADDR="unix:path=/run/dbus/system_bus_socket"
+CONSUMER="pv-example-system-dbus-reader"
+OWNER="pv-avahi"
+SVC="org.freedesktop.Avahi"
+OBJ="/"
+IFACE="org.freedesktop.Avahi.Server"
+
+dsend() {
+	# run dbus-send inside the reader container against the injected bus
+	# socket. Exec dbus-send directly (via env for the address) rather than
+	# through "sh -c": under pventer a busybox "sh -c" wrapper swallows
+	# dbus-send's stdout, so the reply would be lost.
+	# shellcheck disable=SC2086
+	pventer -c "$CONSUMER" \
+		env DBUS_SYSTEM_BUS_ADDRESS="$ADDR" \
+		dbus-send --system --print-reply $* 2>&1
+}
+
+# Wait for the always-on reader to be up so pventer has a pid to enter.
+wait_for_value "pvcontrol containers ls | jq -r '.[] | select(.name == \"$CONSUMER\") | .status'" "STARTED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for $CONSUMER STARTED" >&2; exit 1; }
+
+echo "== narrowed role's dependency is visible in the xconnect graph: $CONSUMER -> $SVC =="
+pvcontrol graph ls | tr -d '\r' \
+	| jq -M -c --arg n "$SVC" --arg c "$CONSUMER" \
+	'.[] | select(.consumes == $n and .consumer == $c) | {consumes, consumer, owner, activation}'
+
+# avahi is on-demand / status_goal MOUNTED, so the reader's first call also
+# activates it -- wait for the name to gain an owner before asserting on the
+# call itself (same fence as avahi-systembus).
+i=0
+while [ $i -lt 30 ]; do
+	if dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC" \
+		| grep -q "boolean true"; then
+		break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
+
+echo "== narrowed member allowed: $CONSUMER calls $IFACE.GetVersionString (also the cold activation call) =="
+if dsend "--dest=$SVC $OBJ $IFACE.GetVersionString" | grep -q 'string "avahi'; then
+	echo "reader GetVersionString: OK"
+else
+	echo "reader GetVersionString: FAILED"
+fi
+
+echo "== member outside the narrowing denied: $CONSUMER calls $IFACE.GetHostName =="
+if dsend "--dest=$SVC $OBJ $IFACE.GetHostName" | grep -qE "AccessDenied|not allowed"; then
+	echo "reader GetHostName: DENIED"
+else
+	echo "reader GetHostName: ALLOWED (unexpected)"
+fi
+
+echo "== role UID pin: $OWNER's connection uid for $SVC is the pinned 4242, not a synthetic-pool uid =="
+uid_reply=$(dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixUser string:$SVC")
+if echo "$uid_reply" | grep -qE "AccessDenied|not allowed"; then
+	echo "avahi-service uid pinned to 4242: call refused by policy"
+elif echo "$uid_reply" | grep -q "uint32 4242"; then
+	echo "avahi-service uid pinned to 4242: yes"
+else
+	echo "avahi-service uid pinned to 4242: no"
+fi
