@@ -754,6 +754,112 @@ static service_type_t service_str_to_type(char *str)
 	return SVC_TYPE_UNKNOWN;
 }
 
+// Parse one requirement's "names" array into svc->names. An element is a
+// plain string (shorthand for activation.mode "none") or an object with
+// "name" and an optional "activation":{"mode":"on-owner"|"none"}. bus/owner
+// are resolved later, at pv_state_validate_services() time. An unrecognized
+// activation mode is recorded (activation_unknown) rather than dropped, so
+// state validation can fail the state instead of silently ignoring it.
+static int platform_service_names_add(struct pv_platform_service *svc,
+				      char *buf)
+{
+	int tokc, size, ret = 0;
+	jsmntok_t *tokv, *t;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+		return 0;
+	size = jsmnutil_array_count(buf, tokv);
+	if (size <= 0)
+		goto out;
+	t = tokv + 1;
+	jsmntok_t *tok_end = tokv + tokc;
+	for (int i = 0; i < size && t < tok_end; i++) {
+		int el_start = t->start;
+		int el_end = t->end;
+		int el_len = el_end - el_start;
+
+		if (t->type == JSMN_STRING) {
+			char *name = calloc(el_len + 1, 1);
+			if (name) {
+				memcpy(name, buf + el_start, el_len);
+				pv_platform_service_add_name(svc, name, false,
+							     false);
+				free(name);
+			}
+		} else if (t->type == JSMN_OBJECT) {
+			char *obj_s = calloc(el_len + 1, 1);
+			if (!obj_s)
+				break;
+			memcpy(obj_s, buf + el_start, el_len);
+
+			int obj_c;
+			jsmntok_t *ov;
+			if (jsmnutil_parse_json(obj_s, &ov, &obj_c) > 0) {
+				char *name = pv_json_get_value(obj_s, "name",
+							       ov, obj_c);
+				if (!name) {
+					pv_log(ERROR,
+					       "names entry missing 'name'");
+				} else {
+					bool on_owner = false;
+					bool unknown = false;
+					char *act = pv_json_get_value(
+						obj_s, "activation", ov, obj_c);
+					if (act) {
+						jsmntok_t *av;
+						int ac;
+						if (jsmnutil_parse_json(
+							    act, &av, &ac) >
+						    0) {
+							char *mode =
+								pv_json_get_value(
+									act,
+									"mode",
+									av, ac);
+							if (mode) {
+								if (!strcmp(mode,
+									    "on-owner"))
+									on_owner =
+										true;
+								else if (!strcmp(mode,
+										 "none"))
+									on_owner =
+										false;
+								else {
+									unknown =
+										true;
+									pv_log(ERROR,
+									       "name '%s' has unknown activation mode '%s'",
+									       name,
+									       mode);
+								}
+								free(mode);
+							}
+							free(av);
+						}
+						free(act);
+					}
+					pv_platform_service_add_name(
+						svc, name, on_owner, unknown);
+					free(name);
+				}
+				free(ov);
+			}
+			free(obj_s);
+		} else {
+			pv_log(ERROR, "unexpected 'names' entry type");
+		}
+
+		t++;
+		while (t < tok_end && t->start < el_end)
+			t++;
+	}
+	ret = 1;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
 static int platform_services_add(struct pv_platform *p, plat_service_t type,
 				 char *buf)
 {
@@ -794,9 +900,17 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 							svc_c);
 			char *target =
 				pv_json_get_value(svc_s, "target", sv, svc_c);
-			pv_platform_add_service(p, type,
-						service_str_to_type(t_s), n, r,
-						iface, target);
+			struct pv_platform_service *svc =
+				pv_platform_add_service(
+					p, type, service_str_to_type(t_s), n, r,
+					iface, target);
+			char *names =
+				pv_json_get_value(svc_s, "names", sv, svc_c);
+			if (names) {
+				if (svc)
+					platform_service_names_add(svc, names);
+				free(names);
+			}
 			if (n)
 				free(n);
 			if (t_s)
