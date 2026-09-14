@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Name-based D-Bus consumer requirement: derived consumes/link descriptors, a working socket, and no-owner validation failure",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-avahi.pvrexport.tgz",
+				"../../common/tarballs/pv-avahi-browse.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}
