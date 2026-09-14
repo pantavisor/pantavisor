@@ -400,6 +400,8 @@ void pv_platform_free(struct pv_platform *p)
 			free(se->owns);
 		if (se->role)
 			free(se->role);
+		if (se->policy)
+			free(se->policy);
 		struct pv_platform_service_allow *al, *al_tmp;
 		dl_list_for_each_safe(al, al_tmp, &se->allow,
 				      struct pv_platform_service_allow, list)
@@ -1755,22 +1757,24 @@ pv_platform_service_add_name(struct pv_platform_service *svc, const char *name,
 	return n;
 }
 
-void pv_platform_add_service_export(struct pv_platform *p,
-				    service_type_t svc_type, char *name,
-				    char *socket)
+struct pv_platform_service_export *
+pv_platform_add_service_export(struct pv_platform *p, service_type_t svc_type,
+			       char *name, char *socket)
 {
 	struct pv_platform_service_export *se =
 		calloc(1, sizeof(struct pv_platform_service_export));
 	if (!se)
-		return;
+		return NULL;
 
 	se->svc_type = svc_type;
 	if (name)
 		se->name = strdup(name);
 	if (socket)
 		se->socket = strdup(socket);
+	dl_list_init(&se->allow);
 	dl_list_init(&se->list);
 	dl_list_add_tail(&p->service_exports, &se->list);
+	return se;
 }
 
 struct pv_platform_service_export *
@@ -1831,6 +1835,18 @@ struct pv_platform_service_allow *pv_platform_service_export_add_allow(
 	dl_list_init(&al->list);
 	dl_list_add_tail(&se->allow, &al->list);
 	return al;
+}
+
+void pv_platform_service_export_set_policy(
+	struct pv_platform_service_export *se, const char *policy)
+{
+	if (!se)
+		return;
+	// Replace, not append: a state re-parse may call this again for the
+	// same export.
+	if (se->policy)
+		free(se->policy);
+	se->policy = policy ? strdup(policy) : NULL;
 }
 
 struct pv_platform_role_pin *pv_platform_add_role_pin(struct pv_platform *p,

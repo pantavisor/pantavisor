@@ -1206,6 +1206,11 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 				pv_json_get_value_top(svc_s, "type", sv, svc_c);
 			char *owns =
 				pv_json_get_value_top(svc_s, "owns", sv, svc_c);
+			// Parsed regardless of `owns`/`bus` so
+			// pv_dbus_daemon_validate() can reject a misplaced
+			// 'policy' (xconnect/XCONNECT.md "Policy Fragments").
+			char *policy = pv_json_get_value_top(svc_s, "policy",
+							     sv, svc_c);
 
 			if (owns) {
 				// Hosted system-bus name declaration:
@@ -1245,6 +1250,9 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 					pv_platform_add_service_owns(
 						p, service_str_to_type(t_s),
 						bus, owns, role, activatable);
+				if (policy)
+					pv_platform_service_export_set_policy(
+						exp, policy);
 
 				// allow: array of role strings and/or
 				// {"role":...,"interfaces":[...],
@@ -1293,14 +1301,21 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 								sv, svc_c);
 				char *sock = pv_json_get_value_top(
 					svc_s, "socket", sv, svc_c);
-				pv_platform_add_service_export(
-					p, service_str_to_type(t_s), n, sock);
+				struct pv_platform_service_export *exp =
+					pv_platform_add_service_export(
+						p, service_str_to_type(t_s), n,
+						sock);
+				if (policy)
+					pv_platform_service_export_set_policy(
+						exp, policy);
 				if (n)
 					free(n);
 				if (sock)
 					free(sock);
 			}
 
+			if (policy)
+				free(policy);
 			if (t_s)
 				free(t_s);
 			free(sv);
