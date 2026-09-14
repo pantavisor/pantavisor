@@ -2176,6 +2176,13 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 							nm->on_owner ?
 								"on-owner" :
 								"none");
+						// Host bus socket, so pv-xconnect can bring up
+						// the ownership monitor from consumer waiters
+						// alone, with no activatable provider present.
+						pv_json_ser_key(&js, "socket");
+						pv_json_ser_string(
+							&js,
+							PV_DBUS_SYSTEMBUS_SOCKET);
 					}
 					pv_json_ser_object_pop(&js);
 				}

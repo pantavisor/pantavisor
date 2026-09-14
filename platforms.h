@@ -258,6 +258,7 @@ int pv_platform_set_ready(struct pv_platform *p);
 void pv_platform_set_updated(struct pv_platform *p);
 
 bool pv_platform_is_installed(struct pv_platform *p);
+bool pv_platform_is_mounted(struct pv_platform *p);
 bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
 bool pv_platform_is_started(struct pv_platform *p);
