@@ -63,6 +63,10 @@ Containers that consume services define their requirements in `args.json` during
 - **`interface`**: Protocol-specific identifier (e.g., D-Bus interface name).
 - **`target`**: The path where `pv-xconnect` should inject the proxied resource inside the consumer container.
 
+For a D-Bus consumer, `interface` is deprecated: it is still accepted but carries no runtime
+meaning. Declare the well-known names the container actually talks to with `names` instead — see
+[Consumer requirements: the `names` form](#consumer-requirements-the-names-form) below.
+
 ## Mediation Patterns
 
 | `type` | What is injected | Notes |
@@ -271,6 +275,99 @@ back the deploy like a duplicate owner does. Concretely, a fragment may only:
 The JSON's `allow` list is still the source of truth for *who* may reach a
 name; a fragment may only narrow or detail *how*.
 
+##### Consumer requirements: the `names` form
+
+A consumer can declare the well-known names it needs instead of hardcoding a bus and target
+socket. `bus`, the link `name`, and `target` are all derived from each name's owning export:
+
+```json
+{
+  "PV_SERVICES_REQUIRED": [
+    {
+      "type": "dbus",
+      "role": "operator",
+      "names": [
+        { "name": "net.connman", "activation": { "mode": "on-owner" } },
+        "org.freedesktop.Avahi"
+      ]
+    }
+  ]
+}
+```
+
+- `names` lists the well-known names reached through this requirement entry. A plain string is
+  shorthand for `{"name": "...", "activation": {"mode": "none"}}`.
+- Each name must resolve to an export with a matching `owns` somewhere in the state; a name nobody
+  owns fails validation, and all names in one entry must resolve to the same bus.
+- `target` defaults to `/run/dbus/system_bus_socket` for `system-bus`. Only one entry per bus may
+  take the default; further entries must set `target` explicitly, and no two entries on the same
+  container may share a target.
+- `role` stays required — it is the identity the owner's `allow` list is written against, and roles
+  are shared across containers by design, so it cannot be derived.
+
+The legacy form (`name`, `type`, `role`, `target`, no `names`) keeps working unchanged; use it for a
+provider-owned bus pantavisor knows nothing about.
+
+##### Consumer activation (`on-owner`)
+
+A `names` entry's `activation.mode` can be `"none"` (default) or `"on-owner"`. A container with at
+least one `on-owner` name is authored with `status_goal: "MOUNTED"`:
+
+```json
+{
+  "#spec": "service-manifest-run@1",
+  "name": "my-ui",
+  "status_goal": "MOUNTED",
+  "services": {
+    "required": [
+      { "type": "dbus", "role": "operator",
+        "names": [{ "name": "net.connman", "activation": { "mode": "on-owner" } }] }
+    ]
+  },
+  "type": "lxc"
+}
+```
+
+It stays passive (volumes mounted, no process) until **every** `on-owner` name in its requirements
+has an owner on the bus, then pantavisor promotes it `MOUNTED -> STARTED` the same way it promotes
+an on-demand provider — see
+[D-Bus Service Activation](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md#d-bus-service-activation).
+Names without `on-owner` do not gate startup, and `on-owner` and a provider's own `on-demand`
+activation are independent of each other.
+
+##### Role UID pinning
+
+Roles normally get a synthetic UID from a persistent pool starting at 90000
+(`/storage/config/dbus-role-uids.json`). A top-level `roles` map in a provider's `services.json`
+pins a role name to a real uid instead:
+
+```json
+{
+  "#spec": "service-manifest-xconnect@1",
+  "services": [
+    { "type": "dbus", "bus": "system-bus", "owns": "net.connman",
+      "role": "connman", "allow": ["admin"] }
+  ],
+  "roles": {
+    "admin": { "uid": 0 }
+  }
+}
+```
+
+- Use a pin for a legacy daemon that authorizes callers via `GetConnectionUnixUser` or polkit
+  rather than the generated bus policy — without a pin it sees a pool uid (90000+), not the uid it
+  expects.
+- Pins are device-wide by role name: two providers pinning the same role to different uids, or to a
+  uid already used by the pool, fail state validation.
+- Only a provider (an export with `owns`) may pin a role; a consumer cannot promote its own
+  identity.
+- Pinning uid 0 is accepted but risky: `pv-xconnect`'s own ownership-monitor connection also
+  authenticates as uid 0, so a uid-0 pin makes that role's policy also match the monitor's
+  connection.
+
+`GetConnectionUnixProcessID` still returns `pv-xconnect`'s pid regardless of any pin; that is not
+masqueraded.
+
 ##### Multi-identity consumers
 
 A container that must reach the bus as more than one identity (for example, to
@@ -292,6 +389,44 @@ several requirement entries, each with a distinct `role` **and** a distinct
 Each entry yields its own socket masqueraded to that role's UID; the app picks
 which one to dial per connection.
 
+##### Migrating an existing D-Bus stack
+
+Two behaviors surprise a service moved onto the hosted bus unchanged.
+
+**Deny-by-default is stricter than a distribution's default policy.** Most distributions ship a
+`<policy context="default"><allow send_destination="*"/></policy>` fallback; the hosted bus has
+none. A legacy client whose role does not appear in the owner's `allow` list fails immediately:
+
+```
+$ pventer -c my-legacy-client dbus-send --system --print-reply \
+    --dest=net.connman / net.connman.Manager.GetProperties
+Error org.freedesktop.DBus.Error.AccessDenied: ...
+```
+
+Fix: add the role to the owner's `allow` list in its `services.json` export:
+
+```json
+{ "owns": "net.connman", "role": "connman", "allow": ["operator", "monitor", "your-role-here"] }
+```
+
+**Legacy uid-based authorization sees a synthetic pool uid.** A daemon that calls
+`GetConnectionUnixUser` on its caller, or checks a polkit rule keyed on a real uid, sees a number
+from pantavisor's role-uid pool (90000+) — not the uid an equivalent host process would present.
+Fix: pin the role to the uid the daemon expects with a top-level `roles` map (see
+[Role UID pinning](#role-uid-pinning) above):
+
+```json
+"roles": { "admin": { "uid": 0 } }
+```
+
+Caveat: `pv-xconnect`'s own ownership-monitor connection also authenticates as uid 0, so pinning a
+role to uid 0 makes that role's policy also match the monitor's connection — avoid pinning uid 0 to
+a role a real caller also holds if that distinction matters for your policy.
+
+**`GetConnectionUnixProcessID` is not masqueraded.** It always returns `pv-xconnect`'s own pid, not
+the calling container's init pid. There is no pin or fix for this today; a daemon that authorizes on
+the caller's pid cannot be migrated onto the hosted bus as-is.
+
 The full design lives in
 [xconnect/XCONNECT.md](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md).
 
@@ -301,6 +436,73 @@ The full design lives in
 
 ### Wayland
 Mediates the Wayland protocol for isolated UI rendering, allowing a containerized compositor to serve multiple isolated clients.
+
+## Graph Output
+
+[`GET /xconnect-graph`](pantavisor-commands.md#xconnect-graph) (what `pvcontrol graph ls` prints)
+returns a flat JSON array mixing three kinds of elements, distinguished by which key is present.
+
+### Link
+
+One element per resolved consumer/provider pair:
+
+| Field | Description |
+|-------|-------------|
+| `consumer` | The container name requesting the service. |
+| `consumer_pid` | PID of the consumer container's init process. |
+| `provider` | The container name providing the service (`_pv_` for the hosted bus). |
+| `provider_pid` | PID of the provider container's init process (`0` for the hosted bus). |
+| `name` | The service name as declared in `services.json`/the requirement. |
+| `type` | The connection type (`unix`, `rest`, `dbus`, `drm`, `wayland`). |
+| `role` | The role assigned to this link. Defaults to `"any"`. |
+| `interface` | Legacy protocol identifier; defaults to `type` if unset. |
+| `target` | The path where the proxy is injected in the consumer. |
+| `socket` | The path to the real socket in the provider namespace. |
+| `uid` | Hosted-bus links only: the role's masqueraded uid. |
+
+```json
+{ "consumer": "pv-example-unix-client", "consumer_pid": 1234,
+  "provider": "pv-example-unix-server", "provider_pid": 5678,
+  "name": "raw", "type": "unix", "role": "any", "interface": "unix",
+  "target": "/run/pv/services/raw.sock", "socket": "/run/example/raw.sock" }
+```
+
+### Activatable
+
+One element per hosted-bus name declared with `activation.mode: on-demand` (see
+[Pantavisor-Hosted System Bus](#pantavisor-hosted-system-bus)):
+
+| Field | Description |
+|-------|-------------|
+| `activatable` | The well-known name that starts its owner on first use. |
+| `bus` | The bus the name lives on (`system-bus`). |
+| `owner` | The container that owns the name. |
+| `socket` | The host-side bus socket, so `pv-xconnect`'s ownership monitor knows where to connect. |
+
+```json
+{ "activatable": "org.example.Foo", "bus": "system-bus",
+  "owner": "foo-app", "socket": "/run/pv/dbus/system_bus_socket" }
+```
+
+### Consumes
+
+One element per resolved name in a consumer's `names` requirement (see
+[Consumer requirements: the `names` form](#consumer-requirements-the-names-form)):
+
+| Field | Description |
+|-------|-------------|
+| `consumes` | The well-known name this consumer depends on. |
+| `bus` | The bus the name resolved to. |
+| `consumer` | The container declaring the requirement. |
+| `owner` | The container that owns the name. |
+| `activation` | `"on-owner"` or `"none"`. |
+| `socket` | The host-side bus socket. |
+
+```json
+{ "consumes": "net.connman", "bus": "system-bus", "consumer": "my-ui",
+  "owner": "connman", "activation": "on-owner",
+  "socket": "/run/pv/dbus/system_bus_socket" }
+```
 
 ## Tools
 
