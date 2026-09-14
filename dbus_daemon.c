@@ -256,6 +256,16 @@ struct pv_platform *pv_dbus_daemon_activatable_owner(struct pv_state *s,
 	return NULL;
 }
 
+// Reuse the normal lifecycle: flip the goal to STARTED and re-inject the
+// platform into the run loop (set_installed). The next pv_state_run tick
+// drives mount -> drivers -> start; a chained dependency (a cold call made by
+// the platform being started here) re-enters activation through the proxy.
+static void pv_dbus_daemon_promote(struct pv_platform *p)
+{
+	pv_platform_set_status_goal(p, PLAT_STARTED);
+	pv_platform_set_installed(p);
+}
+
 int pv_dbus_daemon_activate(struct pv_state *s, const char *name)
 {
 	struct pv_platform *owner = pv_dbus_daemon_activatable_owner(s, name);
@@ -267,15 +277,25 @@ int pv_dbus_daemon_activate(struct pv_state *s, const char *name)
 	    pv_platform_is_ready(owner))
 		return 0;
 
-	// Reuse the normal lifecycle: flip the goal to STARTED and re-inject the
-	// owner into the run loop (set_installed). The next pv_state_run tick
-	// drives mount -> drivers -> start; a chained dependency (this owner
-	// making its own cold call) re-enters activation through the proxy.
 	pv_log(INFO,
 	       "on-demand activation: starting '%s' (owner of D-Bus name '%s')",
 	       owner->name, name);
-	pv_platform_set_status_goal(owner, PLAT_STARTED);
-	pv_platform_set_installed(owner);
+	pv_dbus_daemon_promote(owner);
+	return 0;
+}
+
+int pv_dbus_daemon_activate_container(struct pv_state *s, const char *container)
+{
+	struct pv_platform *p = pv_state_fetch_platform(s, container);
+	if (!p)
+		return -1; // unknown container
+
+	if (!pv_platform_is_mounted(p))
+		return 0; // already started (or never passive) — success no-op
+
+	pv_log(INFO, "on-owner activation: starting consumer container '%s'",
+	       container);
+	pv_dbus_daemon_promote(p);
 	return 0;
 }
 
