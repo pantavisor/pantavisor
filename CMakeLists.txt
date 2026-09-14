@@ -219,6 +219,8 @@ add_executable(pantavisor
 			daemons.h
 			dbus_daemon.c
 			dbus_daemon.h
+			dbus_policy_check.c
+			dbus_policy_check.h
 			debug.c
 			debug.h
 			disk/disk.c

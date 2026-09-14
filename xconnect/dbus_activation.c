@@ -63,15 +63,31 @@ struct waiter {
 	struct dl_list list;
 };
 
+// One consumer container and the "on-owner" names gating its activation (see
+// XCONNECT.md, "Consumer Activation (on-owner)"). `fired` makes activation
+// one-shot per appearance in the graph: cleared when the consumer drops out of
+// the reconcile and is rebuilt (see pvx_act_reconcile_end()), so it can fire
+// again if it comes back.
+struct consumer_entry {
+	char *consumer;
+	struct dl_list names; // struct name_entry, the on-owner names required
+	bool fired;
+	struct dl_list list;
+};
+
 static bool g_inited;
 static struct dl_list g_activatable; // active set (names)
 static struct dl_list g_pending; // built during a reconcile pass
 static struct dl_list g_owned; // names with a current owner (per monitor)
 static struct dl_list g_waiters;
+static struct dl_list g_consumers; // active set (struct consumer_entry)
+static struct dl_list g_consumers_pending; // built during a reconcile pass
 static char g_bus_socket[PATH_MAX];
 static struct bufferevent *g_mon;
 static enum mon_state g_mon_state;
 static struct event *g_mon_retry;
+
+static void evaluate_consumers(void);
 
 static void ensure_init(void)
 {
@@ -81,6 +97,8 @@ static void ensure_init(void)
 	dl_list_init(&g_pending);
 	dl_list_init(&g_owned);
 	dl_list_init(&g_waiters);
+	dl_list_init(&g_consumers);
+	dl_list_init(&g_consumers_pending);
 	g_inited = true;
 }
 
@@ -131,6 +149,37 @@ static void set_clear(struct dl_list *set)
 		dl_list_del(&e->list);
 		free(e->name);
 		free(e);
+	}
+}
+
+// --- consumer waiters (container gated on a set of on-owner names) ---------
+
+static struct consumer_entry *find_consumer(struct dl_list *list,
+					    const char *consumer)
+{
+	struct consumer_entry *ce, *t;
+	dl_list_for_each_safe(ce, t, list, struct consumer_entry, list)
+	{
+		if (!strcmp(ce->consumer, consumer))
+			return ce;
+	}
+	return NULL;
+}
+
+static void consumer_entry_free(struct consumer_entry *ce)
+{
+	dl_list_del(&ce->list);
+	set_clear(&ce->names);
+	free(ce->consumer);
+	free(ce);
+}
+
+static void consumer_set_clear(struct dl_list *list)
+{
+	struct consumer_entry *ce, *t;
+	dl_list_for_each_safe(ce, t, list, struct consumer_entry, list)
+	{
+		consumer_entry_free(ce);
 	}
 }
 
@@ -214,6 +263,8 @@ static void mon_dispatch(const uint8_t *buf, struct pv_dbus_msg *m)
 	if (m->type == PV_DBUS_TYPE_METHOD_RETURN &&
 	    m->reply_serial == MON_SERIAL_LISTNAMES) {
 		mon_seed_listnames(buf, m);
+		// Evaluation point (a): ownership already known at seed time.
+		evaluate_consumers();
 		return;
 	}
 	if (m->type == PV_DBUS_TYPE_SIGNAL &&
@@ -227,6 +278,8 @@ static void mon_dispatch(const uint8_t *buf, struct pv_dbus_msg *m)
 		if (new_owner[0]) {
 			set_add(&g_owned, name);
 			fire_ready(name);
+			// Evaluation point (b): a name just gained an owner.
+			evaluate_consumers();
 		} else {
 			set_remove(&g_owned, name);
 		}
@@ -336,6 +389,7 @@ void pvx_act_reconcile_begin(void)
 {
 	ensure_init();
 	set_clear(&g_pending);
+	consumer_set_clear(&g_consumers_pending);
 }
 
 void pvx_act_reconcile_add(const char *name, const char *bus_socket)
@@ -346,6 +400,31 @@ void pvx_act_reconcile_add(const char *name, const char *bus_socket)
 	set_add(&g_pending, name);
 	if (bus_socket && bus_socket[0] && g_bus_socket[0] == '\0')
 		strncpy(g_bus_socket, bus_socket, sizeof(g_bus_socket) - 1);
+}
+
+void pvx_act_reconcile_add_consumes(const char *consumer, const char *name,
+				    bool on_owner, const char *bus_socket)
+{
+	ensure_init();
+	if (bus_socket && bus_socket[0] && g_bus_socket[0] == '\0')
+		strncpy(g_bus_socket, bus_socket, sizeof(g_bus_socket) - 1);
+	// Only on-owner names gate activation; others are tracked elsewhere as
+	// plain links and need no waiter here.
+	if (!on_owner || !consumer || !consumer[0] || !name || !name[0])
+		return;
+
+	struct consumer_entry *ce =
+		find_consumer(&g_consumers_pending, consumer);
+	if (!ce) {
+		ce = calloc(1, sizeof(*ce));
+		if (!ce)
+			return;
+		ce->consumer = strdup(consumer);
+		dl_list_init(&ce->names);
+		dl_list_init(&ce->list);
+		dl_list_add(&g_consumers_pending, &ce->list);
+	}
+	set_add(&ce->names, name);
 }
 
 void pvx_act_reconcile_end(void)
@@ -359,10 +438,37 @@ void pvx_act_reconcile_end(void)
 		dl_list_del(&e->list);
 		dl_list_add(&g_activatable, &e->list);
 	}
-	// Bring the monitor up once we know the bus socket and have work.
-	if (!dl_list_empty(&g_activatable) && g_bus_socket[0] &&
-	    g_mon_state == MON_DOWN)
+
+	// Swap pending consumers -> active, carrying `fired` forward by consumer
+	// name so a still-present descriptor doesn't re-post on the next 5s
+	// reconcile; a consumer that dropped out of the graph and reappears gets
+	// a fresh entry (fired defaults to false) and may fire again.
+	struct consumer_entry *ce, *ce_t;
+	dl_list_for_each_safe(ce, ce_t, &g_consumers_pending,
+			      struct consumer_entry, list)
+	{
+		struct consumer_entry *old =
+			find_consumer(&g_consumers, ce->consumer);
+		if (old && old->fired)
+			ce->fired = true;
+	}
+	consumer_set_clear(&g_consumers);
+	dl_list_for_each_safe(ce, ce_t, &g_consumers_pending,
+			      struct consumer_entry, list)
+	{
+		dl_list_del(&ce->list);
+		dl_list_add(&g_consumers, &ce->list);
+	}
+
+	// Bring the monitor up once we know the bus socket and have work, either
+	// an activatable provider or a consumer waiting on ownership.
+	if ((!dl_list_empty(&g_activatable) || !dl_list_empty(&g_consumers)) &&
+	    g_bus_socket[0] && g_mon_state == MON_DOWN)
 		mon_connect();
+
+	// Evaluation point (c): ownership may already be known (e.g. seeded
+	// before this descriptor first appeared, or set by an earlier pass).
+	evaluate_consumers();
 }
 
 bool pvx_act_is_activatable(const char *name)
@@ -450,11 +556,24 @@ static void waiter_timeout_cb(evutil_socket_t fd, short ev, void *arg)
 	(void)name;
 }
 
-// One in-flight activation POST per name; on a non-2xx reply we fail that name's
-// waiters. Success just leaves them waiting for NameOwnerChanged / timeout.
+// Shared POST /xconnect/dbus/activate plumbing for both the name-based (cold
+// call) and container-based (consumer on-owner) triggers below. `fail_cb`, if
+// set, is called with `fail_ctx` on a non-2xx reply or a connect error and
+// must free `fail_ctx` itself; a successful reply needs no action here (the
+// monitor connection's NameOwnerChanged is the actual readiness signal).
+typedef void (*act_post_fail_cb)(void *ctx);
+
 struct act_post {
-	char *name;
+	char *body;
+	act_post_fail_cb fail_cb;
+	void *fail_ctx;
 };
+
+static void act_post_free(struct act_post *ap)
+{
+	free(ap->body);
+	free(ap);
+}
 
 static void act_post_read_cb(struct bufferevent *bev, void *ctx)
 {
@@ -471,13 +590,11 @@ static void act_post_read_cb(struct bufferevent *bev, void *ctx)
 		size_t msg_len, nh = 32;
 		int pret = phr_parse_response(data, len, &minor, &status, &msg,
 					      &msg_len, h, &nh, 0);
-		if (pret > 0 && (status < 200 || status >= 300))
-			fail_name(ap->name, "org.freedesktop.DBus.Error.Failed",
-				  "activation request rejected by pantavisor");
+		if (pret > 0 && (status < 200 || status >= 300) && ap->fail_cb)
+			ap->fail_cb(ap->fail_ctx);
 		free(data);
 	}
-	free(ap->name);
-	free(ap);
+	act_post_free(ap);
 	bufferevent_free(bev);
 }
 
@@ -485,33 +602,36 @@ static void act_post_event_cb(struct bufferevent *bev, short events, void *ctx)
 {
 	struct act_post *ap = ctx;
 	if (events & BEV_EVENT_CONNECTED) {
-		char body[PV_DBUS_STR_MAX + 32];
-		int blen = snprintf(body, sizeof(body), "{\"name\":\"%s\"}",
-				    ap->name);
 		evbuffer_add_printf(
 			bufferevent_get_output(bev),
-			"POST /xconnect/dbus/activate HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
-			blen, body);
+			"POST /xconnect/dbus/activate HTTP/1.0\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s",
+			strlen(ap->body), ap->body);
 	} else if (events & BEV_EVENT_ERROR) {
 		// Could not even reach pv-ctrl: fail now rather than wait out
-		// the timeout.
-		fail_name(ap->name, "org.freedesktop.DBus.Error.Failed",
-			  "could not reach pantavisor to activate service");
-		free(ap->name);
-		free(ap);
+		// the timeout (name path) or the next reconcile (container path).
+		if (ap->fail_cb)
+			ap->fail_cb(ap->fail_ctx);
+		act_post_free(ap);
 		bufferevent_free(bev);
 	}
 }
 
-static void trigger_activation(const char *name)
+static void act_post_send(const char *body, act_post_fail_cb fail_cb,
+			  void *fail_ctx)
 {
 	struct event_base *base = pvx_get_base();
-	if (!base)
+	if (!base) {
+		free(fail_ctx);
 		return;
+	}
 	struct act_post *ap = calloc(1, sizeof(*ap));
-	if (!ap)
+	if (!ap) {
+		free(fail_ctx);
 		return;
-	ap->name = strdup(name);
+	}
+	ap->body = strdup(body);
+	ap->fail_cb = fail_cb;
+	ap->fail_ctx = fail_ctx;
 
 	struct sockaddr_un sun;
 	memset(&sun, 0, sizeof(sun));
@@ -521,17 +641,80 @@ static void trigger_activation(const char *name)
 	struct bufferevent *bev =
 		bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 	if (!bev) {
-		free(ap->name);
-		free(ap);
+		free(ap->fail_ctx);
+		act_post_free(ap);
 		return;
 	}
 	bufferevent_setcb(bev, act_post_read_cb, NULL, act_post_event_cb, ap);
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
 	if (bufferevent_socket_connect(bev, (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
-		free(ap->name);
-		free(ap);
+		free(ap->fail_ctx);
+		act_post_free(ap);
 		bufferevent_free(bev);
+	}
+}
+
+static void act_fail_name_cb(void *ctx)
+{
+	char *name = ctx;
+	fail_name(name, "org.freedesktop.DBus.Error.Failed",
+		  "activation request rejected by pantavisor");
+	free(name);
+}
+
+static void trigger_activation(const char *name)
+{
+	char body[PV_DBUS_STR_MAX + 32];
+	snprintf(body, sizeof(body), "{\"name\":\"%s\"}", name);
+	act_post_send(body, act_fail_name_cb, strdup(name));
+}
+
+// A failed POST for a consumer container is logged and left to retry on a
+// later evaluation (no timer, no synthesized error -- see XCONNECT.md,
+// "Consumer Activation (on-owner)"): clear `fired` so evaluate_consumers()
+// tries again once ownership next changes. The consumer may have dropped out
+// of the graph (and even come back) by the time this runs; look it up by name
+// rather than holding a pointer into a set that reconcile can swap out.
+static void act_fail_consumer_cb(void *ctx)
+{
+	char *consumer = ctx;
+	printf("pvx-act: activation POST for container '%s' failed, will retry\n",
+	       consumer);
+	struct consumer_entry *ce = find_consumer(&g_consumers, consumer);
+	if (ce)
+		ce->fired = false;
+	free(consumer);
+}
+
+static void trigger_consumer_activation(const char *consumer)
+{
+	char body[PV_DBUS_STR_MAX + 32];
+	snprintf(body, sizeof(body), "{\"container\":\"%s\"}", consumer);
+	act_post_send(body, act_fail_consumer_cb, strdup(consumer));
+}
+
+// A consumer fires once every one of its on-owner names has a current owner.
+static bool consumer_all_owned(struct consumer_entry *ce)
+{
+	struct name_entry *n, *nt;
+	dl_list_for_each_safe(n, nt, &ce->names, struct name_entry, list)
+	{
+		if (!set_contains(&g_owned, n->name))
+			return false;
+	}
+	return true;
+}
+
+static void evaluate_consumers(void)
+{
+	struct consumer_entry *ce, *t;
+	dl_list_for_each_safe(ce, t, &g_consumers, struct consumer_entry, list)
+	{
+		if (ce->fired || !consumer_all_owned(ce))
+			continue;
+		ce->fired = true;
+		trigger_consumer_activation(ce->consumer);
 	}
 }
 

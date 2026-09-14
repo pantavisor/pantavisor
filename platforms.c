@@ -281,6 +281,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		dl_list_init(&p->drivers);
 		dl_list_init(&p->services);
 		dl_list_init(&p->service_exports);
+		dl_list_init(&p->role_pins);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -367,6 +368,18 @@ void pv_platform_free(struct pv_platform *p)
 			free(s->interface);
 		if (s->target)
 			free(s->target);
+		struct pv_platform_service_name *nm, *nm_tmp;
+		dl_list_for_each_safe(nm, nm_tmp, &s->names,
+				      struct pv_platform_service_name, list)
+		{
+			if (nm->name)
+				free(nm->name);
+			if (nm->bus)
+				free(nm->bus);
+			if (nm->owner)
+				free(nm->owner);
+			free(nm);
+		}
 		free(s);
 	}
 	dl_list_init(&p->services);
@@ -385,12 +398,38 @@ void pv_platform_free(struct pv_platform *p)
 			free(se->owns);
 		if (se->role)
 			free(se->role);
-		for (int i = 0; i < se->allow_count; i++)
-			free(se->allow[i]);
-		free(se->allow);
+		if (se->policy)
+			free(se->policy);
+		struct pv_platform_service_allow *al, *al_tmp;
+		dl_list_for_each_safe(al, al_tmp, &se->allow,
+				      struct pv_platform_service_allow, list)
+		{
+			if (al->role)
+				free(al->role);
+			for (int i = 0; i < al->interfaces_count; i++)
+				free(al->interfaces[i]);
+			free(al->interfaces);
+			for (int i = 0; i < al->members_count; i++)
+				free(al->members[i]);
+			free(al->members);
+			for (int i = 0; i < al->paths_count; i++)
+				free(al->paths[i]);
+			free(al->paths);
+			free(al);
+		}
 		free(se);
 	}
 	dl_list_init(&p->service_exports);
+
+	struct pv_platform_role_pin *rp, *rp_tmp;
+	dl_list_for_each_safe(rp, rp_tmp, &p->role_pins,
+			      struct pv_platform_role_pin, list)
+	{
+		if (rp->role)
+			free(rp->role);
+		free(rp);
+	}
+	dl_list_init(&p->role_pins);
 
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
@@ -1520,6 +1559,11 @@ bool pv_platform_is_installed(struct pv_platform *p)
 	return (p->status.current == PLAT_INSTALLED);
 }
 
+bool pv_platform_is_mounted(struct pv_platform *p)
+{
+	return (p->status.current == PLAT_MOUNTED);
+}
+
 bool pv_platform_is_blocked(struct pv_platform *p)
 {
 	return (p->status.current == PLAT_BLOCKED);
@@ -1657,14 +1701,15 @@ void pv_platform_ref_free(struct pv_platform_ref *pr)
 	free(pr);
 }
 
-void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
-			     service_type_t svc_type, char *name, char *role,
-			     char *interface, char *target)
+struct pv_platform_service *
+pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			service_type_t svc_type, char *name, char *role,
+			char *interface, char *target)
 {
 	struct pv_platform_service *s =
 		calloc(1, sizeof(struct pv_platform_service));
 	if (!s)
-		return;
+		return NULL;
 
 	s->type = type;
 	s->svc_type = svc_type;
@@ -1676,38 +1721,59 @@ void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 		s->interface = strdup(interface);
 	if (target)
 		s->target = strdup(target);
+	dl_list_init(&s->names);
 	dl_list_init(&s->list);
 	dl_list_add_tail(&p->services, &s->list);
+	return s;
 }
 
-void pv_platform_add_service_export(struct pv_platform *p,
-				    service_type_t svc_type, char *name,
-				    char *socket)
+struct pv_platform_service_name *
+pv_platform_service_add_name(struct pv_platform_service *svc, const char *name,
+			     bool on_owner, bool activation_unknown)
+{
+	struct pv_platform_service_name *n =
+		calloc(1, sizeof(struct pv_platform_service_name));
+	if (!n)
+		return NULL;
+
+	if (name)
+		n->name = strdup(name);
+	n->on_owner = on_owner;
+	n->activation_unknown = activation_unknown;
+	dl_list_init(&n->list);
+	dl_list_add_tail(&svc->names, &n->list);
+	return n;
+}
+
+struct pv_platform_service_export *
+pv_platform_add_service_export(struct pv_platform *p, service_type_t svc_type,
+			       char *name, char *socket)
 {
 	struct pv_platform_service_export *se =
 		calloc(1, sizeof(struct pv_platform_service_export));
 	if (!se)
-		return;
+		return NULL;
 
 	se->svc_type = svc_type;
 	if (name)
 		se->name = strdup(name);
 	if (socket)
 		se->socket = strdup(socket);
+	dl_list_init(&se->allow);
 	dl_list_init(&se->list);
 	dl_list_add_tail(&p->service_exports, &se->list);
+	return se;
 }
 
-void pv_platform_add_service_owns(struct pv_platform *p,
-				  service_type_t svc_type, const char *bus,
-				  const char *owns, const char *role,
-				  char **allow, int allow_count,
-				  bool activatable)
+struct pv_platform_service_export *
+pv_platform_add_service_owns(struct pv_platform *p, service_type_t svc_type,
+			     const char *bus, const char *owns,
+			     const char *role, bool activatable)
 {
 	struct pv_platform_service_export *se =
 		calloc(1, sizeof(struct pv_platform_service_export));
 	if (!se)
-		return;
+		return NULL;
 
 	se->svc_type = svc_type;
 	se->activatable = activatable;
@@ -1717,15 +1783,72 @@ void pv_platform_add_service_owns(struct pv_platform *p,
 		se->owns = strdup(owns);
 	if (role)
 		se->role = strdup(role);
-	if (allow_count > 0 && allow) {
-		se->allow = calloc(allow_count, sizeof(char *));
-		if (se->allow) {
-			for (int i = 0; i < allow_count; i++)
-				se->allow[i] =
-					allow[i] ? strdup(allow[i]) : NULL;
-			se->allow_count = allow_count;
-		}
-	}
+	dl_list_init(&se->allow);
 	dl_list_init(&se->list);
 	dl_list_add_tail(&p->service_exports, &se->list);
+	return se;
+}
+
+// Duplicate a string array of `count` entries, or return NULL for count <= 0.
+static char **dup_str_array(char **in, int count)
+{
+	if (count <= 0 || !in)
+		return NULL;
+	char **out = calloc(count, sizeof(char *));
+	if (!out)
+		return NULL;
+	for (int i = 0; i < count; i++)
+		out[i] = in[i] ? strdup(in[i]) : NULL;
+	return out;
+}
+
+struct pv_platform_service_allow *pv_platform_service_export_add_allow(
+	struct pv_platform_service_export *se, const char *role,
+	char **interfaces, int interfaces_count, char **members,
+	int members_count, char **paths, int paths_count)
+{
+	struct pv_platform_service_allow *al =
+		calloc(1, sizeof(struct pv_platform_service_allow));
+	if (!al)
+		return NULL;
+
+	if (role)
+		al->role = strdup(role);
+	al->interfaces = dup_str_array(interfaces, interfaces_count);
+	al->interfaces_count = al->interfaces ? interfaces_count : 0;
+	al->members = dup_str_array(members, members_count);
+	al->members_count = al->members ? members_count : 0;
+	al->paths = dup_str_array(paths, paths_count);
+	al->paths_count = al->paths ? paths_count : 0;
+	dl_list_init(&al->list);
+	dl_list_add_tail(&se->allow, &al->list);
+	return al;
+}
+
+void pv_platform_service_export_set_policy(
+	struct pv_platform_service_export *se, const char *policy)
+{
+	if (!se)
+		return;
+	// Replace, not append: a state re-parse may call this again for the
+	// same export.
+	if (se->policy)
+		free(se->policy);
+	se->policy = policy ? strdup(policy) : NULL;
+}
+
+struct pv_platform_role_pin *pv_platform_add_role_pin(struct pv_platform *p,
+						      const char *role, int uid)
+{
+	struct pv_platform_role_pin *rp =
+		calloc(1, sizeof(struct pv_platform_role_pin));
+	if (!rp)
+		return NULL;
+
+	if (role)
+		rp->role = strdup(role);
+	rp->uid = uid;
+	dl_list_init(&rp->list);
+	dl_list_add_tail(&p->role_pins, &rp->list);
+	return rp;
 }

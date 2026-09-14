@@ -39,6 +39,25 @@ single point of truth for role-based access control.
 | `drm` | DRM/KMS device node injection for display servers |
 | `wayland` | Wayland protocol mediation for isolated UI rendering |
 
+## Service Activation
+
+On the [hosted D-Bus system bus](../reference/pantavisor-xconnect.md#pantavisor-hosted-system-bus), a
+provider or a consumer can be authored as passive — mounted but not started — and brought up only
+when it is actually needed:
+
+- a **provider** container starts the first time a client sends a message to a D-Bus name it owns
+  (`activation.mode: "on-demand"` on the export);
+- a **consumer** container starts once every name it depends on has an owner
+  (`activation.mode: "on-owner"` on a required name).
+
+Both reuse `status_goal: "MOUNTED"` as the passive state and the same
+[`POST /xconnect/dbus/activate`](../reference/pantavisor-commands.md#xconnect) endpoint; there is no
+new lifecycle state and activation is strictly opt-in. `pvcontrol graph ls` shows which names are
+activatable and which consumers depend on them (the `activatable` and `consumes` elements — see
+[Graph Output](../reference/pantavisor-xconnect.md#graph-output)). See
+[D-Bus Service Activation](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md#d-bus-service-activation)
+for the full authoring model and runtime mechanism.
+
 ## Security Model
 
 Pantavisor acts as the security broker. Containers use logical service names rather than raw socket paths. Access must be explicitly declared in the [revision state JSON](revisions.md). The identity presented to the provider is resolved and injected by `pv-xconnect` from the revision's role configuration, not asserted by the consumer.
@@ -49,7 +68,7 @@ The xconnect service mesh can be inspected at runtime through the [/xconnect-gra
 
 ## Reference
 
-- [xconnect](../reference/pantavisor-xconnect.md) — `services.json` and `run.json` manifest formats, mediation patterns, the hosted D-Bus system bus
+- [xconnect](../reference/pantavisor-xconnect.md) — `services.json` and `run.json` manifest formats, mediation patterns, the hosted D-Bus system bus, service activation, role UID pinning, policy narrowing and fragments, graph output
 - [xconnect Spec](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md) — full technical design and plugin architecture
 - [Control Socket → /xconnect-graph](../reference/pantavisor-commands.md#xconnect-graph) — inspecting the graph at runtime
 - [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED`

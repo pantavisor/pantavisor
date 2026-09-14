@@ -678,11 +678,153 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	return 0;
 }
 
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+// Resolve every name in a names-form requirement to its owning export, derive
+// the requirement's link name/target and apply the rules in
+// "Name-Based D-Bus Requirements" (xconnect/XCONNECT.md). targets_seen tracks
+// per-container target uniqueness (default or explicit) across this
+// platform's other names-form requirements.
+static int pv_state_validate_service_names(struct pv_state *s,
+					   struct pv_platform *p,
+					   struct pv_platform_service *svc,
+					   const char **targets_seen,
+					   int *targets_seen_n)
+{
+	char *bus = NULL;
+	bool any_on_owner = false;
+
+	struct pv_platform_service_name *nm, *nm_tmp;
+	dl_list_for_each_safe(nm, nm_tmp, &svc->names,
+			      struct pv_platform_service_name, list)
+	{
+		struct pv_platform *owner = NULL;
+		struct pv_platform_service_export *owner_exp = NULL;
+		struct pv_platform *p_prov, *tmp_p_prov;
+		dl_list_for_each_safe(p_prov, tmp_p_prov, &s->platforms,
+				      struct pv_platform, list)
+		{
+			struct pv_platform_service_export *exp, *tmp_exp;
+			dl_list_for_each_safe(exp, tmp_exp,
+					      &p_prov->service_exports,
+					      struct pv_platform_service_export,
+					      list)
+			{
+				if (exp->owns && nm->name &&
+				    !strcmp(exp->owns, nm->name)) {
+					owner = p_prov;
+					owner_exp = exp;
+					break;
+				}
+			}
+			if (owner)
+				break;
+		}
+		if (!owner || !owner_exp) {
+			pv_log(ERROR,
+			       "platform '%s' requires name '%s' but no platform owns it",
+			       p->name, nm->name);
+			return -1;
+		}
+
+		if (!bus) {
+			bus = owner_exp->bus;
+		} else if (!owner_exp->bus || strcmp(bus, owner_exp->bus)) {
+			pv_log(ERROR,
+			       "platform '%s' name '%s' is on bus '%s' but the requirement already resolved to bus '%s'",
+			       p->name, nm->name,
+			       owner_exp->bus ? owner_exp->bus : "(none)", bus);
+			return -1;
+		}
+
+		bool allowed = false;
+		struct pv_platform_service_allow *al, *al_tmp;
+		dl_list_for_each_safe(al, al_tmp, &owner_exp->allow,
+				      struct pv_platform_service_allow, list)
+		{
+			if (al->role && svc->role &&
+			    !strcmp(al->role, svc->role)) {
+				allowed = true;
+				break;
+			}
+		}
+		if (!allowed) {
+			pv_log(ERROR,
+			       "role '%s' for platform '%s' is not in the allow list of name '%s'",
+			       svc->role ? svc->role : "(none)", p->name,
+			       nm->name);
+			return -1;
+		}
+
+		if (nm->activation_unknown) {
+			pv_log(ERROR,
+			       "platform '%s' name '%s' has an unknown activation mode",
+			       p->name, nm->name);
+			return -1;
+		}
+
+		free(nm->bus);
+		nm->bus = owner_exp->bus ? strdup(owner_exp->bus) : NULL;
+		free(nm->owner);
+		nm->owner = owner->name ? strdup(owner->name) : NULL;
+
+		if (nm->on_owner)
+			any_on_owner = true;
+	}
+
+	if (!bus)
+		return 0; // empty names list; nothing to derive
+
+	if (!svc->name)
+		svc->name = strdup(bus);
+
+	const char *final_target = svc->target;
+	char *derived_target = NULL;
+	if (!final_target) {
+		if (strcmp(bus, PV_DBUS_SYSTEMBUS_NAME)) {
+			pv_log(ERROR,
+			       "platform '%s' has no default target for bus '%s'",
+			       p->name, bus);
+			return -1;
+		}
+		derived_target = strdup(PV_DBUS_SYSTEMBUS_DEFAULT_TARGET);
+		final_target = derived_target;
+	}
+
+	for (int i = 0; i < *targets_seen_n; i++) {
+		if (!strcmp(targets_seen[i], final_target)) {
+			pv_log(ERROR,
+			       "platform '%s' has two dbus requirements targeting '%s'",
+			       p->name, final_target);
+			free(derived_target);
+			return -1;
+		}
+	}
+
+	if (derived_target)
+		svc->target = derived_target;
+	targets_seen[(*targets_seen_n)++] = svc->target;
+
+	if (any_on_owner && p->status.goal != PLAT_MOUNTED) {
+		pv_log(WARN,
+		       "platform '%s' has an 'on-owner' name requirement but status_goal is not 'MOUNTED'; it will not stay passive until the name is owned",
+		       p->name);
+	}
+
+	return 0;
+}
+#endif
+
 static int pv_state_validate_services(struct pv_state *s)
 {
 	struct pv_platform *p, *tmp_p;
 	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
 	{
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+		int svc_count = dl_list_len(&p->services);
+		const char **targets_seen =
+			svc_count ? calloc(svc_count, sizeof(char *)) : NULL;
+		int targets_seen_n = 0;
+#endif
 		struct pv_platform_service *svc, *tmp_svc;
 		dl_list_for_each_safe(svc, tmp_svc, &p->services,
 				      struct pv_platform_service, list)
@@ -690,6 +832,13 @@ static int pv_state_validate_services(struct pv_state *s)
 			if (svc->type != DRIVER_REQUIRED)
 				continue;
 #ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+			if (!dl_list_empty(&svc->names) &&
+			    pv_state_validate_service_names(
+				    s, p, svc, targets_seen, &targets_seen_n) <
+				    0) {
+				free(targets_seen);
+				return -1;
+			}
 			// The hosted system bus is provided by pantavisor itself
 			// (builtin export), not by a platform export, so a
 			// requirement for it is satisfied whenever the hosted bus
@@ -724,9 +873,15 @@ static int pv_state_validate_services(struct pv_state *s)
 				pv_log(ERROR,
 				       "required service '%s' for platform '%s' not found",
 				       svc->name, p->name);
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+				free(targets_seen);
+#endif
 				return -1;
 			}
 		}
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+		free(targets_seen);
+#endif
 	}
 	return 0;
 }
@@ -1990,6 +2145,50 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 					      struct pv_platform_service, list)
 			{
 #ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+				// One "consumes" descriptor per resolved name, alongside
+				// the link below -- what the consumer-activation waiters
+				// and `pvcontrol graph ls` are built from.
+				struct pv_platform_service_name *nm, *nm_tmp;
+				dl_list_for_each_safe(
+					nm, nm_tmp, &svc->names,
+					struct pv_platform_service_name, list)
+				{
+					pv_json_ser_object(&js);
+					{
+						pv_json_ser_key(&js,
+								"consumes");
+						pv_json_ser_string(&js,
+								   nm->name);
+						pv_json_ser_key(&js, "bus");
+						pv_json_ser_string(
+							&js,
+							nm->bus ? nm->bus : "");
+						pv_json_ser_key(&js,
+								"consumer");
+						pv_json_ser_string(&js,
+								   cp->name);
+						pv_json_ser_key(&js, "owner");
+						pv_json_ser_string(
+							&js, nm->owner ?
+								     nm->owner :
+								     "");
+						pv_json_ser_key(&js,
+								"activation");
+						pv_json_ser_string(
+							&js,
+							nm->on_owner ?
+								"on-owner" :
+								"none");
+						// Host bus socket, so pv-xconnect can bring up
+						// the ownership monitor from consumer waiters
+						// alone, with no activatable provider present.
+						pv_json_ser_key(&js, "socket");
+						pv_json_ser_string(
+							&js,
+							PV_DBUS_SYSTEMBUS_SOCKET);
+					}
+					pv_json_ser_object_pop(&js);
+				}
 				// Builtin host export: a requirement for the
 				// hosted system bus resolves to the pantavisor-
 				// managed daemon (provider_pid 0), carrying the

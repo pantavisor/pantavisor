@@ -336,21 +336,43 @@ curl -X POST --header "Content-Type: application/json" --data "{\"name\":\"org.e
 
 `name` must be a name declared with `owns` and `activation.mode: on-demand` on the hosted `system-bus` (see [Pantavisor xconnect](pantavisor-xconnect.md)). Pantavisor maps it to the platform that owns it and promotes that platform `MOUNTED -> STARTED`; if the owner is already started, the call is a no-op.
 
+### Activate a consumer container
+
+The same endpoint also accepts `container` in place of `name`, called by `pv-xconnect` once every `on-owner` name a passive consumer requires has an owner on the bus:
+
+```
+curl -X POST --header "Content-Type: application/json" --data "{\"container\":\"my-consumer\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect/dbus/activate"
+```
+
+`container` must name a platform in the current state. Pantavisor promotes it `MOUNTED -> STARTED`; if it is already started (or was never `MOUNTED`), the call is a no-op. Exactly one of `name` or `container` must be present in the body.
+
 On success, returns `200` with an empty body. On failure:
 
 | Status | Condition |
 |--------|-----------|
-| `400` | request body is empty, or missing `name` |
+| `400` | request body is empty, or does not set exactly one of `name`/`container` |
 | `404` | `name` has no activatable owner declared |
+| `404` | `container` is not a known platform in the current state |
 | `404` | hosted D-Bus system bus not enabled at build time |
 | `500` | state not loaded yet |
 
 ## /xconnect-graph
 
-This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](pantavisor-xconnect.md) reference.
+This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](pantavisor-xconnect.md) reference. The array mixes link, activatable and `consumes` elements — see [Graph Output](pantavisor-xconnect.md#graph-output) for the full field list per element kind.
 
 ```
-curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect-graph"
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect-graph"
+[
+  { "consumer": "pv-example-unix-client", "consumer_pid": 1234,
+    "provider": "pv-example-unix-server", "provider_pid": 5678,
+    "name": "raw", "type": "unix", "role": "any", "interface": "unix",
+    "target": "/run/pv/services/raw.sock", "socket": "/run/example/raw.sock" },
+  { "activatable": "org.example.Foo", "bus": "system-bus",
+    "owner": "foo-app", "socket": "/run/pv/dbus/system_bus_socket" },
+  { "consumes": "net.connman", "bus": "system-bus", "consumer": "my-ui",
+    "owner": "connman", "activation": "on-owner",
+    "socket": "/run/pv/dbus/system_bus_socket" }
+]
 ```
 
 On a build without the `PANTAVISOR_XCONNECT` feature, this endpoint returns `404` with

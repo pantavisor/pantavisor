@@ -195,6 +195,45 @@ char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
 	return val;
 }
 
+// Depth-aware lookup: matches only a key that is a direct member of the
+// root object, so a same-named key nested inside a value (e.g. a "name"
+// inside a "names" array entry) is never mistaken for the top-level field.
+char *pv_json_get_value_top(const char *buf, const char *key, jsmntok_t *tok,
+			    int tokc)
+{
+	if (!tok || tokc <= 0 || tok[0].type != JSMN_OBJECT)
+		return NULL;
+
+	int klen = strlen(key);
+	int n = tok[0].size;
+	jsmntok_t *t = tok + 1;
+	jsmntok_t *tok_end = tok + tokc;
+
+	for (int i = 0; i < n && t < tok_end; i++) {
+		jsmntok_t *val = t + 1;
+		if (val >= tok_end)
+			break;
+
+		int kn = t->end - t->start;
+		if (kn == klen && t->type == JSMN_STRING &&
+		    !strncmp(buf + t->start, key, kn)) {
+			int len = val->end - val->start;
+			char *out = calloc(len + 1, sizeof(char));
+			if (!out)
+				return NULL;
+			memcpy(out, buf + val->start, len);
+			return out;
+		}
+
+		// skip the whole value subtree to reach the next key token
+		t = val + 1;
+		while (t < tok_end && t->start < val->end)
+			t++;
+	}
+
+	return NULL;
+}
+
 char *pv_json_format(const char *buf, int len)
 {
 	char *json_string = NULL;

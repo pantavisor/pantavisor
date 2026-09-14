@@ -45,6 +45,14 @@ void pvx_act_reconcile_begin(void);
 void pvx_act_reconcile_add(const char *name, const char *bus_socket);
 void pvx_act_reconcile_end(void);
 
+// Register one "consumes" descriptor for `consumer` from the same reconcile
+// pass (bracketed by the begin()/end() above). A name with `on_owner` false is
+// not tracked (it never gates activation); `end()` fires `consumer` once every
+// `on_owner` name registered for it since the matching begin() has an owner
+// (see XCONNECT.md, "Consumer Activation (on-owner)").
+void pvx_act_reconcile_add_consumes(const char *consumer, const char *name,
+				    bool on_owner, const char *bus_socket);
+
 // Is `name` an on-demand activatable well-known name?
 bool pvx_act_is_activatable(const char *name);
 

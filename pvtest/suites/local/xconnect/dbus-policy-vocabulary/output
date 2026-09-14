@@ -1,0 +1,8 @@
+== narrowed role's dependency is visible in the xconnect graph: pv-example-system-dbus-reader -> org.freedesktop.Avahi ==
+{"consumes":"org.freedesktop.Avahi","consumer":"pv-example-system-dbus-reader","owner":"pv-avahi","activation":"none"}
+== narrowed member allowed: pv-example-system-dbus-reader calls org.freedesktop.Avahi.Server.GetVersionString (also the cold activation call) ==
+reader GetVersionString: OK
+== member outside the narrowing denied: pv-example-system-dbus-reader calls org.freedesktop.Avahi.Server.GetHostName ==
+reader GetHostName: DENIED
+== role UID pin: pv-avahi's connection uid for org.freedesktop.Avahi is the pinned 4242, not a synthetic-pool uid ==
+avahi-service uid pinned to 4242: yes

@@ -754,6 +754,112 @@ static service_type_t service_str_to_type(char *str)
 	return SVC_TYPE_UNKNOWN;
 }
 
+// Parse one requirement's "names" array into svc->names. An element is a
+// plain string (shorthand for activation.mode "none") or an object with
+// "name" and an optional "activation":{"mode":"on-owner"|"none"}. bus/owner
+// are resolved later, at pv_state_validate_services() time. An unrecognized
+// activation mode is recorded (activation_unknown) rather than dropped, so
+// state validation can fail the state instead of silently ignoring it.
+static int platform_service_names_add(struct pv_platform_service *svc,
+				      char *buf)
+{
+	int tokc, size, ret = 0;
+	jsmntok_t *tokv, *t;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+		return 0;
+	size = jsmnutil_array_count(buf, tokv);
+	if (size <= 0)
+		goto out;
+	t = tokv + 1;
+	jsmntok_t *tok_end = tokv + tokc;
+	for (int i = 0; i < size && t < tok_end; i++) {
+		int el_start = t->start;
+		int el_end = t->end;
+		int el_len = el_end - el_start;
+
+		if (t->type == JSMN_STRING) {
+			char *name = calloc(el_len + 1, 1);
+			if (name) {
+				memcpy(name, buf + el_start, el_len);
+				pv_platform_service_add_name(svc, name, false,
+							     false);
+				free(name);
+			}
+		} else if (t->type == JSMN_OBJECT) {
+			char *obj_s = calloc(el_len + 1, 1);
+			if (!obj_s)
+				break;
+			memcpy(obj_s, buf + el_start, el_len);
+
+			int obj_c;
+			jsmntok_t *ov;
+			if (jsmnutil_parse_json(obj_s, &ov, &obj_c) > 0) {
+				char *name = pv_json_get_value(obj_s, "name",
+							       ov, obj_c);
+				if (!name) {
+					pv_log(ERROR,
+					       "names entry missing 'name'");
+				} else {
+					bool on_owner = false;
+					bool unknown = false;
+					char *act = pv_json_get_value(
+						obj_s, "activation", ov, obj_c);
+					if (act) {
+						jsmntok_t *av;
+						int ac;
+						if (jsmnutil_parse_json(
+							    act, &av, &ac) >
+						    0) {
+							char *mode =
+								pv_json_get_value(
+									act,
+									"mode",
+									av, ac);
+							if (mode) {
+								if (!strcmp(mode,
+									    "on-owner"))
+									on_owner =
+										true;
+								else if (!strcmp(mode,
+										 "none"))
+									on_owner =
+										false;
+								else {
+									unknown =
+										true;
+									pv_log(ERROR,
+									       "name '%s' has unknown activation mode '%s'",
+									       name,
+									       mode);
+								}
+								free(mode);
+							}
+							free(av);
+						}
+						free(act);
+					}
+					pv_platform_service_add_name(
+						svc, name, on_owner, unknown);
+					free(name);
+				}
+				free(ov);
+			}
+			free(obj_s);
+		} else {
+			pv_log(ERROR, "unexpected 'names' entry type");
+		}
+
+		t++;
+		while (t < tok_end && t->start < el_end)
+			t++;
+	}
+	ret = 1;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
 static int platform_services_add(struct pv_platform *p, plat_service_t type,
 				 char *buf)
 {
@@ -787,16 +893,29 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 
 		int svc_c;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
-			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
-			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
-			char *r = pv_json_get_value(svc_s, "role", sv, svc_c);
-			char *iface = pv_json_get_value(svc_s, "interface", sv,
-							svc_c);
-			char *target =
-				pv_json_get_value(svc_s, "target", sv, svc_c);
-			pv_platform_add_service(p, type,
-						service_str_to_type(t_s), n, r,
-						iface, target);
+			// depth-aware: "name"/"role"/etc may also appear nested,
+			// e.g. inside a "names" array entry object
+			char *n =
+				pv_json_get_value_top(svc_s, "name", sv, svc_c);
+			char *t_s =
+				pv_json_get_value_top(svc_s, "type", sv, svc_c);
+			char *r =
+				pv_json_get_value_top(svc_s, "role", sv, svc_c);
+			char *iface = pv_json_get_value_top(svc_s, "interface",
+							    sv, svc_c);
+			char *target = pv_json_get_value_top(svc_s, "target",
+							     sv, svc_c);
+			struct pv_platform_service *svc =
+				pv_platform_add_service(
+					p, type, service_str_to_type(t_s), n, r,
+					iface, target);
+			char *names = pv_json_get_value_top(svc_s, "names", sv,
+							    svc_c);
+			if (names) {
+				if (svc)
+					platform_service_names_add(svc, names);
+				free(names);
+			}
 			if (n)
 				free(n);
 			if (t_s)
@@ -855,6 +974,168 @@ static int parse_platform_services(struct pv_state *s, struct pv_platform *p,
 	return 1;
 }
 
+// Parse a plain string array field (e.g. "interfaces"/"members"/"paths" inside
+// an allow object) into a freshly allocated char**; *out_count is 0 and the
+// return is NULL when the key is absent or the array is empty.
+static char **parse_str_array_field(const char *obj_s, jsmntok_t *ov, int oc,
+				    const char *key, int *out_count)
+{
+	*out_count = 0;
+	char *arr_s = pv_json_get_value(obj_s, key, ov, oc);
+	if (!arr_s)
+		return NULL;
+
+	char **out = NULL;
+	jsmntok_t *atokv = NULL;
+	int atokc;
+	if (jsmnutil_parse_json(arr_s, &atokv, &atokc) > 0) {
+		int acount = jsmnutil_array_count(arr_s, atokv);
+		if (acount > 0) {
+			out = calloc(acount, sizeof(char *));
+			if (out) {
+				int rem = acount;
+				jsmntok_t *at = atokv + 1;
+				int n = 0;
+				for (int j = 0; j < acount; j++) {
+					char *e = pv_json_array_get_one_str(
+						arr_s, &rem, &at);
+					if (e)
+						out[n++] = e;
+				}
+				*out_count = n;
+			}
+		}
+		free(atokv);
+	}
+	free(arr_s);
+	return out;
+}
+
+static void free_str_array(char **arr, int count)
+{
+	for (int i = 0; i < count; i++)
+		free(arr[i]);
+	free(arr);
+}
+
+// Parse one "allow" array element (string or object form) and attach it to
+// `se`. String form is a bare role name; object form is
+// {"role":..., "interfaces":[...], "members":[...], "paths":[...]}, all three
+// optional — absent means unnarrowed for that dimension.
+static void service_export_allow_add(struct pv_platform_service_export *se,
+				     const char *owns, const char *buf,
+				     jsmntok_t *t)
+{
+	int el_len = t->end - t->start;
+
+	if (t->type == JSMN_STRING) {
+		char *role = calloc(el_len + 1, 1);
+		if (!role)
+			return;
+		memcpy(role, buf + t->start, el_len);
+		pv_platform_service_export_add_allow(se, role, NULL, 0, NULL, 0,
+						     NULL, 0);
+		free(role);
+		return;
+	}
+
+	if (t->type != JSMN_OBJECT) {
+		pv_log(ERROR, "unexpected 'allow' entry type for name '%s'",
+		       owns ? owns : "(unknown)");
+		return;
+	}
+
+	char *obj_s = calloc(el_len + 1, 1);
+	if (!obj_s)
+		return;
+	memcpy(obj_s, buf + t->start, el_len);
+
+	int oc;
+	jsmntok_t *ov;
+	if (jsmnutil_parse_json(obj_s, &ov, &oc) > 0) {
+		char *role = pv_json_get_value(obj_s, "role", ov, oc);
+		if (!role) {
+			// Caught again (and failing the deploy) in
+			// pv_dbus_daemon_validate(); flagged here for the log.
+			pv_log(ERROR,
+			       "'allow' object for name '%s' has no 'role'",
+			       owns ? owns : "(unknown)");
+		} else {
+			int ic = 0, mc = 0, pc = 0;
+			char **ifaces = parse_str_array_field(
+				obj_s, ov, oc, "interfaces", &ic);
+			char **members = parse_str_array_field(obj_s, ov, oc,
+							       "members", &mc);
+			char **paths = parse_str_array_field(obj_s, ov, oc,
+							     "paths", &pc);
+			pv_platform_service_export_add_allow(
+				se, role, ifaces, ic, members, mc, paths, pc);
+			free_str_array(ifaces, ic);
+			free_str_array(members, mc);
+			free_str_array(paths, pc);
+			free(role);
+		}
+		free(ov);
+	}
+	free(obj_s);
+}
+
+// Parse a platform's top-level "roles" map ({"role": {"uid": N}, ...}) and
+// pin each entry via pv_platform_add_role_pin(); validated device-wide (owner
+// requirement, pool collisions) in pv_dbus_daemon_validate().
+static int platform_roles_add(struct pv_platform *p, const char *buf)
+{
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+		return 0;
+	if (tokc <= 0 || tokv[0].type != JSMN_OBJECT)
+		goto out;
+
+	int n = tokv[0].size;
+	jsmntok_t *t = tokv + 1;
+	jsmntok_t *tok_end = tokv + tokc;
+	for (int i = 0; i < n && t < tok_end; i++) {
+		int klen = t->end - t->start;
+		char *role = calloc(klen + 1, 1);
+		if (!role)
+			break;
+		memcpy(role, buf + t->start, klen);
+
+		t++; // move from key to value token
+		if (t >= tok_end) {
+			free(role);
+			break;
+		}
+		int el_start = t->start;
+		int el_end = t->end;
+		int el_len = el_end - el_start;
+		char *vobj = calloc(el_len + 1, 1);
+		if (vobj) {
+			memcpy(vobj, buf + el_start, el_len);
+			int oc;
+			jsmntok_t *ov;
+			if (jsmnutil_parse_json(vobj, &ov, &oc) > 0) {
+				int uid = pv_json_get_value_int(vobj, "uid", ov,
+								oc);
+				pv_platform_add_role_pin(p, role, uid);
+				free(ov);
+			}
+			free(vobj);
+		}
+		free(role);
+
+		t++;
+		while (t < tok_end && t->start < el_end)
+			t++;
+	}
+	ret = 1;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
 static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 				 char *buf)
 {
@@ -866,6 +1147,15 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
 		return 0;
+
+	// Top-level "roles" map (new format only; a legacy bare array has no
+	// "roles" key to match). Uses the original document buf/tokv/tokc,
+	// before `buf` is redirected to the services array text below.
+	char *roles_str = pv_json_get_value_top(buf, "roles", tokv, tokc);
+	if (roles_str) {
+		platform_roles_add(p, roles_str);
+		free(roles_str);
+	}
 
 	// Try new object format: {"#spec": "...", "services": [...]}
 	services_buf = pv_json_get_value(buf, "services", tokv, tokc);
@@ -910,65 +1200,32 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 
 		int svc_c;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
-			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
+			// depth-aware: an "allow" entry object can carry its
+			// own nested "role" (and similarly-named) keys
+			char *t_s =
+				pv_json_get_value_top(svc_s, "type", sv, svc_c);
 			char *owns =
-				pv_json_get_value(svc_s, "owns", sv, svc_c);
+				pv_json_get_value_top(svc_s, "owns", sv, svc_c);
+			// Parsed regardless of `owns`/`bus` so
+			// pv_dbus_daemon_validate() can reject a misplaced
+			// 'policy' (xconnect/XCONNECT.md "Policy Fragments").
+			char *policy = pv_json_get_value_top(svc_s, "policy",
+							     sv, svc_c);
 
 			if (owns) {
 				// Hosted system-bus name declaration:
 				// {type:"dbus", bus:"system-bus",
 				//  owns:"org.x.Foo", role:"...", allow:[...]}
-				char *bus = pv_json_get_value(svc_s, "bus", sv,
-							      svc_c);
-				char *role = pv_json_get_value(svc_s, "role",
-							       sv, svc_c);
-				char **allow = NULL;
-				int allow_count = 0;
-				char *allow_str = pv_json_get_value(
-					svc_s, "allow", sv, svc_c);
-				if (allow_str) {
-					jsmntok_t *atokv = NULL;
-					int atokc;
-					if (jsmnutil_parse_json(allow_str,
-								&atokv,
-								&atokc) > 0) {
-						int acount =
-							jsmnutil_array_count(
-								allow_str,
-								atokv);
-						if (acount > 0) {
-							allow = calloc(
-								acount,
-								sizeof(char *));
-							if (allow) {
-								int rem =
-									acount;
-								jsmntok_t *at =
-									atokv +
-									1;
-								for (int j = 0;
-								     j < acount;
-								     j++) {
-									char *e = pv_json_array_get_one_str(
-										allow_str,
-										&rem,
-										&at);
-									if (e)
-										allow[allow_count++] =
-											e;
-								}
-							}
-						}
-						free(atokv);
-					}
-					free(allow_str);
-				}
+				char *bus = pv_json_get_value_top(svc_s, "bus",
+								  sv, svc_c);
+				char *role = pv_json_get_value_top(
+					svc_s, "role", sv, svc_c);
 
 				// activation:{"mode":"on-demand"|"always"};
 				// default "always" (start at boot). Only the
 				// nested "mode" string is consulted.
 				bool activatable = false;
-				char *act_str = pv_json_get_value(
+				char *act_str = pv_json_get_value_top(
 					svc_s, "activation", sv, svc_c);
 				if (act_str) {
 					jsmntok_t *atv = NULL;
@@ -989,31 +1246,76 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 					free(act_str);
 				}
 
-				pv_platform_add_service_owns(
-					p, service_str_to_type(t_s), bus, owns,
-					role, allow, allow_count, activatable);
+				struct pv_platform_service_export *exp =
+					pv_platform_add_service_owns(
+						p, service_str_to_type(t_s),
+						bus, owns, role, activatable);
+				if (policy)
+					pv_platform_service_export_set_policy(
+						exp, policy);
 
-				for (int j = 0; j < allow_count; j++)
-					free(allow[j]);
-				free(allow);
+				// allow: array of role strings and/or
+				// {"role":...,"interfaces":[...],
+				//  "members":[...],"paths":[...]} objects.
+				char *allow_str = pv_json_get_value_top(
+					svc_s, "allow", sv, svc_c);
+				if (allow_str && exp) {
+					jsmntok_t *atokv = NULL;
+					int atokc;
+					if (jsmnutil_parse_json(allow_str,
+								&atokv,
+								&atokc) > 0) {
+						int acount =
+							jsmnutil_array_count(
+								allow_str,
+								atokv);
+						jsmntok_t *at = atokv + 1;
+						jsmntok_t *at_end =
+							atokv + atokc;
+						for (int j = 0;
+						     j < acount && at < at_end;
+						     j++) {
+							int allow_el_end =
+								at->end;
+							service_export_allow_add(
+								exp, owns,
+								allow_str, at);
+							at++;
+							while (at < at_end &&
+							       at->start <
+								       allow_el_end)
+								at++;
+						}
+						free(atokv);
+					}
+				}
+				if (allow_str)
+					free(allow_str);
 				if (bus)
 					free(bus);
 				if (role)
 					free(role);
 				free(owns);
 			} else {
-				char *n = pv_json_get_value(svc_s, "name", sv,
-							    svc_c);
-				char *sock = pv_json_get_value(svc_s, "socket",
-							       sv, svc_c);
-				pv_platform_add_service_export(
-					p, service_str_to_type(t_s), n, sock);
+				char *n = pv_json_get_value_top(svc_s, "name",
+								sv, svc_c);
+				char *sock = pv_json_get_value_top(
+					svc_s, "socket", sv, svc_c);
+				struct pv_platform_service_export *exp =
+					pv_platform_add_service_export(
+						p, service_str_to_type(t_s), n,
+						sock);
+				if (policy)
+					pv_platform_service_export_set_policy(
+						exp, policy);
 				if (n)
 					free(n);
 				if (sock)
 					free(sock);
 			}
 
+			if (policy)
+				free(policy);
 			if (t_s)
 				free(t_s);
 			free(sv);
