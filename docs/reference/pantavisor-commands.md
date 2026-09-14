@@ -336,12 +336,23 @@ curl -X POST --header "Content-Type: application/json" --data "{\"name\":\"org.e
 
 `name` must be a name declared with `owns` and `activation.mode: on-demand` on the hosted `system-bus` (see [Pantavisor xconnect](pantavisor-xconnect.md)). Pantavisor maps it to the platform that owns it and promotes that platform `MOUNTED -> STARTED`; if the owner is already started, the call is a no-op.
 
+### Activate a consumer container
+
+The same endpoint also accepts `container` in place of `name`, called by `pv-xconnect` once every `on-owner` name a passive consumer requires has an owner on the bus:
+
+```
+curl -X POST --header "Content-Type: application/json" --data "{\"container\":\"my-consumer\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect/dbus/activate"
+```
+
+`container` must name a platform in the current state. Pantavisor promotes it `MOUNTED -> STARTED`; if it is already started (or was never `MOUNTED`), the call is a no-op. Exactly one of `name` or `container` must be present in the body.
+
 On success, returns `200` with an empty body. On failure:
 
 | Status | Condition |
 |--------|-----------|
-| `400` | request body is empty, or missing `name` |
+| `400` | request body is empty, or does not set exactly one of `name`/`container` |
 | `404` | `name` has no activatable owner declared |
+| `404` | `container` is not a known platform in the current state |
 | `404` | hosted D-Bus system bus not enabled at build time |
 | `500` | state not loaded yet |
 
