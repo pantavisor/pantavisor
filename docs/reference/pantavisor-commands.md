@@ -324,6 +324,29 @@ To delete one pair, we would do this, having in mind the same behaviour of opera
 curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/device-meta/key"
 ```
 
+## /xconnect
+
+This is an internal endpoint used by `pv-xconnect` to drive [D-Bus service activation](pantavisor-xconnect.md); it is not a user-facing command. It requires the [mgmt role](../overview/containers.md#roles), like the other management endpoints.
+
+### Activate a D-Bus name
+
+`POST /xconnect/dbus/activate` is called with the well-known bus name a client just tried to reach:
+
+```
+curl -X POST --header "Content-Type: application/json" --data "{\"name\":\"org.example.Foo\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect/dbus/activate"
+```
+
+`name` must be a name declared with `owns` and `activation.mode: on-demand` on the hosted `system-bus` (see [Pantavisor xconnect](pantavisor-xconnect.md)). Pantavisor maps it to the platform that owns it and promotes that platform `MOUNTED -> STARTED`; if the owner is already started, the call is a no-op.
+
+On success, returns `200` with an empty body. On failure:
+
+| Status | Condition |
+|--------|-----------|
+| `400` | request body is empty, or missing `name` |
+| `404` | `name` has no activatable owner declared |
+| `404` | hosted D-Bus system bus not enabled at build time |
+| `500` | state not loaded yet |
+
 ## /xconnect-graph
 
 This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](pantavisor-xconnect.md) reference.
