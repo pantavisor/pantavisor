@@ -1,0 +1,163 @@
+#!/bin/sh
+#
+# Raw D-Bus policy fragments (xconnect/XCONNECT.md "Policy Fragments").
+#
+# A provider export may carry a "policy" pointing at a raw <busconfig>
+# fragment (only <policy>/<allow>/<deny>, "@role:<name>@" placeholders where a
+# user is meant). pv_dbus_daemon_validate() -> dbus_policy_fragments_validate()
+# validates every fragment before a state is allowed to go live, then
+# substitutes the placeholders and splices the fragment AFTER the generated
+# rules, so a fragment can only narrow what the JSON "allow" list granted: the
+# JSON says WHO, the fragment narrows HOW.
+#
+# pv-avahi owns org.freedesktop.Avahi (role "avahi-service", on-demand
+# activation, status_goal MOUNTED) with allow ["operator", "monitor",
+# {narrowing object for "avahi-reader"}, "avahi-limited"] -- "avahi-limited"
+# gets unrestricted access from the JSON. Its fragment
+# (dbus/avahi-policy.xml) denies "avahi-limited" a single member:
+#   <policy user="@role:avahi-limited@">
+#     <deny send_destination="org.freedesktop.Avahi"
+#           send_interface="org.freedesktop.Avahi.Server"
+#           send_member="GetHostName"/>
+#   </policy>
+# so GetVersionString stays allowed (JSON grant, unnarrowed) while
+# GetHostName is denied (fragment narrows below the JSON grant). The consumer
+# is pv-example-system-dbus-limited (role "avahi-limited", names requirement
+# on org.freedesktop.Avahi, always-on); its first call also activates the
+# on-demand provider (same fence as avahi-systembus / dbus-policy-vocabulary).
+#
+# The four negative containers below each fail pv_dbus_policy_check() or
+# pv_dbus_daemon_validate() for exactly one reason and are merged in as
+# posted revisions (never setup tarballs), one per case, each in its own
+# fresh checkout since a failed revision rolls the device back and later
+# cases must not assume where that leaves it:
+#   pv-example-system-dbus-badpolicy-include  <includedir> is a disallowed
+#     element (only busconfig/policy/allow/deny are permitted).
+#   pv-example-system-dbus-badpolicy-foreign  its <deny> names
+#     org.freedesktop.Avahi, a name this platform (owner of
+#     org.pantavisor.BadForeign) does not own.
+#   pv-example-system-dbus-badpolicy-role     its <policy> references
+#     "@role:nosuchrole@", a role that resolves to nothing.
+#   pv-example-system-dbus-badpin             declares a top-level "roles"
+#     uid pin but owns no D-Bus name -- "only a provider may pin a role uid".
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+ADDR="unix:path=/run/dbus/system_bus_socket"
+CONSUMER="pv-example-system-dbus-limited"
+SVC="org.freedesktop.Avahi"
+OBJ="/"
+IFACE="org.freedesktop.Avahi.Server"
+
+dsend() {
+	# run dbus-send inside the consumer container against the injected bus
+	# socket. Exec dbus-send directly (via env for the address) rather than
+	# through "sh -c": under pventer a busybox "sh -c" wrapper swallows
+	# dbus-send's stdout, so the reply would be lost.
+	# shellcheck disable=SC2086
+	pventer -c "$CONSUMER" \
+		env DBUS_SYSTEM_BUS_ADDRESS="$ADDR" \
+		dbus-send --system --print-reply $* 2>&1
+}
+
+# Merge a container pvrexport tarball (from the staged common tarballs) into
+# the current checkout.
+merge_tarball() {
+	dir=$(mktemp -d)
+	tar xzf "$1" -C "$dir" > /dev/null 2>&1 \
+		|| { echo "ERROR: failed to extract $1" >&2; exit 1; }
+	pvr merge "$dir" > /dev/null 2>&1 \
+		|| { echo "ERROR: pvr merge failed for $1" >&2; exit 1; }
+	rm -rf "$dir"
+}
+
+# Merge one negative container's tarball into a fresh checkout, post it under
+# its own revision, wait for validation to reject it and for the device to
+# settle back to READY, print the masked pantavisor error, and print a
+# state-independent rollback marker (the revision landed on depends on prior
+# device state, so print a fixed yes/no instead of the raw value).
+run_negative_case() {
+	tarball="$1"
+	rev="$2"
+	label="$3"
+
+	checkout="$(mktemp -d)/checkout"
+	pvr_clone_local_or_die "$checkout" "$label"
+	cd "$checkout" || { echo "ERROR: cd $checkout failed" >&2; exit 1; }
+
+	merge_tarball "$tarball"
+	pvr checkout > /dev/null 2>&1
+	pvr commit > /dev/null 2>&1
+	pvr post --rev "$rev" > /dev/null 2>&1
+
+	# Longer timeouts than the container-mode default: on scarce-resource
+	# real devices the rollback itself, not just the validation, takes
+	# longer.
+	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "ERROR" 180 > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $rev to reach ERROR" >&2; exit 1; }
+	wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantavisor.status\"'" "READY" 90 > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for pantavisor.status READY after rollback ($label)" >&2; exit 1; }
+
+	echo "== $rev: ERROR (rolled back) =="
+	pvcontrol steps show-progress "$rev" | sed 's/\\\"tsec\\\":[0-9]\+/\\\"tsec\\\":0/g; s/\\\"tnano\\\":[0-9]\+/\\\"tnano\\\":0/g; s/\\\"msg\\\":\\\"([a-zA-Z_][a-zA-Z0-9_]*:[0-9]\+) /\\\"msg\\\":\\\"/g'
+
+	current_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]')
+	if [ "$current_rev" != "$rev" ]; then
+		echo "rolled back off $rev: yes"
+	else
+		echo "rolled back off $rev: no"
+	fi
+
+	cd - > /dev/null || exit 1
+}
+
+# Wait for the always-on consumer to be up so pventer has a pid to enter.
+wait_for_value "pvcontrol containers ls | jq -r '.[] | select(.name == \"$CONSUMER\") | .status'" "STARTED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for $CONSUMER STARTED" >&2; exit 1; }
+
+# pv-avahi is on-demand / status_goal MOUNTED, so the consumer's first call
+# also activates it -- wait for the name to gain an owner before asserting on
+# the calls themselves (same fence as avahi-systembus).
+i=0
+while [ $i -lt 30 ]; do
+	if dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC" \
+		| grep -q "boolean true"; then
+		break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
+
+echo "== JSON allow grants avahi-limited unrestricted access: $CONSUMER calls $IFACE.GetVersionString (also the cold activation call) =="
+if dsend "--dest=$SVC $OBJ $IFACE.GetVersionString" | grep -q 'string "avahi'; then
+	echo "limited GetVersionString: OK"
+else
+	echo "limited GetVersionString: FAILED"
+fi
+
+echo "== fragment narrows below the JSON grant: $CONSUMER calls $IFACE.GetHostName =="
+if dsend "--dest=$SVC $OBJ $IFACE.GetHostName" | grep -qE "AccessDenied|not allowed"; then
+	echo "limited GetHostName: DENIED"
+else
+	echo "limited GetHostName: ALLOWED (unexpected)"
+fi
+
+echo "== post revision with a forbidden <includedir> in its policy fragment (pv-example-system-dbus-badpolicy-include) =="
+run_negative_case \
+	"${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-system-dbus-badpolicy-include.pvrexport.tgz" \
+	"locals/dbus-policy-fragment-badinclude" "badinclude"
+
+echo "== post revision whose fragment denies a foreign destination it does not own (pv-example-system-dbus-badpolicy-foreign) =="
+run_negative_case \
+	"${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-system-dbus-badpolicy-foreign.pvrexport.tgz" \
+	"locals/dbus-policy-fragment-badforeign" "badforeign"
+
+echo "== post revision whose fragment references an unresolvable role (pv-example-system-dbus-badpolicy-role) =="
+run_negative_case \
+	"${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-system-dbus-badpolicy-role.pvrexport.tgz" \
+	"locals/dbus-policy-fragment-badrole" "badrole"
+
+echo "== post revision pinning a role uid with no owns export (pv-example-system-dbus-badpin) =="
+run_negative_case \
+	"${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-system-dbus-badpin.pvrexport.tgz" \
+	"locals/dbus-policy-fragment-badpin" "badpin"
