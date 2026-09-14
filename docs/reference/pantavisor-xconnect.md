@@ -215,6 +215,58 @@ Each `owns` entry produces an independent default-deny policy block. A name has
 exactly one owner `role`; the same name cannot be owned twice (across the whole
 state), but its `allow` list may name as many caller roles as needed.
 
+##### Policy fragments
+
+For the cases `allow`'s `interfaces`/`members`/`paths` narrowing does not
+cover, an `owns` entry may ship a raw D-Bus policy fragment via `policy`: a
+path relative to the owning platform's trail directory (the same directory a
+platform's own `lxc.container.conf` lives in), pointing at a plain
+`<busconfig>` file checked into the container alongside its other manifests:
+
+```json
+{
+  "type": "dbus",
+  "bus": "system-bus",
+  "owns": "org.example.Foo",
+  "role": "foo-service",
+  "allow": ["operator"],
+  "policy": "dbus/foo-policy.xml"
+}
+```
+
+`dbus/foo-policy.xml` in the platform's trail directory:
+
+```xml
+<busconfig>
+  <policy user="@role:operator@">
+    <deny send_destination="org.example.Foo"
+          send_interface="org.example.Foo.Manager"
+          send_member="SetProperty"/>
+  </policy>
+</busconfig>
+```
+
+`@role:<name>@` is a placeholder for the role's generated bus user
+(`pv-dbus-<name>`); pantavisor substitutes it and appends the result to the
+generated policy directory. A fragment is validated (well-formedness by a
+throwaway `dbus-daemon`, then an attribute scanner, then consistency with the
+declaration) before the state is allowed to go live — a bad fragment rolls
+back the deploy like a duplicate owner does. Concretely, a fragment may only:
+
+- use `<busconfig>`, `<policy>`, `<allow>` and `<deny>` elements — no
+  `include`, `includedir`, `listen`, `type`, `auth`, `servicedir`, `limit`,
+  `selinux` or `apparmor`;
+- put `user="@role:<name>@"` on `<policy>`, where `<name>` already appears in
+  this entry's own `allow` list — no `group`, `at_console` or `context`;
+- put `send_*`, `receive_*`, `own` or `own_prefix` on `<allow>`/`<deny>` — no
+  `eavesdrop`;
+- name only this entry's own `owns` value in `own`, `own_prefix`,
+  `send_destination` or `receive_sender` — a fragment cannot grant or touch
+  another app's name.
+
+The JSON's `allow` list is still the source of truth for *who* may reach a
+name; a fragment may only narrow or detail *how*.
+
 ##### Multi-identity consumers
 
 A container that must reach the bus as more than one identity (for example, to
