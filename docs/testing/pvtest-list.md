@@ -94,6 +94,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/xconnect/avahi-systembus` | Hosted system bus (real avahi daemon) | ✓ |
 | `local/xconnect/dbus-activation` | On-demand activation (passive owner started on first call) | ✓ |
 | `local/xconnect/dbus-names` | Name-based D-Bus requirement (derived link, working socket, no-owner rejected) | ✓ |
+| `local/xconnect/dbus-consumer-activation` | Consumer `on-owner` activation (passive consumer started once its required name is owned) | ✓ |
 
 ### security
 
