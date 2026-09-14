@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Raw D-Bus policy fragments: JSON-allow narrowing enforcement, and validation failures for a forbidden element, a foreign destination, an unresolvable role, and a non-provider role pin",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-avahi.pvrexport.tgz",
+				"../../common/tarballs/pv-example-system-dbus-limited.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

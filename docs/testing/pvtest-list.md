@@ -96,6 +96,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/xconnect/dbus-names` | Name-based D-Bus requirement (derived link, working socket, no-owner rejected) | ✓ |
 | `local/xconnect/dbus-consumer-activation` | Consumer `on-owner` activation (passive consumer started once its required name is owned) | ✓ |
 | `local/xconnect/dbus-policy-vocabulary` | Declarative policy vocabulary (allow-list interface/member narrowing, role UID pinning) | ✓ |
+| `local/xconnect/dbus-policy-fragment` | Raw policy fragments (JSON-allow narrowing enforced; forbidden element, foreign destination, unresolvable role, non-provider role pin rejected) | ✓ |
 
 ### security
 
