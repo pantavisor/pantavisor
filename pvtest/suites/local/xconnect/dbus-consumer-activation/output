@@ -1,0 +1,14 @@
+== on-owner dependency is visible in the xconnect graph: pv-example-system-dbus-client-onowner -> org.freedesktop.Avahi ==
+{"consumes":"org.freedesktop.Avahi","consumer":"pv-example-system-dbus-client-onowner","owner":"pv-avahi","activation":"on-owner"}
+== passive-on-passive: owner and on-owner consumer both stay MOUNTED until org.freedesktop.Avahi is called ==
+{"status":"MOUNTED","status_goal":"MOUNTED"}
+{"status":"MOUNTED","status_goal":"MOUNTED"}
+boolean false
+== pv-example-system-dbus-client's first call to org.freedesktop.Avahi activates the passive owner pv-avahi ==
+cold GetVersionString: OK
+{"status":"STARTED","status_goal":"STARTED"}
+boolean true
+== on-owner consumer pv-example-system-dbus-client-onowner is promoted MOUNTED -> STARTED on its own ==
+{"status":"STARTED","status_goal":"STARTED"}
+== pv-example-system-dbus-client-onowner has its own bus socket: dbus-send roundtrip to org.freedesktop.Avahi ==
+onowner GetVersionString: OK
