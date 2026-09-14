@@ -814,22 +814,30 @@ fragment is a plain `<busconfig>` with `<policy>` elements, using
 </busconfig>
 ```
 
-Pantavisor substitutes placeholders with the generated user names and appends
-the result to the policy directory after the generated rules.
+Pantavisor substitutes placeholders with the generated user names and splices
+the result into `pv-generated.conf` itself, after the generated rules and
+inside the same `<busconfig>`. This is deliberate, not cosmetic: D-Bus applies
+"last matching rule wins" only within one assembled configuration, and a
+fragment loaded as its own file via `<includedir>` has no defined position
+relative to `pv-generated.conf` (directory order is not authoring order), so
+a `<deny>` meant to narrow a generated `<allow>` could silently be loaded
+*before* it and have no effect. Splicing into one file makes "after the
+generated rules" true by construction.
 
 #### Validation
 
 Fragments are validated at state validation time, so a bad one rolls back the
 deploy like a duplicate owner does. Three levels:
 
-1. **Well-formedness, by the daemon itself.** The candidate policy directory
-   (generated rules plus all fragments) is assembled in a temporary location
-   with a temporary `busconfig` that listens on a throwaway socket and uses the
-   same generated passwd as the real daemon. `dbus-daemon --config-file=<tmp>
-   --nofork --print-address` is run with a short timeout. Printing an address
-   means the configuration parsed; the instance is then killed. A non-zero exit
-   fails validation and its stderr is the diagnostic. This catches unknown
-   elements and attributes with line numbers.
+1. **Well-formedness, by the daemon itself.** The candidate policy — the same
+   merged `pv-generated.conf` content pv_dbus_daemon_generate() would write,
+   fragments already spliced in — is written into a temporary directory
+   alongside a temporary `busconfig` that listens on a throwaway socket and
+   uses the same generated passwd as the real daemon. `dbus-daemon
+   --config-file=<tmp> --nofork --print-address` is run with a short timeout.
+   Printing an address means the configuration parsed; the instance is then
+   killed. A non-zero exit fails validation and its stderr is the diagnostic.
+   This catches unknown elements and attributes with line numbers.
 2. **Our rules, by a small attribute scanner.** Because step 1 guarantees the
    grammar, this only walks `policy`, `allow` and `deny` attributes:
    - `policy` may carry only `user="@role:<name>@"` where the role is declared
@@ -854,9 +862,10 @@ any placeholder that does not resolve before the daemon ever sees it.
 When a state goes live the policy is reloaded the same way as before
 fragments existed: SIGHUP to the managed `pv-dbus` daemon. The enforcement
 point is the pre-flight in [Validation](#validation) above, not the reload —
-it parses the exact same file set (generated rules plus every substituted
-fragment) with the same binary and the same generated passwd before the state
-is allowed to go live, so a broken policy fails validation and never reaches
+it parses the exact same merged `pv-generated.conf` content (generated rules
+plus every substituted fragment, spliced) with the same binary and the same
+generated passwd before the state is allowed to go live, so a broken policy
+fails validation and never reaches
 the running daemon. Switching the live reload itself to
 `org.freedesktop.DBus.ReloadConfig` is a follow-up, not done here: that call
 would have to travel over the ownership-monitor connection, which lives in

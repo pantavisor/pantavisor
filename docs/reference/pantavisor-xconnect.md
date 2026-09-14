@@ -247,10 +247,14 @@ platform's own `lxc.container.conf` lives in), pointing at a plain
 ```
 
 `@role:<name>@` is a placeholder for the role's generated bus user
-(`pv-dbus-<name>`); pantavisor substitutes it and appends the result to the
-generated policy directory. A fragment is validated (well-formedness by a
-throwaway `dbus-daemon`, then an attribute scanner, then consistency with the
-declaration) before the state is allowed to go live — a bad fragment rolls
+(`pv-dbus-<name>`); pantavisor substitutes it and splices the fragment's
+`<policy>` content into the generated `pv-generated.conf` itself, after the
+generated rules — not as a separate included file, since D-Bus's "last
+matching rule wins" only applies within one assembled config and a sibling
+file loaded via `<includedir>` has no defined ordering relative to it. A
+fragment is validated (an attribute scanner and consistency with the
+declaration, then well-formedness of the whole merged config by a throwaway
+`dbus-daemon`) before the state is allowed to go live — a bad fragment rolls
 back the deploy like a duplicate owner does. Concretely, a fragment may only:
 
 - use `<busconfig>`, `<policy>`, `<allow>` and `<deny>` elements — no
