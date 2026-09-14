@@ -104,24 +104,48 @@ struct pv_platform_service {
 	struct dl_list list;
 };
 
+// One `allow` list entry for an "owns" export. The plain string form (today's
+// meaning: full send/receive access) is `role` set with every *_count at 0;
+// the object form narrows send access to the listed interfaces/members/paths
+// (cross product — see pv_dbus_daemon_generate()). receive_sender is never
+// narrowed.
+struct pv_platform_service_allow {
+	char *role;
+	char **interfaces;
+	int interfaces_count;
+	char **members;
+	int members_count;
+	char **paths;
+	int paths_count;
+	struct dl_list list;
+};
+
 struct pv_platform_service_export {
 	service_type_t svc_type;
 	char *name;
 	char *socket;
 	// Hosted system-bus (xconnect dbus) "owns" declaration: this platform
 	// owns the well-known name `owns` on bus `bus`, under owner role `role`,
-	// callable by the roles listed in allow[]. name/socket stay NULL for
+	// callable by the roles listed in allow. name/socket stay NULL for
 	// these entries — they are not consumed as a per-provider service.
 	char *bus;
 	char *owns;
 	char *role;
-	char **allow;
-	int allow_count;
+	struct dl_list allow; // pv_platform_service_allow
 	// Hosted-bus D-Bus service activation (see xconnect/XCONNECT.md):
 	// true when the owned name declares activation.mode="on-demand", i.e.
 	// the owner is started on first message to `owns` rather than at boot.
 	// Meaningful only on an `owns` dbus export; false ("always") otherwise.
 	bool activatable;
+	struct dl_list list;
+};
+
+// One role->uid pin, declared under a platform's top-level "roles" map (see
+// xconnect/XCONNECT.md "Role UID Pinning"). Only a platform with at least one
+// "owns" export may pin; enforced in pv_dbus_daemon_validate().
+struct pv_platform_role_pin {
+	char *role;
+	int uid;
 	struct dl_list list;
 };
 typedef enum {
@@ -208,6 +232,7 @@ struct pv_platform {
 	struct dl_list drivers; // pv_platform_driver
 	struct dl_list services; // pv_platform_service
 	struct dl_list service_exports; // pv_platform_service_export
+	struct dl_list role_pins; // pv_platform_role_pin
 	struct pv_platform_network *network; // dynamic IPAM network config
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
@@ -232,11 +257,16 @@ pv_platform_service_add_name(struct pv_platform_service *svc, const char *name,
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
 				    char *socket);
-void pv_platform_add_service_owns(struct pv_platform *p,
-				  service_type_t svc_type, const char *bus,
-				  const char *owns, const char *role,
-				  char **allow, int allow_count,
-				  bool activatable);
+struct pv_platform_service_export *
+pv_platform_add_service_owns(struct pv_platform *p, service_type_t svc_type,
+			     const char *bus, const char *owns,
+			     const char *role, bool activatable);
+struct pv_platform_service_allow *pv_platform_service_export_add_allow(
+	struct pv_platform_service_export *se, const char *role,
+	char **interfaces, int interfaces_count, char **members,
+	int members_count, char **paths, int paths_count);
+struct pv_platform_role_pin *
+pv_platform_add_role_pin(struct pv_platform *p, const char *role, int uid);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
 void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
