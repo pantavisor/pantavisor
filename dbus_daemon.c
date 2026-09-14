@@ -22,6 +22,10 @@
 
 #ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,8 +33,18 @@
 #include <errno.h>
 #include <limits.h>
 #include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <time.h>
+#include <dirent.h>
+#include <poll.h>
+#include <sched.h>
+#include <sys/mount.h>
+#include <sys/wait.h>
+#include <sys/types.h>
 
 #include "dbus_daemon.h"
+#include "dbus_policy_check.h"
 #include "daemons.h"
 #include "state.h"
 #include "platforms.h"
@@ -263,6 +277,771 @@ int pv_dbus_daemon_role_uid(const char *role)
 	return next;
 }
 
+// Map a role to its passwd username ("<prefix><role>").
+static void role_to_user(const char *role, char *buf, size_t n)
+{
+	snprintf(buf, n, "%s%s", PV_DBUS_ROLE_NAME_PREFIX, role);
+}
+
+// Append one passwd line for `role` (resolving its masquerade uid to a name the
+// jailed daemon can look up), at most once per generation pass. `seen` holds
+// the roles already written; entries point into state-owned strings.
+static void passwd_add_role(FILE *pw, const char **seen, int *seen_n,
+			    const char *role, int uid)
+{
+	for (int i = 0; i < *seen_n; i++)
+		if (!strcmp(seen[i], role))
+			return;
+
+	char user[256];
+	role_to_user(role, user, sizeof(user));
+	fprintf(pw, "%s:x:%d:%d::/nonexistent:/sbin/nologin\n", user, uid, uid);
+
+	if (*seen_n < PV_DBUS_GEN_MAX_ROLES)
+		seen[(*seen_n)++] = role;
+}
+
+// Seed the daemon's private passwd with the rootfs passwd, so role lookups for
+// the daemon's own identity (root, nobody, ...) keep working; role entries are
+// appended on top.
+static void passwd_write_base(FILE *pw)
+{
+	size_t n = 0;
+	char *base = pv_fs_file_read("/etc/passwd", &n);
+	if (base && n > 0)
+		fwrite(base, 1, n, pw);
+	if (base)
+		free(base);
+}
+
+// True if the file at `path` does not already hold exactly `len` bytes of
+// `buf` (missing file counts as different).
+static bool file_differs(const char *path, const char *buf, size_t len)
+{
+	size_t n = 0;
+	char *cur = pv_fs_file_read(path, &n);
+	bool diff = !cur || n != len || memcmp(cur, buf, len) != 0;
+	if (cur)
+		free(cur);
+	return diff;
+}
+
+// Rewrite `path` in place (fopen "w" truncates the existing inode) with the
+// generated content, so a passwd bind-mount keeps tracking the same inode.
+static int write_inplace(const char *path, const char *buf, size_t len)
+{
+	FILE *fp = fopen(path, "w");
+	if (!fp) {
+		pv_log(ERROR, "could not write %s: %s", path, strerror(errno));
+		return -1;
+	}
+	if (len)
+		fwrite(buf, 1, len, fp);
+	fclose(fp);
+	return 0;
+}
+
+// Build the generated passwd and per-name policy XML into memory — two
+// projections of the same role->uid map that must stay in lockstep (see
+// pv_dbus_daemon_generate()). Shared by the real generation pass and the
+// fragment preflight in pv_dbus_daemon_validate(), so both see identical
+// content. Returns 0 on success (buffers allocated, caller frees), -1 on
+// allocation failure (already logged, buffers left NULL).
+static int dbus_policy_build(struct pv_state *s, char **pw_buf, size_t *pw_len,
+			     char **pol_buf, size_t *pol_len)
+{
+	*pw_buf = NULL;
+	*pol_buf = NULL;
+	*pw_len = 0;
+	*pol_len = 0;
+
+	FILE *pw = open_memstream(pw_buf, pw_len);
+	FILE *f = open_memstream(pol_buf, pol_len);
+	if (!pw || !f) {
+		pv_log(ERROR, "could not allocate dbus policy buffers");
+		if (pw)
+			fclose(pw);
+		if (f)
+			fclose(f);
+		free(*pw_buf);
+		free(*pol_buf);
+		*pw_buf = NULL;
+		*pol_buf = NULL;
+		return -1;
+	}
+
+	passwd_write_base(pw);
+
+	fputs("<!DOCTYPE busconfig PUBLIC "
+	      "\"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" "
+	      "\"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n"
+	      "<busconfig>\n",
+	      f);
+
+	const char *seen[PV_DBUS_GEN_MAX_ROLES];
+	int seen_n = 0;
+
+	struct pv_platform *p, *tmp_p;
+	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_platform_service_export *exp, *tmp_exp;
+		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
+				      struct pv_platform_service_export, list)
+		{
+			if (!exp->owns || exp->svc_type != SVC_TYPE_DBUS)
+				continue;
+
+			const char *orole = exp->role ? exp->role : exp->owns;
+			int owner_uid = pv_dbus_daemon_role_uid(orole);
+			if (owner_uid < 0)
+				continue;
+
+			char ouser[256];
+			role_to_user(orole, ouser, sizeof(ouser));
+			passwd_add_role(pw, seen, &seen_n, orole, owner_uid);
+
+			fprintf(f,
+				"  <!-- %s owns %s (owner role '%s' uid %d) -->\n"
+				"  <policy user=\"%s\">\n"
+				"    <allow own=\"%s\"/>\n"
+				"    <allow send_destination=\"%s\"/>\n"
+				"    <allow receive_sender=\"%s\"/>\n"
+				"  </policy>\n",
+				p->name, exp->owns, orole, owner_uid, ouser,
+				exp->owns, exp->owns, exp->owns);
+
+			struct pv_platform_service_allow *al, *tmp_al;
+			dl_list_for_each_safe(al, tmp_al, &exp->allow,
+					      struct pv_platform_service_allow,
+					      list)
+			{
+				int uid = pv_dbus_daemon_role_uid(al->role);
+				if (uid < 0)
+					continue;
+
+				char cuser[256];
+				role_to_user(al->role, cuser, sizeof(cuser));
+				passwd_add_role(pw, seen, &seen_n, al->role,
+						uid);
+
+				fprintf(f,
+					"  <!-- caller role '%s' uid %d -> %s -->\n"
+					"  <policy user=\"%s\">\n",
+					al->role, uid, exp->owns, cuser);
+
+				// Narrowing: one <allow> per combination of the
+				// non-empty dimensions, since the daemon
+				// matches a rule's attributes conjunctively.
+				// A plain role (no dimensions) keeps today's
+				// single unnarrowed line.
+				int ni = al->interfaces_count > 0 ?
+						 al->interfaces_count :
+						 1;
+				int nm = al->members_count > 0 ?
+						 al->members_count :
+						 1;
+				int np = al->paths_count > 0 ? al->paths_count :
+							       1;
+				for (int ii = 0; ii < ni; ii++) {
+					for (int mi = 0; mi < nm; mi++) {
+						for (int pi = 0; pi < np;
+						     pi++) {
+							fprintf(f,
+								"    <allow send_destination=\"%s\"",
+								exp->owns);
+							if (al->interfaces_count >
+							    0)
+								fprintf(f,
+									" send_interface=\"%s\"",
+									al->interfaces
+										[ii]);
+							if (al->members_count >
+							    0)
+								fprintf(f,
+									" send_member=\"%s\"",
+									al->members
+										[mi]);
+							if (al->paths_count > 0)
+								fprintf(f,
+									" send_path=\"%s\"",
+									al->paths[pi]);
+							fputs("/>\n", f);
+						}
+					}
+				}
+
+				// receive_sender is never narrowed: replies
+				// and signals must always reach an allowed
+				// caller.
+				fprintf(f,
+					"    <allow receive_sender=\"%s\"/>\n"
+					"  </policy>\n",
+					exp->owns);
+			}
+		}
+	}
+
+	fputs("</busconfig>\n", f);
+	fclose(f);
+	fclose(pw);
+
+	return 0;
+}
+
+// Upper bound on policy fragments tracked per validation/generation pass.
+#define PV_DBUS_FRAG_MAX 128
+
+// One resolved "policy" declaration: the owning platform/export and the
+// trail-relative fragment's absolute path (same trail-file mechanism as a
+// platform's own lxc.container.conf, see pv_platform_start()) plus the
+// deterministic, collision-free name it gets inside the live policy
+// directory.
+struct pv_dbus_frag_entry {
+	struct pv_platform *p;
+	struct pv_platform_service_export *exp;
+	char abspath[PATH_MAX];
+	char filename[128];
+};
+
+// Walk the state collecting every declared "policy" fragment. Returns the
+// count (capped at PV_DBUS_FRAG_MAX); the per-platform index in the
+// generated filename keeps it deterministic and collision-free across
+// generation passes as long as a platform's export order is stable.
+static int fragments_collect(struct pv_state *s, struct pv_dbus_frag_entry *out,
+			     int max)
+{
+	int n = 0;
+	struct pv_platform *p, *tmp_p;
+	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
+	{
+		int idx = 0;
+		struct pv_platform_service_export *exp, *tmp_exp;
+		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
+				      struct pv_platform_service_export, list)
+		{
+			if (!exp->policy)
+				continue;
+			if (n >= max) {
+				pv_log(WARN,
+				       "platform '%s' policy fragment '%s' ignored: too many fragments in this state",
+				       p->name, exp->policy);
+				continue;
+			}
+			pv_paths_storage_trail_plat_file(out[n].abspath,
+							 PATH_MAX, s->rev,
+							 p->name, exp->policy);
+			snprintf(out[n].filename, sizeof(out[n].filename),
+				 "pv-frag-%s-%d.conf", p->name, idx);
+			out[n].p = p;
+			out[n].exp = exp;
+			n++;
+			idx++;
+		}
+	}
+	return n;
+}
+
+// Every role name declared anywhere in the state (owner roles, allow roles
+// and role pins) — the role universe a fragment's "@role:<name>@" is checked
+// against (xconnect/XCONNECT.md "Validation" level 2).
+static int known_roles_collect(struct pv_state *s, const char **out, int max)
+{
+	int n = 0;
+	struct pv_platform *p, *tmp_p;
+	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_platform_service_export *exp, *tmp_exp;
+		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
+				      struct pv_platform_service_export, list)
+		{
+			if (exp->owns && n < max) {
+				out[n++] = exp->role ? exp->role : exp->owns;
+			}
+			struct pv_platform_service_allow *al, *tmp_al;
+			dl_list_for_each_safe(al, tmp_al, &exp->allow,
+					      struct pv_platform_service_allow,
+					      list)
+			{
+				if (al->role && n < max)
+					out[n++] = al->role;
+			}
+		}
+		struct pv_platform_role_pin *rp, *tmp_rp;
+		dl_list_for_each_safe(rp, tmp_rp, &p->role_pins,
+				      struct pv_platform_role_pin, list)
+		{
+			if (rp->role && n < max)
+				out[n++] = rp->role;
+		}
+	}
+	return n;
+}
+
+// This platform's own owned names — what own/own_prefix/send_destination/
+// receive_sender in one of its fragments may name (level 2).
+static int owns_names_collect(struct pv_platform *p, const char **out, int max)
+{
+	int n = 0;
+	struct pv_platform_service_export *exp, *tmp_exp;
+	dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
+			      struct pv_platform_service_export, list)
+	{
+		if (exp->owns && n < max)
+			out[n++] = exp->owns;
+	}
+	return n;
+}
+
+// The roles this specific export already grants in its 'allow' list — what a
+// fragment's <policy user="@role:...@"> must appear in (level 3, consistency
+// with the declaration).
+static int allow_roles_collect(struct pv_platform_service_export *exp,
+			       const char **out, int max)
+{
+	int n = 0;
+	struct pv_platform_service_allow *al, *tmp_al;
+	dl_list_for_each_safe(al, tmp_al, &exp->allow,
+			      struct pv_platform_service_allow, list)
+	{
+		if (al->role && n < max)
+			out[n++] = al->role;
+	}
+	return n;
+}
+
+// Replace every "@role:<name>@" placeholder in `in` with the role's generated
+// passwd username. Called only after pv_dbus_policy_check() has confirmed
+// every placeholder is well-formed and resolvable, so this is a plain text
+// substitution. Returns a newly allocated buffer (caller frees) and its
+// length in `out_len`, or NULL on allocation failure.
+static char *policy_fragment_substitute(const char *in, size_t *out_len)
+{
+	char *buf = NULL;
+	size_t len = 0;
+	FILE *f = open_memstream(&buf, &len);
+	if (!f)
+		return NULL;
+
+	const char *p = in;
+	while (*p) {
+		const char *at = strstr(p, "@role:");
+		if (!at) {
+			fputs(p, f);
+			break;
+		}
+		fwrite(p, 1, (size_t)(at - p), f);
+
+		const char *close = strchr(at + 6, '@');
+		if (!close) {
+			// Cannot happen once pv_dbus_policy_check() accepted
+			// this fragment; kept only as a defensive fallback.
+			fputs(at, f);
+			break;
+		}
+
+		char role[256] = { 0 };
+		size_t rl = (size_t)(close - (at + 6));
+		if (rl >= sizeof(role))
+			rl = sizeof(role) - 1;
+		memcpy(role, at + 6, rl);
+		fprintf(f, "%s%s", PV_DBUS_ROLE_NAME_PREFIX, role);
+
+		p = close + 1;
+	}
+	fclose(f);
+
+	*out_len = len;
+	return buf;
+}
+
+// Bounded wall-clock budget for the throwaway dbus-daemon parse check, so a
+// broken fragment can never block the caller (the controller mainloop) for
+// longer than this.
+#define PV_DBUS_POLICY_PREFLIGHT_TIMEOUT_MS 2000
+
+// Generous bound for a path built by concatenating a temp-dir path (itself
+// PATH_MAX) with a fixed suffix or a fragment filename, sized with enough
+// slack that the compiler's format-truncation check can prove it always
+// fits (a fragment filename is bounded by struct pv_dbus_frag_entry.filename).
+#define PV_DBUS_PREFLIGHT_PATH_MAX (PATH_MAX + 512)
+
+// Fork a throwaway dbus-daemon against `conf` (which references `passwd` via
+// a passwd jail, matching the real daemon's mount jail in
+// utils/tsh.c:_tsh_enter_passwd_jail) and wait, bounded by the timeout above,
+// for it to either print its listen address (config parsed: success) or exit
+// on its own (config rejected: failure). Always kills and reaps the child and
+// closes every fd, on every path. `errbuf` receives the daemon's stderr, the
+// diagnostic for a failure.
+static int dbus_policy_preflight_run(const char *conf, const char *passwd,
+				     char *errbuf, size_t errbuf_len)
+{
+	errbuf[0] = '\0';
+
+	int outp[2], errp[2];
+	if (pipe(outp)) {
+		snprintf(errbuf, errbuf_len, "pipe() failed: %s",
+			 strerror(errno));
+		return -1;
+	}
+	if (pipe(errp)) {
+		snprintf(errbuf, errbuf_len, "pipe() failed: %s",
+			 strerror(errno));
+		close(outp[0]);
+		close(outp[1]);
+		return -1;
+	}
+
+	pid_t pid = fork();
+	if (pid < 0) {
+		snprintf(errbuf, errbuf_len, "fork() failed: %s",
+			 strerror(errno));
+		close(outp[0]);
+		close(outp[1]);
+		close(errp[0]);
+		close(errp[1]);
+		return -1;
+	}
+
+	if (pid == 0) {
+		close(outp[0]);
+		close(errp[0]);
+		dup2(outp[1], STDOUT_FILENO);
+		dup2(errp[1], STDERR_FILENO);
+		close(outp[1]);
+		close(errp[1]);
+
+		// A throwaway check that cannot jail its own /etc/passwd is
+		// not faithful to the real daemon; bail rather than run
+		// unjailed.
+		if (unshare(CLONE_NEWNS) < 0 ||
+		    mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0 ||
+		    mount(passwd, "/etc/passwd", NULL, MS_BIND, NULL) < 0)
+			_exit(126);
+
+		char confarg[PV_DBUS_PREFLIGHT_PATH_MAX + 32];
+		snprintf(confarg, sizeof(confarg), "--config-file=%s", conf);
+		execl("/usr/bin/dbus-daemon", "dbus-daemon", "--nofork",
+		      "--print-address", confarg, (char *)NULL);
+		_exit(127);
+	}
+
+	close(outp[1]);
+	close(errp[1]);
+
+	int outfd = outp[0], errfd = errp[0];
+	fcntl(outfd, F_SETFL, fcntl(outfd, F_GETFL, 0) | O_NONBLOCK);
+	fcntl(errfd, F_SETFL, fcntl(errfd, F_GETFL, 0) | O_NONBLOCK);
+
+	char outbuf[256];
+	size_t outlen = 0, errlen = 0;
+	bool got_address = false;
+
+	struct timespec deadline;
+	clock_gettime(CLOCK_MONOTONIC, &deadline);
+	deadline.tv_sec += PV_DBUS_POLICY_PREFLIGHT_TIMEOUT_MS / 1000;
+	deadline.tv_nsec +=
+		(long)(PV_DBUS_POLICY_PREFLIGHT_TIMEOUT_MS % 1000) * 1000000L;
+	if (deadline.tv_nsec >= 1000000000L) {
+		deadline.tv_sec += 1;
+		deadline.tv_nsec -= 1000000000L;
+	}
+
+	for (;;) {
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		long remain_ms = (deadline.tv_sec - now.tv_sec) * 1000 +
+				 (deadline.tv_nsec - now.tv_nsec) / 1000000L;
+		if (remain_ms <= 0)
+			break;
+
+		struct pollfd pfds[2] = {
+			{ .fd = outfd, .events = POLLIN },
+			{ .fd = errfd, .events = POLLIN },
+		};
+		int pr = poll(pfds, 2, (int)remain_ms);
+		if (pr < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		if (pr == 0)
+			continue;
+
+		if (pfds[1].revents & POLLIN) {
+			ssize_t r = read(errfd, errbuf + errlen,
+					 errbuf_len - errlen - 1);
+			if (r > 0)
+				errlen += (size_t)r;
+		}
+		if (pfds[0].revents & POLLIN) {
+			ssize_t r = read(outfd, outbuf + outlen,
+					 sizeof(outbuf) - outlen - 1);
+			if (r > 0)
+				outlen += (size_t)r;
+			if (outlen > 0) {
+				got_address = true;
+				break;
+			}
+		}
+		if ((pfds[0].revents & (POLLHUP | POLLERR)) && outlen == 0) {
+			// stdout closed with nothing printed: the daemon
+			// exited before an address, i.e. rejected the config.
+			break;
+		}
+	}
+
+	kill(pid, SIGKILL);
+	// Drain any late stderr before reaping, for the diagnostic.
+	for (;;) {
+		if (errlen + 1 >= errbuf_len)
+			break;
+		ssize_t r =
+			read(errfd, errbuf + errlen, errbuf_len - errlen - 1);
+		if (r <= 0)
+			break;
+		errlen += (size_t)r;
+	}
+	errbuf[errlen] = '\0';
+
+	int wstatus = 0;
+	waitpid(pid, &wstatus, 0);
+
+	close(outfd);
+	close(errfd);
+
+	if (got_address)
+		return 0;
+
+	if (errlen == 0)
+		snprintf(
+			errbuf, errbuf_len,
+			"dbus-daemon produced no output within %dms (wait status 0x%x)",
+			PV_DBUS_POLICY_PREFLIGHT_TIMEOUT_MS, wstatus);
+	return -1;
+}
+
+// Assemble the candidate policy (generated rules plus every substituted
+// fragment) in a temporary directory, alongside a throwaway busconfig that
+// listens on a private socket and shares the real generated passwd, then run
+// the preflight above. Removes the temporary directory on every path.
+static int dbus_policy_preflight(const char *pw_buf, size_t pw_len,
+				 const char *pol_buf, size_t pol_len,
+				 struct pv_dbus_frag_entry *frags, char **subst,
+				 size_t *subst_len, int n, char *errbuf,
+				 size_t errbuf_len)
+{
+	char tmp[PATH_MAX];
+	if (pv_fs_path_tmpdir(PV_DBUS_SYSTEMBUS_DIR "/preflight", tmp)) {
+		snprintf(errbuf, errbuf_len,
+			 "could not create temporary validation directory");
+		return -1;
+	}
+
+	int ret = -1;
+	char policydir[PV_DBUS_PREFLIGHT_PATH_MAX],
+		passwd[PV_DBUS_PREFLIGHT_PATH_MAX],
+		conf[PV_DBUS_PREFLIGHT_PATH_MAX],
+		sock[PV_DBUS_PREFLIGHT_PATH_MAX],
+		genpath[PV_DBUS_PREFLIGHT_PATH_MAX];
+	snprintf(policydir, sizeof(policydir), "%s/policy.d", tmp);
+	snprintf(passwd, sizeof(passwd), "%s/passwd", tmp);
+	snprintf(conf, sizeof(conf), "%s/system.conf", tmp);
+	snprintf(sock, sizeof(sock), "%s/bus.sock", tmp);
+	snprintf(genpath, sizeof(genpath), "%s/policy.d/pv-generated.conf",
+		 tmp);
+
+	if (pv_fs_mkdir_p(policydir, 0755)) {
+		snprintf(errbuf, errbuf_len, "could not create %s", policydir);
+		goto out;
+	}
+	if (write_inplace(passwd, pw_buf, pw_len) ||
+	    write_inplace(genpath, pol_buf, pol_len)) {
+		snprintf(errbuf, errbuf_len,
+			 "could not write candidate policy files under %s",
+			 tmp);
+		goto out;
+	}
+	for (int i = 0; i < n; i++) {
+		char fp[PV_DBUS_PREFLIGHT_PATH_MAX];
+		snprintf(fp, sizeof(fp), "%s/policy.d/%s", tmp,
+			 frags[i].filename);
+		if (write_inplace(fp, subst[i], subst_len[i])) {
+			snprintf(errbuf, errbuf_len, "could not write %s", fp);
+			goto out;
+		}
+	}
+
+	FILE *cf = fopen(conf, "w");
+	if (!cf) {
+		snprintf(errbuf, errbuf_len, "could not write %s", conf);
+		goto out;
+	}
+	fprintf(cf,
+		"<!DOCTYPE busconfig PUBLIC "
+		"\"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" "
+		"\"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n"
+		"<busconfig>\n"
+		"  <type>system</type>\n"
+		"  <listen>unix:path=%s</listen>\n"
+		"  <auth>EXTERNAL</auth>\n"
+		"  <includedir>%s</includedir>\n"
+		"</busconfig>\n",
+		sock, policydir);
+	fclose(cf);
+
+	ret = dbus_policy_preflight_run(conf, passwd, errbuf, errbuf_len);
+
+out:
+	pv_fs_path_remove(tmp, true);
+	return ret;
+}
+
+// Levels 2 (attribute scanner) and 3 (consistency) per fragment, then level 1
+// (the daemon preflight) on the whole assembled candidate — see
+// xconnect/XCONNECT.md "Validation". Any failure rejects the state.
+static int dbus_policy_fragments_validate(struct pv_state *s)
+{
+	struct pv_dbus_frag_entry frags[PV_DBUS_FRAG_MAX];
+	int n = fragments_collect(s, frags, PV_DBUS_FRAG_MAX);
+	if (n == 0)
+		return 0;
+
+	int ret = -1;
+	char *pw_buf = NULL, *pol_buf = NULL;
+	size_t pw_len = 0, pol_len = 0;
+	char *subst[PV_DBUS_FRAG_MAX] = { 0 };
+	size_t subst_len[PV_DBUS_FRAG_MAX] = { 0 };
+
+	const char *known_roles[PV_DBUS_FRAG_MAX * 4];
+	int known_n = known_roles_collect(
+		s, known_roles, sizeof(known_roles) / sizeof(known_roles[0]));
+
+	if (dbus_policy_build(s, &pw_buf, &pw_len, &pol_buf, &pol_len))
+		return -1;
+
+	for (int i = 0; i < n; i++) {
+		size_t raw_len = 0;
+		char *raw = pv_fs_file_read(frags[i].abspath, &raw_len);
+		if (!raw) {
+			pv_log(ERROR,
+			       "platform '%s' policy fragment '%s' could not be read from '%s'",
+			       frags[i].p->name, frags[i].exp->policy,
+			       frags[i].abspath);
+			goto out;
+		}
+
+		const char *owns_names[PV_DBUS_FRAG_MAX];
+		int owns_n = owns_names_collect(frags[i].p, owns_names,
+						sizeof(owns_names) /
+							sizeof(owns_names[0]));
+		const char *allow_roles[PV_DBUS_FRAG_MAX];
+		int allow_n = allow_roles_collect(
+			frags[i].exp, allow_roles,
+			sizeof(allow_roles) / sizeof(allow_roles[0]));
+
+		int rc = pv_dbus_policy_check(frags[i].p->name,
+					      frags[i].exp->policy, raw,
+					      owns_names, owns_n, known_roles,
+					      known_n, allow_roles, allow_n);
+		if (rc) {
+			free(raw);
+			goto out; // pv_dbus_policy_check() already logged
+		}
+
+		subst[i] = policy_fragment_substitute(raw, &subst_len[i]);
+		free(raw);
+		if (!subst[i]) {
+			pv_log(ERROR,
+			       "platform '%s' policy fragment '%s': out of memory substituting placeholders",
+			       frags[i].p->name, frags[i].exp->policy);
+			goto out;
+		}
+	}
+
+	char errbuf[PV_DBUS_PREFLIGHT_PATH_MAX + 256];
+	if (dbus_policy_preflight(pw_buf, pw_len, pol_buf, pol_len, frags,
+				  subst, subst_len, n, errbuf,
+				  sizeof(errbuf))) {
+		pv_log(ERROR,
+		       "dbus-daemon rejected the assembled policy (generated rules plus %d fragment(s)): %s",
+		       n, errbuf);
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	for (int i = 0; i < n; i++)
+		free(subst[i]);
+	free(pw_buf);
+	free(pol_buf);
+	return ret;
+}
+
+// Reconcile the live policy directory's fragment files with the state's
+// current "policy" declarations: (re)write every substituted fragment, only
+// touching disk when its content changed, and remove any previously written
+// fragment file this pass did not re-derive — so the directory always
+// matches the state exactly. Returns true if anything changed.
+static bool dbus_policy_fragments_generate(struct pv_state *s)
+{
+	struct pv_dbus_frag_entry frags[PV_DBUS_FRAG_MAX];
+	int n = fragments_collect(s, frags, PV_DBUS_FRAG_MAX);
+	bool changed = false;
+
+	for (int i = 0; i < n; i++) {
+		size_t raw_len = 0;
+		char *raw = pv_fs_file_read(frags[i].abspath, &raw_len);
+		if (!raw) {
+			pv_log(ERROR,
+			       "platform '%s' policy fragment '%s' could not be re-read from '%s'; leaving the previous version live",
+			       frags[i].p->name, frags[i].exp->policy,
+			       frags[i].abspath);
+			continue;
+		}
+		size_t sub_len = 0;
+		char *sub = policy_fragment_substitute(raw, &sub_len);
+		free(raw);
+		if (!sub)
+			continue;
+
+		char fp[PATH_MAX];
+		snprintf(fp, sizeof(fp), "%s/%s", PV_DBUS_SYSTEMBUS_POLICYDIR,
+			 frags[i].filename);
+		if (file_differs(fp, sub, sub_len)) {
+			write_inplace(fp, sub, sub_len);
+			changed = true;
+		}
+		free(sub);
+	}
+
+	DIR *d = opendir(PV_DBUS_SYSTEMBUS_POLICYDIR);
+	if (d) {
+		struct dirent *de;
+		while ((de = readdir(d))) {
+			if (strncmp(de->d_name, "pv-frag-", 8))
+				continue;
+			bool live = false;
+			for (int i = 0; i < n; i++) {
+				if (!strcmp(de->d_name, frags[i].filename)) {
+					live = true;
+					break;
+				}
+			}
+			if (live)
+				continue;
+			char fp[PATH_MAX];
+			snprintf(fp, sizeof(fp), "%s/%s",
+				 PV_DBUS_SYSTEMBUS_POLICYDIR, de->d_name);
+			pv_fs_path_remove(fp, false);
+			changed = true;
+		}
+		closedir(d);
+	}
+
+	return changed;
+}
+
 int pv_dbus_daemon_validate(struct pv_state *s)
 {
 	if (!pv_config_get_bool(PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED))
@@ -296,6 +1075,23 @@ int pv_dbus_daemon_validate(struct pv_state *s)
 					       p->name,
 					       exp->owns ? exp->owns :
 							   "(none)");
+					return -1;
+				}
+			}
+
+			// (a3) 'policy' is only meaningful on an 'owns'
+			// export on the hosted system bus (xconnect/
+			// XCONNECT.md "Policy Fragments").
+			if (exp->policy) {
+				const char *bus =
+					exp->bus ? exp->bus :
+						   PV_DBUS_SYSTEMBUS_NAME;
+				if (!exp->owns ||
+				    strcmp(bus, PV_DBUS_SYSTEMBUS_NAME)) {
+					pv_log(ERROR,
+					       "platform '%s' policy fragment '%s' is only valid on an 'owns' export on the hosted '%s'",
+					       p->name, exp->policy,
+					       PV_DBUS_SYSTEMBUS_NAME);
 					return -1;
 				}
 			}
@@ -417,6 +1213,12 @@ int pv_dbus_daemon_validate(struct pv_state *s)
 
 	role_uid_pins_populate(s);
 
+	// Policy fragments: resolve, scan, check consistency and confirm the
+	// assembled candidate parses, before this state is allowed to go
+	// live (xconnect/XCONNECT.md "Validation").
+	if (dbus_policy_fragments_validate(s))
+		return -1;
+
 	return 0;
 }
 
@@ -494,43 +1296,6 @@ int pv_dbus_daemon_activate_container(struct pv_state *s, const char *container)
 	return 0;
 }
 
-// Map a role to its passwd username ("<prefix><role>").
-static void role_to_user(const char *role, char *buf, size_t n)
-{
-	snprintf(buf, n, "%s%s", PV_DBUS_ROLE_NAME_PREFIX, role);
-}
-
-// Append one passwd line for `role` (resolving its masquerade uid to a name the
-// jailed daemon can look up), at most once per generation pass. `seen` holds
-// the roles already written; entries point into state-owned strings.
-static void passwd_add_role(FILE *pw, const char **seen, int *seen_n,
-			    const char *role, int uid)
-{
-	for (int i = 0; i < *seen_n; i++)
-		if (!strcmp(seen[i], role))
-			return;
-
-	char user[256];
-	role_to_user(role, user, sizeof(user));
-	fprintf(pw, "%s:x:%d:%d::/nonexistent:/sbin/nologin\n", user, uid, uid);
-
-	if (*seen_n < PV_DBUS_GEN_MAX_ROLES)
-		seen[(*seen_n)++] = role;
-}
-
-// Seed the daemon's private passwd with the rootfs passwd, so role lookups for
-// the daemon's own identity (root, nobody, ...) keep working; role entries are
-// appended on top.
-static void passwd_write_base(FILE *pw)
-{
-	size_t n = 0;
-	char *base = pv_fs_file_read("/etc/passwd", &n);
-	if (base && n > 0)
-		fwrite(base, 1, n, pw);
-	if (base)
-		free(base);
-}
-
 void pv_dbus_daemon_prepare(void)
 {
 	struct pv_init_daemon *daemons = pv_init_get_daemons();
@@ -581,33 +1346,6 @@ void pv_dbus_daemon_prepare(void)
 	       PV_DBUS_SYSTEMBUS_CONF);
 }
 
-// True if the file at `path` does not already hold exactly `len` bytes of
-// `buf` (missing file counts as different).
-static bool file_differs(const char *path, const char *buf, size_t len)
-{
-	size_t n = 0;
-	char *cur = pv_fs_file_read(path, &n);
-	bool diff = !cur || n != len || memcmp(cur, buf, len) != 0;
-	if (cur)
-		free(cur);
-	return diff;
-}
-
-// Rewrite `path` in place (fopen "w" truncates the existing inode) with the
-// generated content, so a passwd bind-mount keeps tracking the same inode.
-static int write_inplace(const char *path, const char *buf, size_t len)
-{
-	FILE *fp = fopen(path, "w");
-	if (!fp) {
-		pv_log(ERROR, "could not write %s: %s", path, strerror(errno));
-		return -1;
-	}
-	if (len)
-		fwrite(buf, 1, len, fp);
-	fclose(fp);
-	return 0;
-}
-
 void pv_dbus_daemon_generate(struct pv_state *s)
 {
 	if (!pv_config_get_bool(PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED))
@@ -625,138 +1363,12 @@ void pv_dbus_daemon_generate(struct pv_state *s)
 	// (and reload the daemon) when the generated content actually differs.
 	char *pw_buf = NULL, *pol_buf = NULL;
 	size_t pw_len = 0, pol_len = 0;
-
-	FILE *pw = open_memstream(&pw_buf, &pw_len);
-	FILE *f = open_memstream(&pol_buf, &pol_len);
-	if (!pw || !f) {
-		pv_log(ERROR, "could not allocate dbus policy buffers");
-		if (pw)
-			fclose(pw);
-		if (f)
-			fclose(f);
-		free(pw_buf);
-		free(pol_buf);
+	if (dbus_policy_build(s, &pw_buf, &pw_len, &pol_buf, &pol_len))
 		return;
-	}
-
-	passwd_write_base(pw);
 
 	char polpath[PATH_MAX];
 	snprintf(polpath, sizeof(polpath), "%s/pv-generated.conf",
 		 PV_DBUS_SYSTEMBUS_POLICYDIR);
-
-	fputs("<!DOCTYPE busconfig PUBLIC "
-	      "\"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" "
-	      "\"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n"
-	      "<busconfig>\n",
-	      f);
-
-	const char *seen[PV_DBUS_GEN_MAX_ROLES];
-	int seen_n = 0;
-
-	struct pv_platform *p, *tmp_p;
-	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
-	{
-		struct pv_platform_service_export *exp, *tmp_exp;
-		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
-				      struct pv_platform_service_export, list)
-		{
-			if (!exp->owns || exp->svc_type != SVC_TYPE_DBUS)
-				continue;
-
-			const char *orole = exp->role ? exp->role : exp->owns;
-			int owner_uid = pv_dbus_daemon_role_uid(orole);
-			if (owner_uid < 0)
-				continue;
-
-			char ouser[256];
-			role_to_user(orole, ouser, sizeof(ouser));
-			passwd_add_role(pw, seen, &seen_n, orole, owner_uid);
-
-			fprintf(f,
-				"  <!-- %s owns %s (owner role '%s' uid %d) -->\n"
-				"  <policy user=\"%s\">\n"
-				"    <allow own=\"%s\"/>\n"
-				"    <allow send_destination=\"%s\"/>\n"
-				"    <allow receive_sender=\"%s\"/>\n"
-				"  </policy>\n",
-				p->name, exp->owns, orole, owner_uid, ouser,
-				exp->owns, exp->owns, exp->owns);
-
-			struct pv_platform_service_allow *al, *tmp_al;
-			dl_list_for_each_safe(al, tmp_al, &exp->allow,
-					      struct pv_platform_service_allow,
-					      list)
-			{
-				int uid = pv_dbus_daemon_role_uid(al->role);
-				if (uid < 0)
-					continue;
-
-				char cuser[256];
-				role_to_user(al->role, cuser, sizeof(cuser));
-				passwd_add_role(pw, seen, &seen_n, al->role,
-						uid);
-
-				fprintf(f,
-					"  <!-- caller role '%s' uid %d -> %s -->\n"
-					"  <policy user=\"%s\">\n",
-					al->role, uid, exp->owns, cuser);
-
-				// Narrowing: one <allow> per combination of the
-				// non-empty dimensions, since the daemon
-				// matches a rule's attributes conjunctively.
-				// A plain role (no dimensions) keeps today's
-				// single unnarrowed line.
-				int ni = al->interfaces_count > 0 ?
-						 al->interfaces_count :
-						 1;
-				int nm = al->members_count > 0 ?
-						 al->members_count :
-						 1;
-				int np = al->paths_count > 0 ? al->paths_count :
-							       1;
-				for (int ii = 0; ii < ni; ii++) {
-					for (int mi = 0; mi < nm; mi++) {
-						for (int pi = 0; pi < np;
-						     pi++) {
-							fprintf(f,
-								"    <allow send_destination=\"%s\"",
-								exp->owns);
-							if (al->interfaces_count >
-							    0)
-								fprintf(f,
-									" send_interface=\"%s\"",
-									al->interfaces
-										[ii]);
-							if (al->members_count >
-							    0)
-								fprintf(f,
-									" send_member=\"%s\"",
-									al->members
-										[mi]);
-							if (al->paths_count > 0)
-								fprintf(f,
-									" send_path=\"%s\"",
-									al->paths[pi]);
-							fputs("/>\n", f);
-						}
-					}
-				}
-
-				// receive_sender is never narrowed: replies
-				// and signals must always reach an allowed
-				// caller.
-				fprintf(f,
-					"    <allow receive_sender=\"%s\"/>\n"
-					"  </policy>\n",
-					exp->owns);
-			}
-		}
-	}
-
-	fputs("</busconfig>\n", f);
-	fclose(f);
-	fclose(pw);
 
 	bool changed = file_differs(PV_DBUS_SYSTEMBUS_PASSWD, pw_buf, pw_len) ||
 		       file_differs(polpath, pol_buf, pol_len);
@@ -764,7 +1376,16 @@ void pv_dbus_daemon_generate(struct pv_state *s)
 	if (changed) {
 		write_inplace(PV_DBUS_SYSTEMBUS_PASSWD, pw_buf, pw_len);
 		write_inplace(polpath, pol_buf, pol_len);
+	}
 
+	// Policy fragments were already validated (scanner, consistency and
+	// the daemon preflight) in pv_dbus_daemon_validate(); re-derive them
+	// here from the same trail files so the live directory always
+	// matches the current state exactly, pruning any that are now stale.
+	if (dbus_policy_fragments_generate(s))
+		changed = true;
+
+	if (changed) {
 		struct pv_init_daemon *d = pv_init_get_daemons();
 		for (int i = 0; d && d[i].name; i++) {
 			if (!strcmp(d[i].name, PV_DBUS_SYSTEMBUS_DAEMON) &&
