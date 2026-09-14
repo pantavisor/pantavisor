@@ -851,12 +851,17 @@ any placeholder that does not resolve before the daemon ever sees it.
 
 #### Reload
 
-When a state goes live the policy is reloaded through
-`org.freedesktop.DBus.ReloadConfig` on the ownership-monitor connection, not
-SIGHUP. The method returns an error if the new configuration fails to parse;
-that error fails the state transition. The throwaway instance is the pre-flight
-check, the reload result is the confirmation, and there is no window in which a
-broken policy is silently ignored.
+When a state goes live the policy is reloaded the same way as before
+fragments existed: SIGHUP to the managed `pv-dbus` daemon. The enforcement
+point is the pre-flight in [Validation](#validation) above, not the reload —
+it parses the exact same file set (generated rules plus every substituted
+fragment) with the same binary and the same generated passwd before the state
+is allowed to go live, so a broken policy fails validation and never reaches
+the running daemon. Switching the live reload itself to
+`org.freedesktop.DBus.ReloadConfig` is a follow-up, not done here: that call
+would have to travel over the ownership-monitor connection, which lives in
+the separate `pv-xconnect` process, so its result cannot fail the state
+transition in pantavisor anyway.
 
 ### Validation Rules (summary)
 
