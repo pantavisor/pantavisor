@@ -6,6 +6,8 @@
 <workspace>/
   run.log        <- aggregate output (host + tester) + SUMMARY
   <name>.log     <- console capture for <name> device
+  dev-setbootconfig-<name>-<id>.log <- setbootconfig= output, per device re-type
+  dev-flash-<name>-<revision>.log   <- flash= output, per test in volatile model
   README.md
   results/
     <tag>/<scope>/<category>/<name>/

@@ -146,20 +146,24 @@ models:
 - **`volatile`**: storage is new for every test.
 - **`persistent`**: storage is persistent across test iterations.
 
-A real device is not a separate code path: it is `-p 1` plus the persistent model plus
-`setbootconfig`/`none` re-typing.
+A real device does not use a separate code path: it is `-p 1` plus either the persistent model
+with `setbootconfig`/`none` re-typing, or the volatile model with `flash`.
 
 ### Volatile Model
 
-Only possible if targets are appengine containers. Not implemented for real devices to avoid
-time costly flashing between iterations.
+Every test gets a new target. It was designed primarily for the appengine pool, where a new
+container is cheap, to get the fastest pipeline execution possible. However, it is also
+supported on real devices to get that freshly flashed status for each one of the tests.
 
-As containers are discarded after every test, we save a lot of time avoiding both setup to get
-the target ready for the test and teardown to clean up after, so it is designed primarily to
-get the fastest pipeline execution possible.
+In this case, the initial revision and env config are seeded before boot, so the target comes up
+already on the test's revision:
 
-In this case, the initial revision and env config are seeded before boot, so the container
-comes up already on the test's revision.
+- **appengine** (`PVTEST_RETYPE=container`): the host boots a new container with empty storage,
+  and its `pv-appengine` entrypoint deploys the staged tarballs as the factory revision.
+- **real device** (`PVTEST_RETYPE=flash`): the host runs the manifest's `flash=` script, which
+  flashes the board with that same factory revision and boot config. A flash takes far longer
+  than a container boot, so this trades speed for a factory-fresh board on every test. See
+  [device.md](device.md#the-flash-script).
 
 ```
  ┌────────────────────────────┐
@@ -169,10 +173,10 @@ comes up already on the test's revision.
                │ ctrl: cfg + storage=<test> + rev + seed
                ▼
  ┌────────────────────────────┐
- │  Boot a fresh appengine    │◄─────────────────────────────┐
+ │  Boot a fresh target       │◄─────────────────────────────┐
  │  • test env cfg on the box │                              │
  │  • empty storage           │                              │
- │  • pvtx seeds initial rev  │                              │ more tests
+ │  • initial rev as factory  │                              │ more tests
  └─────────────┬──────────────┘                              │
                │ boots into the test's revision              │
                ▼                                             │
@@ -192,13 +196,13 @@ comes up already on the test's revision.
  ┌────────────────────────────┐                              │
  │  Discard  (teardown)       │──────────────────────────────┘
  │  • delete device on Hub    │
- │  • poweroff, drop container│
+ │  • drop container (pool)   │
  └────────────────────────────┘
 ```
 
 There is no factory clone or export and no install step, which is where the time is saved.
 Storage is keyed by test id rather than by slot, and the Hub device is deleted after every test
-because the container will not survive to be reused.
+because the target's storage will not survive to be reused.
 
 This loop is repeated until the tester has executed all of the flat queue provided by the host
 in alphabetical order.
