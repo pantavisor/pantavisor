@@ -1541,6 +1541,11 @@ bool pv_platform_is_installed(struct pv_platform *p)
 	return (p->status.current == PLAT_INSTALLED);
 }
 
+bool pv_platform_is_mounted(struct pv_platform *p)
+{
+	return (p->status.current == PLAT_MOUNTED);
+}
+
 bool pv_platform_is_staged(struct pv_platform *p)
 {
 	return (p->status.current == PLAT_STAGED);

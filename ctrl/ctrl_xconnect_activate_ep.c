@@ -31,6 +31,7 @@
 #include <event2/http.h>
 #include <event2/buffer.h>
 
+#include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -44,8 +45,10 @@
 
 #define ACTIVATE_MAX_DATA 512
 
-// Read the {"name":"<well-known>"} body and activate its owner. Called either
-// inline (body already buffered) or from the arrival callback below.
+// Read the {"name":"<well-known>"} (provider activation) or
+// {"container":"<name>"} (consumer activation) body and activate accordingly.
+// Called either inline (body already buffered) or from the arrival callback
+// below.
 static void ctrl_xconnect_activate_process(struct evhttp_request *req)
 {
 	ssize_t len = 0;
@@ -58,34 +61,55 @@ static void ctrl_xconnect_activate_process(struct evhttp_request *req)
 	jsmntok_t *tokv = NULL;
 	int tokc;
 	char *name = NULL;
-	if (jsmnutil_parse_json(data, &tokv, &tokc) > 0)
+	char *container = NULL;
+	if (jsmnutil_parse_json(data, &tokv, &tokc) > 0) {
 		name = pv_json_get_value(data, "name", tokv, tokc);
+		container = pv_json_get_value(data, "container", tokv, tokc);
+	}
 	if (tokv)
 		free(tokv);
-	if (!name || !name[0]) {
-		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
-					 "Missing 'name' in body");
-		goto out_name;
+
+	bool have_name = name && name[0];
+	bool have_container = container && container[0];
+	if (have_name == have_container) {
+		pv_ctrl_utils_send_error(
+			req, HTTP_BADREQUEST,
+			"Body must set exactly one of 'name' or 'container'");
+		goto out_both;
 	}
 
 	struct pantavisor *pv = pv_get_instance();
 	if (!pv || !pv->state) {
 		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
 					 "State not loaded yet");
-		goto out_name;
+		goto out_both;
 	}
 
-	if (pv_dbus_daemon_activate(pv->state, name) < 0) {
-		pv_log(WARN, "no activatable owner for D-Bus name '%s'", name);
-		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
-					 "No activatable owner for name");
-		goto out_name;
+	if (have_name) {
+		if (pv_dbus_daemon_activate(pv->state, name) < 0) {
+			pv_log(WARN, "no activatable owner for D-Bus name '%s'",
+			       name);
+			pv_ctrl_utils_send_error(
+				req, HTTP_NOTFOUND,
+				"No activatable owner for name");
+			goto out_both;
+		}
+	} else {
+		if (pv_dbus_daemon_activate_container(pv->state, container) <
+		    0) {
+			pv_log(WARN, "unknown container '%s' for activation",
+			       container);
+			pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
+						 "Unknown container");
+			goto out_both;
+		}
 	}
 
 	pv_ctrl_utils_send_ok(req);
 
-out_name:
+out_both:
 	free(name);
+	free(container);
 out:
 	if (data)
 		free(data);

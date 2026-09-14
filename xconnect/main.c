@@ -172,11 +172,26 @@ static struct pvx_link *parse_link(const char *json, jsmntok_t *itok,
 
 static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 {
-	// "consumes" descriptors ({consumes,bus,consumer,owner,activation}) are
-	// not links either — phase 3 (consumer activation) acts on them.
+	// "consumes" descriptors ({consumes,bus,consumer,owner,activation,socket})
+	// are not links either — feed the consumer-activation waiter set (fires
+	// the consumer once every "on-owner" name it lists has an owner).
 	char *consumes = pv_json_get_value(json, "consumes", itok, obj_tokc);
 	if (consumes) {
+		char *consumer =
+			pv_json_get_value(json, "consumer", itok, obj_tokc);
+		char *activation =
+			pv_json_get_value(json, "activation", itok, obj_tokc);
+		char *sock = pv_json_get_value(json, "socket", itok, obj_tokc);
+		bool on_owner = activation && !strcmp(activation, "on-owner");
+		pvx_act_reconcile_add_consumes(consumer, consumes, on_owner,
+					       sock ? sock : "");
 		free(consumes);
+		if (consumer)
+			free(consumer);
+		if (activation)
+			free(activation);
+		if (sock)
+			free(sock);
 		return;
 	}
 
