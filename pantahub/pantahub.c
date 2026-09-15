@@ -486,7 +486,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
 	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n",
 			pv_config_get_str(PH_CREDS_ID));
-	if (pv_fs_file_save(path, buf, 0444))
+	if (pv_fs_file_write_inplace(path, buf, 0444))
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 
@@ -495,7 +495,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
 	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", c);
-	if (pv_fs_file_save(path, buf, 0444))
+	if (pv_fs_file_write_inplace(path, buf, 0444))
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 }
@@ -589,7 +589,7 @@ int pv_pantahub_init()
 		pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
 		SNPRINTF_WTRUNC(tmp, sizeof(tmp), "%s\n",
 				pv_config_get_str(PH_CREDS_ID));
-		if (pv_fs_file_save(path, tmp, 0444) < 0)
+		if (pv_fs_file_write_inplace(path, tmp, 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path,
 			       strerror(errno));
 	}
@@ -598,7 +598,7 @@ int pv_pantahub_init()
 	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d\n",
 			pv_config_get_str(PH_CREDS_HOST),
 			pv_config_get_int(PH_CREDS_PORT));
-	if (pv_fs_file_save(path, tmp, 0444) < 0)
+	if (pv_fs_file_write_inplace(path, tmp, 0444) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 
