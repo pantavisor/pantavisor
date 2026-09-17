@@ -60,6 +60,7 @@
 #include "utils/tsh.h"
 #include "utils/system.h"
 #include "ipam.h"
+#include "wall.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
@@ -235,7 +236,7 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 		return;
 
 	p->status.current = status;
-	pv_log(INFO, "platform '%s' status is now %s", p->name,
+	pv_log(WALL, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
 
 	if (status == PLAT_STOPPED)

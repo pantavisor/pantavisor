@@ -63,6 +63,7 @@
 #include "paths.h"
 #include "config.h"
 #include "wdt.h"
+#include "wall.h"
 
 #include "log.h"
 
@@ -1147,6 +1148,32 @@ static int logserver_msg_fill(struct logserver_log *log,
 	}
 	return 0;
 }
+
+static bool logserver_stdout_shows()
+{
+	int out = logserver.active_out;
+
+	if (logserver.pid < 1)
+		return (out & LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
+		       ((out & LOG_SERVER_OUTPUT_STDOUT) && logserver.pid < 0);
+
+	return out &
+	       (LOG_SERVER_OUTPUT_STDOUT | LOG_SERVER_OUTPUT_STDOUT_DIRECT |
+		LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR);
+}
+
+static const char *logserver_skip_func_prefix(const char *msg)
+{
+	if (msg[0] != '(')
+		return msg;
+
+	const char *end = strstr(msg, ") ");
+	if (!end || strchr(msg, ' ') < end)
+		return msg;
+
+	return end + 2;
+}
+
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args)
 {
@@ -1162,7 +1189,11 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 
 	snprintf(log.plat, LOGSERVER_PLAT_MAX_LEN, "%s", platform);
 
-	if ((level != FATAL) && (level > pv_config_get_int(PV_LOG_LEVEL)))
+	bool filtered = (level != FATAL) && (pv_log_level_rank(level) >
+					     pv_config_get_int(PV_LOG_LEVEL));
+	bool alert = pv_log_level_is_alert(level);
+
+	if (filtered && !alert)
 		return 0;
 
 	struct buffer *log_buf = pv_buffer_get(true);
@@ -1174,15 +1205,20 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 
 	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
 
-	if (((pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) &&
-	     (logserver.pid < 0)) ||
-	    (pv_config_get_log_server_outputs() &
-	     LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
-	    (level == FATAL)) {
+	if (!filtered &&
+	    (((pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) &&
+	      (logserver.pid < 0)) ||
+	     (pv_config_get_log_server_outputs() &
+	      LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
+	     (level == FATAL))) {
 		logserver_utils_stdout(&log);
 	}
 
-	if (logserver.pid < 1) {
+	if (alert && (filtered || !logserver_stdout_shows()))
+		pv_wall_log(log.lvl, log.src, "%s",
+			    logserver_skip_func_prefix(log.data.buf));
+
+	if (filtered || logserver.pid < 1) {
 		pv_buffer_drop(log_buf);
 		return 0;
 	}

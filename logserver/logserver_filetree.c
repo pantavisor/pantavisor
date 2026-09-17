@@ -25,6 +25,7 @@
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
+#include "log.h"
 
 #include <limits.h>
 #include <string.h>
@@ -63,7 +64,7 @@ static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
 
 static int add_log(struct logserver_out *out, const struct logserver_log *log)
 {
-	if (log->lvl > pv_config_get_int(PV_LOG_LEVEL))
+	if (pv_log_level_rank(log->lvl) > pv_config_get_int(PV_LOG_LEVEL))
 		return 0;
 
 	bool is_pv = !strncmp(log->plat, MAIN_PLATFORM, strlen(MAIN_PLATFORM));
