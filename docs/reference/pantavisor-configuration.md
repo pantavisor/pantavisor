@@ -98,7 +98,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
 | `PV_LIBTHTTP_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` TRACE | `3` | set libthttp log verbosity level |
-| `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
+| `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the per-container [/dev/log](logserver-sockets.md#devlog) socket and Pantavisor's own; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../overview/storage.md#logs) buffer size |
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |

@@ -105,6 +105,11 @@ In addition to this, `mgmt` containers get these elements in /pantavisor:
 * The stored [user metadata](storage.md#user-metadata) and [device metadata](storage.md#device-metadata) for all containers.
 * Challenge and device-id information for [Pantacor Hub](remote-control.md#pantacor-hub).
 
+Independently of its role, every container also gets its own
+[/dev/log socket](../reference/logserver-sockets.md#devlog) — mounted at `/dev/log` rather than under
+/pantavisor — unless it is turned off for that container with
+[`dev-log`](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
+
 ## Restart Policy
 
 [Restart policy](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) defines how Pantavisor is going to [transition](updates.md#inprogress) into a new revision. There are two types of policies:
@@ -225,6 +230,18 @@ Containers, by default, will automatically direct these logs from the container 
 * messages
 * lxc log
 * lxc console
+
+The syslog stream is captured through the container's own
+[/dev/log socket](../reference/logserver-sockets.md#devlog), so anything an application sends with a
+standard syslog library is collected without the container configuring anything. On the default
+`filetree` sink these land under the container's directory as
+`syslog/<source>`, while the two lxc streams keep their path shape under `lxc/` — see
+[Filetree paths](../reference/logserver-sockets.md#filetree-paths):
+
+```bash
+ls /storage/logs/0/my-container/syslog/
+tail -f /storage/logs/0/my-container/lxc/console.log
+```
 
 This list can be expanded to other files using the [state JSON](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
 

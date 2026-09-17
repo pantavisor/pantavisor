@@ -174,7 +174,7 @@ Configures an individual container runtime.
 | `drivers` | object | No | Requirements: `required`, `optional`, or `manual`. |
 | `services` | object | No | [Service mesh requirements](#service-requirements). |
 | `logs` | array | No | [Logger configurations](../overview/containers.md#loggers). |
-| `dev-log` | boolean | No | Whether to bind-mount `/dev/log` into this container. Overrides the global [`PV_LOG_AUTO_DEVLOG`](pantavisor-configuration.md#summary) setting for this container. |
+| `dev-log` | boolean | No | Whether to create this container's [`/dev/log` socket](logserver-sockets.md#devlog) and bind-mount it. Overrides the global [`PV_LOG_AUTO_DEVLOG`](pantavisor-configuration.md#summary) setting for this container. |
 | `exports` | array | No | (Boolean flag in code) Marks container as an exporter. |
 | `auto_recovery` | object | No | [Auto-recovery configuration](#auto-recovery-object). If absent, inherited from group. |
 

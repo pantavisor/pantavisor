@@ -25,6 +25,7 @@
 #include <stdbool.h>
 
 #include <sys/types.h>
+#include <linux/limits.h>
 
 #include "utils/list.h"
 #include "utils/json.h"
@@ -181,6 +182,7 @@ struct pv_platform {
 	bool automodfw; // auto mount modfw
 	bool export;
 	bool std_log;
+	char log_path[PATH_MAX];
 	int pipefd[2];
 	struct pv_event_socket pipefd_listener;
 	struct timer timer_status_goal;
