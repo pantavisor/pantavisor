@@ -58,7 +58,11 @@ struct pv_pvtx_tar_metadata {
 	char devmajor[8];
 	char devminor[8];
 	char prefix[155];
+	char padding[12];
 };
+
+_Static_assert(sizeof(struct pv_pvtx_tar_metadata) == PVTX_TAR_BLOCK_SIZE,
+	       "tar metadata must cover a whole header block");
 
 #define PVTX_TAR_TYPEFLAG_LONG_NAME 'L'
 
