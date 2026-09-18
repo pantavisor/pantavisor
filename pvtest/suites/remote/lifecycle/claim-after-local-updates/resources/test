@@ -1,0 +1,105 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
+    echo "ERROR: PH_USER/PH_PASS not set" >&2; exit 1
+fi
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1 \
+    || { echo "ERROR: pvr login failed" >&2; exit 1; }
+
+devmeta() { pvcontrol devmeta ls | jq -M -r ".[\"$1\"] // \"unset\""; }
+
+echo "== wait for unclaimed state =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }
+devmeta pantahub.state
+wait_for_status "pv_exec test -s /run/pantavisor/pv/device-id" 0 30 \
+    || { echo "ERROR: timeout waiting for device-id hint file" >&2; exit 1; }
+wait_for_status "pv_exec test -s /run/pantavisor/pv/challenge" 0 30 \
+    || { echo "ERROR: timeout waiting for challenge hint file" >&2; exit 1; }
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+challenge=$(pv_exec cat /run/pantavisor/pv/challenge)
+if [ -z "$device_id" ] || [ -z "$challenge" ]; then
+    echo "ERROR: empty device-id or challenge in claim state" >&2; exit 1
+fi
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME (see
+# automated-workflow.md § Test authoring rules).
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+# Random content makes objects the Hub has never seen, forcing a real upload on claim
+random_updated="_config/pv-example-app/pvtest-claim-random"
+random_done="pvtest-claim/random.bin"
+
+echo "== local update 1 (non-reboot) =="
+mkdir -p "$(dirname "$random_updated")"
+dd if=/dev/urandom of="$random_updated" bs=4096 count=1 2>/dev/null
+sha_updated=$(sha256sum "$random_updated" | awk '{print $1}')
+pvr add . > /dev/null 2>&1
+pvr commit -m "random pv-example-app config" > /dev/null 2>&1
+pvr post --rev "locals/claim-updated" > /dev/null 2>&1
+wait_for_revision_state "locals/claim-updated" "UPDATED" \
+    || { echo "ERROR: timeout waiting for locals/claim-updated to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress "locals/claim-updated" | jq -M -r '.status'
+# a local revision drops remote mode; without it the claim gate is never evaluated
+pvcontrol commands go-remote > /dev/null
+
+echo "== claim device on Hub while UPDATED =="
+pvr claim -c "$challenge" "$(pvr_device_url "$device_id")" < /dev/null > /dev/null \
+    || { echo "ERROR: pvr claim failed" >&2; exit 1; }
+
+echo "== device holds the claim while UPDATED =="
+sleep 30
+devmeta pantahub.state
+devmeta pantahub.claimed
+devmeta pantavisor.revision
+pvcontrol steps show-progress "locals/claim-updated" | jq -M -r '.status'
+code=$(pvr curl -s -o /dev/null -w '%{http_code}' "$trail_url")
+if [ "$code" = "200" ]; then echo "trail: present"; else echo "trail: absent"; fi
+
+echo "== local update 2 (reboot) =="
+mkdir -p "$(dirname "$random_done")"
+dd if=/dev/urandom of="$random_done" bs=4096 count=1 2>/dev/null
+sha_done=$(sha256sum "$random_done" | awk '{print $1}')
+pvr add . > /dev/null 2>&1
+pvr commit -m "random platform-less object" > /dev/null 2>&1
+pvr post --rev "locals/claim-done" > /dev/null 2>&1
+wait_for_target_ready "local update 2" "locals/claim-done" DONE >&2 \
+    || { echo "ERROR: timeout waiting for locals/claim-done to reach DONE" >&2; exit 1; }
+pvcontrol steps show-progress "locals/claim-done" | jq -M -r '.status'
+pvcontrol commands go-remote > /dev/null
+
+echo "== device completes the claim on DONE =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 240 \
+    || { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+devmeta pantahub.state
+devmeta pantahub.claimed
+
+echo "== Hub factory revision matches device state =="
+co_device="$(mktemp -d)/device"
+pvr_clone_local_or_die "$co_device" device
+co_hub="$(mktemp -d)/hub"
+out=$(pvr clone "$trail_url/steps/0" "$co_hub" 2>&1) \
+    || { echo "ERROR: pvr clone of Hub revision 0 failed: $out" >&2; exit 1; }
+if [ "$(cd "$co_device" && pvr json | jq -S .)" = "$(cd "$co_hub" && pvr json | jq -S .)" ]; then
+    echo "state: match"
+else
+    echo "state: mismatch"
+fi
+
+echo "== random objects fetched back from Hub =="
+for f in updated done; do
+    eval "path=\$random_$f sha=\$sha_$f"
+    got=$(sha256sum "$co_hub/$path" 2>/dev/null | awk '{print $1}')
+    if [ -n "$got" ] && [ "$got" = "$sha" ]; then echo "$f: match"; else echo "$f: mismatch"; fi
+done
+
+echo "== cleanup =="
+# unclaim locally too: a device left idle makes the framework delete it from the Hub again
+pvcontrol cmd unclaim > /dev/null \
+    || { echo "ERROR: pvcontrol cmd unclaim failed" >&2; exit 1; }
+pvr dev delete -y "$(pvr_device_url "$device_id")" > /dev/null
