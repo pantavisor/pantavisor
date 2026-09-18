@@ -1,0 +1,22 @@
+== wait for unclaimed state ==
+claim
+== local update 1 (non-reboot) ==
+UPDATED
+== claim device on Hub while UPDATED ==
+== device holds the claim while UPDATED ==
+claim
+0
+locals/claim-updated
+UPDATED
+trail: absent
+== local update 2 (reboot) ==
+DONE
+== device completes the claim on DONE ==
+idle
+1
+== Hub factory revision matches device state ==
+state: match
+== random objects fetched back from Hub ==
+updated: match
+done: match
+== cleanup ==

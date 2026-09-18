@@ -2,7 +2,10 @@
 # suite against it.
 #
 # Scope is picked from what changed: `local` normally, and `local` + `remote`
-# when the push touches pantahub/, the Hub client the remote suite exercises.
+# when the push touches the Hub client the remote suite exercises (pantahub/,
+# updater, trestclient, ph_logger, event/event_rest) or
+# pvtest/{suites/remote,tester,shared,host}/ (the remote suite and the
+# framework running it).
 # Remote tests register real devices on a Hub, so they need the PH_USER/PH_PASS
 # repository secrets; the run fails fast with a clear message if they are unset.
 #
@@ -98,7 +101,10 @@ jobs:
               esac
             fi
 
-            if printf '%s\n' "$files" | grep -qE '^pantahub/'; then
+            # Hub client (pantahub/ plus the Hub code outside it), the remote
+            # suite and the framework running it
+            remote_re='^(pantahub/|pvtest/(suites/remote|tester|shared|host)/|(updater|trestclient|ph_logger)\.[ch]$|event/event_rest\.[ch]$)'
+            if printf '%s\n' "$files" | grep -qE "$remote_re"; then
               paths='["local","remote"]'
             else
               paths='["local"]'
