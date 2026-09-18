@@ -13,8 +13,8 @@
 #
 # That directory — and only that one — is bind-mounted into the tester, so a key
 # named in exec= belongs beside the manifest there. Anything setbootconfig=/
-# setbootconfig_conf= reads is host-side only: keep it out of devices/, e.g.
-# ~/.config/pvtest/<board>.conf.
+# flash= and their _conf= files read is host-side only: keep it out of
+# devices/, e.g. ~/.config/pvtest/<board>.conf.
 #
 #   name=   identifies this one runner. Unique per board, e.g. dev-01, dev-02.
 #   type=   class of target. Shared by every board of the same kind (e.g.
@@ -28,11 +28,15 @@
 #           test that do not meet the boot-config requirements from
 #           test.json. When set, it is invoked whenever a test needs a
 #           retype: that is, when test.json requires a boot config that is
-#           not set on the running device.
+#           not set on the running device. Only used by --model persistent.
 #   setbootconfig_conf= optional. Config file for the setbootconfig= command.
 #   setbootconfig_base= optional. Base boot config for the device.
 #           Space-separated KEY=VALUE, prepended to the specific test.json
-#           config before it is passed to setbootconfig=.
+#           config before it is passed to setbootconfig= or flash=.
+#   flash=  optional. Required by --model volatile, where it is invoked before
+#           every test to flash the board with a fresh storage whose only
+#           revision is the test's initial one, booting with its boot config.
+#   flash_conf= optional. Config file for the flash= command.
 #
 # setbootconfig contract
 # Invocation:  <setbootconfig> [-c <setbootconfig_conf>] KEY=VALUE ...
@@ -58,8 +62,34 @@
 # Must not: contact the board over exec= (it is rebooting), change keys it was
 # not given (other than by restoring setbootconfig_base=), require a TTY on
 # stdin, or leave the serial device open on exit.
-# Timing: no timeout is enforced; the runner only WARNs if the console shows no
-# activity within 30 s of return.
+# Timing: the tester waits up to PVTEST_RETYPE_TIMEOUT (default 300 s) for the
+# call to return; the runner also WARNs if the console shows no activity within
+# 30 s of return.
+#
+# flash contract
+# Invocation:  <flash> [-c <flash_conf>] -r <revision> -t <tarball-dir> KEY=VALUE ...
+# Inputs
+#   -c      flash_conf=, if set. Opaque to the runner.
+#   -r      the name the board must boot as its factory revision:
+#           locals/<scope>_<category>_<name>, the same name the appengine pool
+#           seeds, so a test sees the same revision on every target.
+#   -t      host directory holding the test's container tarballs, named
+#           NN-<file>.pvrexport.tgz, to add in NN (test.json) order.
+#   argv    boot-config tokens, as for setbootconfig.
+#   env, console  as for setbootconfig.
+# Outputs
+#   exit 0  the board storage is fresh (no other revision, no Hub credentials,
+#           logs or state left by a previous test), its only revision is
+#           <revision> (base plus the -t tarballs) committed as DONE and selected
+#           by the bootloader, the tokens are its persistent boot config, AND
+#           the boot into it has been started. Return as soon as it has; the
+#           runner fences READY itself.
+#   exit !0 failure. The runner ABORTs that test.
+#   stdout/stderr  captured to <workspace>/dev-flash-<name>-<revision>.log,
+#           with / in <revision> replaced by _.
+# Must not: require a TTY on stdin, or leave the serial device open on exit.
+# Timing: the tester waits up to PVTEST_RETYPE_TIMEOUT (default 3600 s for
+# flash) for the call to return, then ABORTs the test.
 
 #name=dev-01
 #type=<machine>
@@ -70,3 +100,5 @@
 #setbootconfig=
 #setbootconfig_conf=
 #setbootconfig_base=
+#flash=
+#flash_conf=
