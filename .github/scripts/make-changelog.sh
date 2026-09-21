@@ -151,7 +151,15 @@ determine_previous_tag() {
     while IFS= read -r t; do
         [ -z "$t" ] && continue
         [ "$t" = "$tag" ] && continue
-        [ "$(printf '%s\n%s\n' "$t" "$tag" | sort -V | head -n 1)" = "$t" ] && candidates+=("$t")
+        if [[ "$tag" == *-rc* ]]; then
+            [ "$(printf '%s\n%s\n' "$t" "$tag" | sort -V | head -n 1)" = "$t" ] && candidates+=("$t")
+        else
+            # tag is the bare stable major: sort -V treats "030" as a prefix
+            # of, and thus "less than", "030-rc5" -- the opposite of release
+            # order (a stable major always comes after all of its own RCs).
+            # Every RC of this major is unconditionally a candidate here.
+            candidates+=("$t")
+        fi
     done < <(git tag -l "${major}-rc*")
 
     while IFS= read -r t; do
