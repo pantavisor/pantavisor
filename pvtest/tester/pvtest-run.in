@@ -205,15 +205,32 @@ _track_device() {
 	) 8>>"$f.lock"
 }
 
+_hub_delete_device() {
+	local dev="$1" out rc
+	[ -n "$dev" ] || return 0
+	out=$(_pvr_auth dev delete -y "$(pvr_device_url "$dev")" 2>&1)
+	rc=$?
+	_track_device del "$dev"
+	[ $rc -eq 0 ] && return 0
+	case "$out" in
+	*"code=404"*)
+		pvtest_log INFO "device $dev not on Hub (unclaimed or already deleted)"
+		return 0
+		;;
+	esac
+	pvtest_log ERROR "pvr dev delete -y $(pvr_device_url "$dev") failed (exit $rc)${out:+: $out}"
+	return $rc
+}
+
 # Delete any still-tracked self-claimed devices (a test killed before teardown)
 _sweep_tracked_devices() {
 	local f="$PVTEST_CLAIMED_DEVICES_FILE" d
 	[ -n "$f" ] && [ -s "$f" ] || return 0
-	while IFS= read -r d; do
-		[ -n "$d" ] || continue
+	# the helper edits the file while we iterate, so read a snapshot
+	for d in $(cat "$f"); do
 		pvtest_log WARN "sweeping leftover self-claimed device $d"
-		_pvr_auth dev delete -y "$(pvr_device_url "$d")" > /dev/null 2>&1
-	done < "$f"
+		_hub_delete_device "$d"
+	done
 	: > "$f" 2>/dev/null || true
 }
 
@@ -427,8 +444,7 @@ _dev_unclaim() {
 	fi
 	if [ -n "$dev" ]; then
 		pvtest_log INFO "deleting device $dev from Hub"
-		_pvr_logged dev delete -y "$(pvr_device_url "$dev")"
-		_track_device del "$dev"
+		_hub_delete_device "$dev"
 	fi
 	pvtest_log INFO "device unclaimed"
 	return 0
@@ -486,8 +502,7 @@ _dev_delete_only() {
 	local device_id="${1:-$(_dev_read_file /var/run/pantavisor/pv/device-id)}"
 	[ -n "$device_id" ] || return 0
 	pvtest_log INFO "deleting claimed device $device_id"
-	_pvr_logged dev delete -y "$(pvr_device_url "$device_id")"
-	_track_device del "$device_id"
+	_hub_delete_device "$device_id"
 }
 
 # Unclaim device this slot currently points at via pvcontrol without Hub dev deletion
@@ -542,8 +557,7 @@ handle_self_claim() {
 
 	if [ -n "$pre_unclaimed_device" ]; then
 		pvtest_log INFO "deleting device $pre_unclaimed_device from Hub"
-		_pvr_logged dev delete -y "$(pvr_device_url "$pre_unclaimed_device")"
-		_track_device del "$pre_unclaimed_device"
+		_hub_delete_device "$pre_unclaimed_device"
 		pre_unclaimed_device=
 	fi
 
@@ -979,12 +993,13 @@ setup_test() {
 }
 
 teardown_test() {
-	# In volatile, the container dies with this test, so only the Hub side needs cleaning
+	# In volatile, the container dies with this test, so only the Hub side needs cleaning.
 	if [ "$PVTEST_MODEL" = "volatile" ]; then
-		if [ -n "$claimed_device" ]; then
-			_dev_delete_only "$claimed_device"
-			claimed_device=
-		fi
+		local _cur
+		_cur=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+		[ -n "$claimed_device" ] && _dev_delete_only "$claimed_device"
+		[ -n "$_cur" ] && [ "$_cur" != "$claimed_device" ] && _dev_delete_only "$_cur"
+		claimed_device=
 		return 0
 	fi
 
