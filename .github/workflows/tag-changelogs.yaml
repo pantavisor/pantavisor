@@ -91,6 +91,11 @@ jobs:
           ./.github/scripts/make-changelog.sh --no-commit "$TAG"
 
       - name: Publish the S3 accumulator
+        # RC only: the accumulator is documented (CHANGELOG/README.md) as
+        # holding just the rolling RC sections. A stable tag's generated file
+        # carries the finalized "## v<MAJOR>" section on top, which must not
+        # be written back to S3.
+        if: contains(env.TAG, '-rc')
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
