@@ -30,9 +30,33 @@
 #include <string.h>
 #include <unistd.h>
 #include <linux/limits.h>
-#include <libgen.h>
+#include <stdio.h>
 
 #define MAIN_PLATFORM "pantavisor"
+
+static void get_src(const struct logserver_log *log, char *out)
+{
+	const char *src = log->src ? log->src : "";
+
+	while (*src == '/')
+		src++;
+
+	char tmp[PATH_MAX] = { 0 };
+	snprintf(tmp, sizeof(tmp), "%s", src);
+	size_t len = strlen(tmp);
+	while (len > 0 && tmp[len - 1] == '/')
+		tmp[--len] = '\0';
+	src = tmp;
+
+	if (!*src || strstr(src, "../") || strstr(src, "/..") ||
+	    !strcmp(src, ".."))
+		src = "unknown-src";
+
+	if (!strchr(src, '/'))
+		pv_fs_path_concat(out, 2, "syslog", src);
+	else
+		snprintf(out, PATH_MAX, "%s", src);
+}
 
 static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
 {
@@ -43,9 +67,14 @@ static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
 		return -1;
 	}
 
+	char src[PATH_MAX] = { 0 };
+
+	if (!is_pv)
+		get_src(log, src);
+
 	char tmp_path[PATH_MAX] = { 0 };
 	pv_paths_pv_log_file(tmp_path, PATH_MAX, log->running_rev, log->plat,
-			     is_pv ? "pantavisor.log" : log->src);
+			     is_pv ? "pantavisor.log" : src);
 
 	char dir[PATH_MAX] = { 0 };
 	pv_fs_dirname(tmp_path, dir);

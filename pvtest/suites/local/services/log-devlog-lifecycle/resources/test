@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+# Lifecycle of the per-container /dev/log socket: it is created when the
+# container starts (pv_start_container) and removed when it stops
+# (pv_platform_set_status on PLAT_STOPPED), so /dev/log exists for exactly as
+# long as the container runs.
+#
+# pv-example-app is used because only a container whose restart policy is
+# "container" can be driven through the pv-ctrl lifecycle endpoints.
+#
+# The test restores the container to STARTED before it ends, so it leaves no
+# state behind for the tests that share this device.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+CONT=pv-example-app
+TAG=pvtest-devlog-restart
+MSG="hello after restart"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+RUNDIR=$(conf_val PV_SYSTEM_RUNDIR); RUNDIR=${RUNDIR%/}
+LOGROOT=$(conf_val PV_LOG_DIR);      LOGROOT=${LOGROOT%/}
+if [ -z "$RUNDIR" ] || [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_SYSTEM_RUNDIR/PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+SOCK="$RUNDIR/pv-plat-log/$CONT/log.sock"
+L="$LOGROOT/current"
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+cont_status() { pvcontrol containers ls | jq -r --arg n "$CONT" '.[] | select(.name == $n) | .status'; }
+
+echo "== socket present while the container runs =="
+echo "socket present: $(yesno pv_exec test -S "$SOCK")"
+
+echo "== stopping the container removes it =="
+pvcontrol containers stop "$CONT" > /dev/null 2>&1
+wait_for_value "cont_status" "STOPPED" 30 > /dev/null 2>&1
+wait_for_path "$SOCK" -d > /dev/null 2>&1
+echo "container stopped: $(cont_status)"
+echo "socket present: $(yesno pv_exec test -S "$SOCK")"
+
+echo "== starting it again recreates it =="
+pvcontrol containers start "$CONT" > /dev/null 2>&1
+wait_for_value "cont_status" "STARTED" 60 > /dev/null 2>&1
+wait_for_path "$SOCK" -a > /dev/null 2>&1
+echo "container started: $(cont_status)"
+echo "socket present: $(yesno pv_exec test -S "$SOCK")"
+
+echo "== capture still works on the new socket =="
+pventer -c "$CONT" logger -t "$TAG" "$MSG" > /dev/null 2>&1
+wait_for_path "$L/$CONT/syslog/$TAG" -a > /dev/null 2>&1
+echo "captured at <container>/syslog/<tag>: $(yesno pv_exec test -e "$L/$CONT/syslog/$TAG")"
+echo "message body present: $(yesno pv_exec grep -q "$MSG" "$L/$CONT/syslog/$TAG")"

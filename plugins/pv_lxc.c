@@ -50,6 +50,7 @@
 #include "utils/pvsignals.h"
 #include "utils/system.h"
 #include "ipam.h"
+#include "logserver/logserver.h"
 
 #define PV_VLOG __vlog
 #include "utils/tsh.h"
@@ -732,6 +733,37 @@ static void pv_setup_default_log(struct pv_platform *p, struct lxc_container *c,
 	}
 }
 
+static int pv_mount_log_socket(struct pv_platform *p, struct lxc_container *c)
+{
+	char entry[PATH_MAX * 2] = { 0 };
+
+	pv_log(DEBUG, "mounting %s as /dev/log", p->log_path);
+
+	if (!p->log_path[0]) {
+		pv_log(WARN, "no log socket path for %s, skipping mount",
+		       p->name);
+		return -1;
+	}
+
+	if (!pv_fs_path_exist_timeout(p->log_path, 5))
+		pv_log(WARN,
+		       "log socket %s for %s not ready, "
+		       "/dev/log may be missing",
+		       p->log_path, p->name);
+
+	snprintf(entry, sizeof(entry),
+		 "%s dev/log none bind,rw,optional,create=file 0 0",
+		 p->log_path);
+
+	if (!c->set_config_item(c, "lxc.mount.entry", entry)) {
+		pv_log(WARN, "couldn't mount log socket %s as /dev/log",
+		       p->log_path);
+		return -1;
+	}
+
+	return 0;
+}
+
 int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 		       int logfd, int pipefd)
 {
@@ -756,6 +788,10 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 		pv_log(WARN, "could not get pipefd from container data");
 		return -1;
 	}
+
+	if (p->std_log &&
+	    pv_logserver_create_platform_socket(p->name, p->log_path) < 0)
+		pv_log(WARN, "couldn't create log socket for %s", p->name);
 
 	if (pvsignals_block_chld(&oldmask)) {
 		pv_log(ERROR,
@@ -832,14 +868,8 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
-		if (p->std_log) {
-			char *mount_log =
-				"/dev/log dev/log none bind,create=file 0 0";
-			if (!c->set_config_item(c, "lxc.mount.entry",
-						mount_log)) {
-				pv_log(WARN, "/dev/log not mounting");
-			}
-		}
+		if (p->std_log)
+			pv_mount_log_socket(p, c);
 
 		c->save_config(c, NULL);
 
@@ -867,6 +897,8 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 	return 0;
 out_failure:
 	chdir("/");
+	if (p->log_path[0])
+		pv_logserver_remove_platform_socket(p->log_path);
 	return -1;
 }
 

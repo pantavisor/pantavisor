@@ -1,0 +1,11 @@
+== socket present while the container runs ==
+socket present: yes
+== stopping the container removes it ==
+container stopped: STOPPED
+socket present: no
+== starting it again recreates it ==
+container started: STARTED
+socket present: yes
+== capture still works on the new socket ==
+captured at <container>/syslog/<tag>: yes
+message body present: yes

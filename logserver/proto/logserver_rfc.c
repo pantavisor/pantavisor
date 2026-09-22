@@ -122,11 +122,6 @@ int logserver_rfc_get_prival(const char *buf)
 	return prival;
 }
 
-int logserver_rfc_create_socket(const char *cur_sock)
-{
-	return symlink(cur_sock, LOGSERVER_RFC_SOCKET);
-}
-
 log_protocol_code_t logserver_rfc_check_type(const char *buf)
 {
 	if (!buf || !buf[0] || buf[0] != '<')
