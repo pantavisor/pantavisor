@@ -1,0 +1,14 @@
+== global PV_LOG_AUTO_DEVLOG=0, no dev-log key ==
+pv-example-app log.sock is a socket: no
+pv-example-app /dev/log is a socket: no
+pv-example-norole log.sock is a socket: no
+== "dev-log": true in pv-example-app/run.json ==
+pv-example-app log.sock is a socket: yes
+pv-example-app /dev/log is a socket: yes
+pv-example-norole log.sock is a socket: no
+== capture from inside pv-example-app ==
+captured at <container>/syslog/<tag>: yes
+message body present: yes
+== removing the key restores the inherited default ==
+pv-example-app log.sock is a socket: no
+pv-example-app /dev/log is a socket: no

@@ -111,6 +111,8 @@ Local experience tests exercise Pantavisor features that operate without any clo
 
 | Test | Description | Done |
 |------|-------------|------|
+| `local/services/log-devlog` | Per-container /dev/log capture, attribution, src sanitization and socket create/remove on container stop/start | ✓ |
+| `local/services/log-devlog-override` | Per-container `dev-log: true` in run.json enables /dev/log with `PV_LOG_AUTO_DEVLOG=0` | ✓ |
 | `local/services/log-output-formats` | Log Output Formats (filetree/singlefile) | |
 | `local/services/console-alerts` | WALL console alerts reach `/dev/console`; `PV_LOG_CONSOLE_ALERTS=0` set at runtime silences them | |
 | `local/services/console-alerts-dedup` | Console alert skipped when a stdout output shows it | |

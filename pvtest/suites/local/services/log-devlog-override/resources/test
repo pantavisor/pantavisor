@@ -1,0 +1,73 @@
+#!/bin/sh
+#
+# Per-container override of PV_LOG_AUTO_DEVLOG: the global flag is off, so no
+# container gets a /dev/log socket by default. Setting "dev-log": true in one
+# container's run.json (parse_platform -> pv_platform_set_std_log) must create
+# that container's socket and bind-mount it at /dev/log, and only that one:
+# pv-example-norole, which carries no dev-log key, keeps inheriting the global
+# setting.
+#
+# The test removes the key again at the end, so the container goes back to the
+# inherited default and no socket is left behind for tests sharing this device.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+CONT=pv-example-app
+OTHER=pv-example-norole
+TAG=pvtest-devlog-override
+MSG="hello from pvtest devlog override"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+RUNDIR=$(conf_val PV_SYSTEM_RUNDIR); RUNDIR=${RUNDIR%/}
+LOGROOT=$(conf_val PV_LOG_DIR);      LOGROOT=${LOGROOT%/}
+if [ -z "$RUNDIR" ] || [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_SYSTEM_RUNDIR/PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+SOCK="$RUNDIR/pv-plat-log/$CONT/log.sock"
+OTHER_SOCK="$RUNDIR/pv-plat-log/$OTHER/log.sock"
+L="$LOGROOT/current"
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+# Rewrite $CONT/run.json with a jq filter, then commit and post it as $1.
+post_run_json() {
+	rev="$1" filter="$2"
+	jq -M "$filter" "$CONT/run.json" > "$CONT/run.json.new" \
+		&& mv "$CONT/run.json.new" "$CONT/run.json" \
+		|| { echo "ERROR: failed to edit $CONT/run.json" >&2; exit 1; }
+	pvr commit > /dev/null 2>&1
+	pvr post --rev "$rev" > /dev/null 2>&1
+	wait_for_revision_state "$rev" "UPDATED" > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $rev to reach UPDATED" >&2; exit 1; }
+}
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+echo "== global PV_LOG_AUTO_DEVLOG=0, no dev-log key =="
+echo "$CONT log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+echo "$CONT /dev/log is a socket: $(yesno pventer -c "$CONT" test -S /dev/log)"
+echo "$OTHER log.sock is a socket: $(yesno pv_exec test -S "$OTHER_SOCK")"
+
+echo "== \"dev-log\": true in $CONT/run.json =="
+post_run_json "locals/devlog-on" '. + {"dev-log": true}'
+wait_for_path "$SOCK" -a > /dev/null 2>&1
+echo "$CONT log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+echo "$CONT /dev/log is a socket: $(yesno pventer -c "$CONT" test -S /dev/log)"
+echo "$OTHER log.sock is a socket: $(yesno pv_exec test -S "$OTHER_SOCK")"
+
+echo "== capture from inside $CONT =="
+pventer -c "$CONT" logger -t "$TAG" "$MSG" > /dev/null 2>&1
+wait_for_path "$L/$CONT/syslog/$TAG" -a > /dev/null 2>&1
+echo "captured at <container>/syslog/<tag>: $(yesno pv_exec test -e "$L/$CONT/syslog/$TAG")"
+echo "message body present: $(yesno pv_exec grep -q "$MSG" "$L/$CONT/syslog/$TAG")"
+
+echo "== removing the key restores the inherited default =="
+post_run_json "locals/devlog-default" 'del(."dev-log")'
+wait_for_path "$SOCK" -d > /dev/null 2>&1
+echo "$CONT log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+echo "$CONT /dev/log is a socket: $(yesno pventer -c "$CONT" test -S /dev/log)"

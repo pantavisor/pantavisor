@@ -150,7 +150,7 @@ Additional volumes can be [specified](../reference/pantavisor-state-format-v2.md
 
 ## Logs
 
-Pantavisor can centralize all of your [container logs](containers.md#loggers), separated by [revision](revisions.md), in one place on-disk. It does so by running a small server (Log Server) which [offers](containers.md#roles) a set of [sockets](../reference/logserver-sockets.md) to the [containers](containers.md):
+Pantavisor can centralize all of your [container logs](containers.md#loggers), separated by [revision](revisions.md), in one place on-disk. It does so by running a small server (Log Server) which [offers](containers.md#roles) a set of [sockets](../reference/logserver-sockets.md) to the [containers](containers.md).
 
 To check the Log Server's current configuration on a running device, use [pvcontrol](../tools/pvcontrol.md#configuration):
 
@@ -158,31 +158,102 @@ To check the Log Server's current configuration on a running device, use [pvcont
 pvcontrol conf ls | grep -i log      # e.g. PV_LOG_SERVER_OUTPUTS, PV_LOG_LEVEL, PV_LOG_DIR
 ```
 
-### Output types
+### Log sockets
+
+The Log Server listens on three kinds of socket:
 
 * [pv-ctrl-log](../reference/logserver-sockets.md#pv-ctrl-log): to send log traces.
-* [pv-fd-log](../reference/logserver-sockets.md#pv-fd-log): to suscribe file descriptors.
+* [pv-fd-log](../reference/logserver-sockets.md#pv-fd-log): to subscribe file descriptors, which Pantavisor then polls and logs on the container's behalf.
 * [/dev/log](../reference/logserver-sockets.md#devlog): one datagram socket per container, for standard syslog clients.
 
-Containers can also log using the standard syslog protocol by writing to `/dev/log`. Each container
-gets its own datagram socket for this, bind-mounted at `/dev/log` when it starts and removed when it
-stops, so ordinary syslog clients are captured as-is and the container a message came from is known
-from the socket it arrived on rather than guessed from the sender's cgroup. Both
-[RFC 3164](../reference/logserver-sockets.md#rfc-3164) and
-[RFC 5424](../reference/logserver-sockets.md#rfc-5424) are supported and auto-detected per message
-— no configuration is needed. Applications can also send
-a [JSON-formatted message](../reference/logserver-sockets.md#json-protocol) or a
-[key-value formatted message](../reference/logserver-sockets.md#key-value-protocol) directly to
-`pv-ctrl-log`.
+#### /dev/log
+
+Most applications already know how to log: they write syslog messages to `/dev/log`. Pantavisor
+takes advantage of that by giving every container its own datagram socket, created at
+`<PV_SYSTEM_RUNDIR>/pv-plat-log/<container>/log.sock` when the container starts and bind-mounted at
+`/dev/log` inside it. The socket is removed when the container stops or fails to start, so `/dev/log`
+exists for exactly as long as the container runs.
+
+Two properties follow from this design:
+
+* **Nothing is lost.** The sockets are `SOCK_DGRAM`, which is what datagram-only syslog clients such
+  as glibc's `syslog()` expect, so every message they send is captured. The two long-lived sockets,
+  `pv-ctrl-log` and `pv-fd-log`, stay `SOCK_STREAM`.
+* **The origin is known, not guessed.** Because each container writes to a socket of its own, the
+  container a message came from is the owner of the socket it arrived on. Nothing in the message,
+  such as the syslog `HOSTNAME`, is trusted for this, and no cgroup lookup is needed. The complete
+  rules are in [Platform attribution](../reference/logserver-sockets.md#platform-attribution).
+
+Both [RFC 3164](../reference/logserver-sockets.md#rfc-3164) and
+[RFC 5424](../reference/logserver-sockets.md#rfc-5424) are auto-detected per message, so no
+configuration is needed. Applications can also send a
+[JSON-formatted message](../reference/logserver-sockets.md#json-protocol) or a
+[key-value formatted message](../reference/logserver-sockets.md#key-value-protocol), to `/dev/log` or
+directly to `pv-ctrl-log`.
 
 ```bash
 logger -t myapp "hello from myapp"
 tail -f /storage/logs/0/my-container/syslog/myapp
 ```
 
-See the [/dev/log section](../reference/logserver-sockets.md#devlog) for message formats, priority mapping, and per-language library examples (Python `SysLogHandler`, C `openlog`/`syslog`, Go, etc.).
+Processes Pantavisor runs outside any container log to a separate `/dev/log` of Pantavisor's own,
+and their messages land in `pantavisor/pantavisor.log`.
 
-There are a number of parameters that can be tweaked from the [configuration](../reference/pantavisor-configuration.md#summary) that will affect Log Server, such as `log.capture`, `log.maxsize`, `log.level`, etc. Between those, there is an important parameter called `log.server.outputs` (`PV_LOG_SERVER_OUTPUTS`) that allows to change how the logs will be stored. It is set like any other [configuration](pantavisor-configuration-levels.md) key, e.g. as an environment variable at boot time:
+Which containers get a socket is set globally by
+[`PV_LOG_AUTO_DEVLOG`](../reference/pantavisor-configuration.md#summary) (enabled by default) and can
+be overridden per container with `dev-log` in its `run.json`: `"dev-log": false` opts one container
+out, and `"dev-log": true` opts one in while the global setting is off. The full matrix is in
+[Per-container control](../reference/logserver-sockets.md#per-container-control).
+
+Any standard syslog library works without modification. Use the `LOCAL0` facility for container
+applications:
+
+**C / C++ (`syslog.h`)**, where `openlog` targets `/dev/log` by default on Linux:
+
+```c
+#include <syslog.h>
+
+int main(void) {
+    openlog("myapp", LOG_PID, LOG_LOCAL0);
+    syslog(LOG_INFO, "Container started");
+    closelog();
+    return 0;
+}
+```
+
+**Python (`logging.handlers.SysLogHandler`)**
+
+```python
+import logging
+import logging.handlers
+
+handler = logging.handlers.SysLogHandler(address="/dev/log")
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info("Container started")
+```
+
+**Go (`log/syslog`)**
+
+```go
+package main
+
+import "log/syslog"
+
+func main() {
+    w, err := syslog.New(syslog.LOG_INFO|syslog.LOG_LOCAL0, "myapp")
+    if err != nil {
+        panic(err)
+    }
+    defer w.Close()
+    w.Info("Container started")
+}
+```
+
+### Output types
+
+There are a number of parameters that can be tweaked from the [configuration](../reference/pantavisor-configuration.md#summary) that will affect Log Server, such as `PV_LOG_CAPTURE`, `PV_LOG_DIR_MAXSIZE`, `PV_LOG_LEVEL`, etc. Between those, there is an important parameter called `PV_LOG_SERVER_OUTPUTS` that allows to change how the logs will be stored. It is set like any other [configuration](pantavisor-configuration-levels.md) key, e.g. as an environment variable at boot time:
 
 ```bash
 PV_LOG_SERVER_OUTPUTS=filetree,stdout
@@ -199,8 +270,23 @@ This is the default option. In this case the log output will be delivered in dif
 
 Inside a container's directory the log's source becomes its path: a plain source name is filed under
 `syslog/`, while a source that already looks like a path keeps its shape, which is how the lxc logs
-end up under `lxc/`. The complete rule, including how a source containing `..` is rejected, is in
-[Filetree paths](../reference/logserver-sockets.md#filetree-paths).
+end up under `lxc/`. This holds whatever protocol delivered the message, so a JSON message sent to
+`pv-ctrl-log` lands under `syslog/` too, not only syslog text from `/dev/log`:
+
+```
+logs/<revision>/<container>/
+├── syslog/
+│   ├── myapp        <- RFC 3164 via /dev/log
+│   ├── jsonapp      <- JSON via pv-ctrl-log
+│   └── messages
+└── lxc/
+    ├── lxc.log
+    └── console.log
+```
+
+A source that would climb out of the container's directory (anything with `..`) is filed as
+`syslog/unknown-src` instead, so a container can never write outside its own directory. The complete
+rule is in [Filetree paths](../reference/logserver-sockets.md#filetree-paths).
 
 Browse and tail these files directly under `/storage/logs/<revision>/<container>/`:
 
