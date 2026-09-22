@@ -1,0 +1,63 @@
+#!/bin/sh
+#
+# Per-container /dev/log: each running container owns a SOCK_DGRAM socket at
+# <PV_SYSTEM_RUNDIR>/pv-plat-log/<container>/log.sock, bind-mounted at /dev/log
+# inside it. Messages are attributed to the container that owns the socket they
+# arrived on, not to a cgroup lookup, and the syslog tag becomes the file name
+# under the container's log directory.
+#
+# Covers the filetree src rules from get_src() (logserver/logserver_filetree.c):
+# a tag with no '/' is filed under syslog/, a path-shaped source keeps its shape,
+# and a traversing source collapses to unknown-src instead of escaping the tree.
+#
+# Every assertion prints "<label>: yes|no" so the golden stays stable and a diff
+# names the exact property that regressed.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+CONT=pv-example-app
+TAG=pvtest-devlog
+MSG="hello from pvtest devlog"
+EVIL='../../etc/passwd'
+
+# One round trip for config; paths are never hardcoded (they differ per target).
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+RUNDIR=$(conf_val PV_SYSTEM_RUNDIR); RUNDIR=${RUNDIR%/}
+LOGROOT=$(conf_val PV_LOG_DIR);      LOGROOT=${LOGROOT%/}
+if [ -z "$RUNDIR" ] || [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_SYSTEM_RUNDIR/PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+SOCK="$RUNDIR/pv-plat-log/$CONT/log.sock"
+L="$LOGROOT/current"
+
+# Run a command on the target (or in the container) and report it as yes/no.
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+echo "== sockets =="
+echo "container log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+echo "container /dev/log is a socket: $(yesno pventer -c "$CONT" test -S /dev/log)"
+echo "pantavisor /dev/log is a socket: $(yesno pv_exec test -S /dev/log)"
+
+echo "== capture from inside the container =="
+echo "logger available in container: $(yesno pventer -c "$CONT" which logger)"
+pventer -c "$CONT" logger -t "$TAG" "$MSG" > /dev/null 2>&1
+wait_for_path "$L/$CONT/syslog/$TAG" -a > /dev/null 2>&1
+echo "captured at <container>/syslog/<tag>: $(yesno pv_exec test -e "$L/$CONT/syslog/$TAG")"
+echo "message body present: $(yesno pv_exec grep -q "$MSG" "$L/$CONT/syslog/$TAG")"
+
+echo "== attribution comes from the socket, not a cgroup guess =="
+echo "misfiled under unknown-platform: $(yesno pv_exec test -e "$L/unknown-platform/syslog/$TAG")"
+echo "misfiled under pantavisor: $(yesno pv_exec test -e "$L/pantavisor/syslog/$TAG")"
+
+echo "== path-shaped src keeps its shape =="
+echo "lxc/lxc.log present: $(yesno pv_exec test -e "$L/$CONT/lxc/lxc.log")"
+echo "wrongly nested under syslog/: $(yesno pv_exec test -e "$L/$CONT/syslog/lxc")"
+
+echo "== traversing src collapses to unknown-src =="
+pventer -c "$CONT" logger -t "$EVIL" "$MSG" > /dev/null 2>&1
+wait_for_path "$L/$CONT/syslog/unknown-src" -a > /dev/null 2>&1
+echo "collapsed to syslog/unknown-src: $(yesno pv_exec test -e "$L/$CONT/syslog/unknown-src")"
+echo "escaped the log tree: $(yesno pv_exec test -e "$LOGROOT/etc/passwd")"

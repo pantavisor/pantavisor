@@ -110,6 +110,8 @@ Local experience tests exercise Pantavisor features that operate without any clo
 
 | Test | Description | Done |
 |------|-------------|------|
+| `local/services/log-devlog` | Per-container /dev/log capture, attribution and src sanitization | ✓ |
+| `local/services/log-devlog-lifecycle` | Per-container /dev/log socket create/remove on container stop/start | ✓ |
 | `local/services/log-output-formats` | Log Output Formats (filetree/singlefile) | |
 | `local/services/on-demand-gc` | On-Demand Garbage Collection | ✓ |
 | `local/services/sync-gc` | Synchronous Garbage Collection (/storage/gc) | ✓ |
