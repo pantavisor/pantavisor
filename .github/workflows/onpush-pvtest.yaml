@@ -6,8 +6,9 @@
 # updater, trestclient, ph_logger, event/event_rest) or
 # pvtest/{suites/remote,tester,shared,host}/ (the remote suite and the
 # framework running it).
-# Remote tests register real devices on a Hub, so they need the PH_USER/PH_PASS
-# repository secrets; the run fails fast with a clear message if they are unset.
+# Remote tests register real devices on a Hub, so they need the PH_USER/PH_TOKEN
+# (Pantahub personal token) repository secrets; the run fails fast with a clear
+# message if they are unset..
 #
 # It builds against meta-pantavisor master. The workflow_dispatch meta_ref input
 # overrides that, for a change that spans both repos and needs the other side's
@@ -69,7 +70,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SCOPE_INPUT: ${{ inputs.test_scope }}
           PH_USER: ${{ secrets.PH_USER }}
-          PH_PASS: ${{ secrets.PH_PASS }}
+          PH_TOKEN: ${{ secrets.PH_TOKEN }}
+          PH_PASS: ${{ secrets.PH_PASS }} # deprecated, PH_TOKEN fallback
         run: |
           set -euo pipefail
 
@@ -113,8 +115,8 @@ jobs:
 
           case "$paths" in
             *'"remote"'*)
-              if [ -z "${PH_USER:-}" ] || [ -z "${PH_PASS:-}" ]; then
-                echo "::error::scope includes the remote suite, which registers devices on a Hub, but the PH_USER and PH_PASS repository secrets are not set on ${{ github.repository }}"
+              if [ -z "${PH_USER:-}" ] || { [ -z "${PH_TOKEN:-}" ] && [ -z "${PH_PASS:-}" ]; }; then
+                echo "::error::scope includes the remote suite, which registers devices on a Hub, but the PH_USER and PH_TOKEN repository secrets are not set on ${{ github.repository }}"
                 exit 1
               fi ;;
           esac
@@ -208,7 +210,8 @@ jobs:
         working-directory: ${{ env.WORKSPACE }}
         env:
           PH_USER: ${{ secrets.PH_USER }}
-          PH_PASS: ${{ secrets.PH_PASS }}
+          PH_TOKEN: ${{ secrets.PH_TOKEN }}
+          PH_PASS: ${{ secrets.PH_PASS }} # deprecated, PH_TOKEN fallback
           SCOPE: ${{ matrix.scope }}
         run: |
           echo "=== AppEngine Test Run started at $(date) ==="

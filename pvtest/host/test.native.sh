@@ -442,7 +442,8 @@ run_test() {
 		"PVTEST_DEVICE_NAME=$_dev_name"
 		"PVTEST_RETYPE=$retype_mech"
 		"PH_USER=$PH_USER"
-		"PH_PASS=$PH_PASS"
+		"PH_TOKEN=$PH_TOKEN"
+		"PH_PASS=$PH_PASS" # deprecated
 		"PVTEST_HUB_URL=$PVTEST_HUB_URL"
 		"PVR_DISABLE_SELF_UPGRADE=true"
 		"PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct"

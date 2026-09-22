@@ -1,7 +1,7 @@
 #!/bin/sh
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
-PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1
 
 USRMETA_KEY="pvtest-usrmeta-key"
 USRMETA_VALUE="pvtest-usrmeta-value"

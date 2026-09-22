@@ -374,7 +374,8 @@ _tester_common_args() {
 		-e OVERWRITE="$overwrite"
 		-e VERBOSE="$verbose"
 		-e PH_USER="$PH_USER"
-		-e PH_PASS="$PH_PASS"
+		-e PH_TOKEN="$PH_TOKEN"
+		-e PH_PASS="$PH_PASS" # deprecated
 		-e PVTEST_HUB_URL="$PVTEST_HUB_URL"
 		-e PVR_DISABLE_SELF_UPGRADE=true
 		-e PVTEST_DEVICE_TYPE="${PVTEST_DEVICE_TYPE:-appengine}"
@@ -826,6 +827,7 @@ run_test() {
 			-e PVTEST_RETYPE="$retype_mech" \
 			-e VERBOSE="$verbose" \
 			-e PH_USER="$PH_USER" \
+			-e PH_TOKEN="$PH_TOKEN" \
 			-e PH_PASS="$PH_PASS" \
 			-e PVTEST_HUB_URL="$PVTEST_HUB_URL" \
 			-e PVR_DISABLE_SELF_UPGRADE=true \

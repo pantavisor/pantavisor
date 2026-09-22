@@ -76,7 +76,7 @@ permissions.
 | `setup.config.env` | per-test env config, as space-separated `KEY=VALUE`. Prefer `setup.config.usrmeta` for keys configurable at runtime | e.g. `"PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=lenient"` |
 | `setup.config.usrmeta` | per-test runtime metadata, space-separated `KEY=VALUE` | e.g. `"PV_LOG_PUSH=1 PH_UPDATER_INTERVAL=5"` |
 | `setup.containers.tarballs` | list of extra container pvrexport tarballs merged on top of the device's factory state to form the test's initial revision | the device/appengine should provide bsp plus a container with the pvr endpoint (e.g. pvr-sdk), so do not add those |
-| `setup.self-claim` | `"true"`: claim the device in setup and delete it in teardown; `"false"`: ensure the device is unclaimed in setup | requires `PH_USER`/`PH_PASS` when `"true"` |
+| `setup.self-claim` | `"true"`: claim the device in setup and delete it in teardown; `"false"`: ensure the device is unclaimed in setup | requires `PH_USER`/`PH_TOKEN` when `"true"` |
 | `setup.commit-initial` | whether the initial revision must be committed as a rollback point before the test body runs | `"true"` costs a full reboot cycle, so set it only when the test triggers a rollback that must land on its own revision, or asserts the initial revision survives a gc. Only affects the persistent model |
 | `test-script` | path to the test script | `"resources/test"` |
 | `skip` | exclude test from runs | `--fail-on-skip` (used on CI/master) fails the run on any SKIPPED |
