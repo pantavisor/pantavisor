@@ -21,10 +21,11 @@ so those must be allowed without a password. Add this once with `sudo visudo`:
 <user> ALL=(ALL) NOPASSWD: /sbin/losetup, /sbin/modprobe, /usr/sbin/iw, /bin/chmod
 ```
 
-Hub-backed tests read credentials from the environment:
+Hub-backed tests read credentials from the environment. `PH_TOKEN` (Pantahub
+personal token) can be substituted by `PH_PASS` (deprecated):
 
 ```
-export PH_USER=... PH_PASS=...
+export PH_USER=... PH_TOKEN=...
 ```
 
 A run targets one Pantacor Hub instance, selected with `--hub URL` (or `PVTEST_HUB_URL`),

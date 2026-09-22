@@ -58,7 +58,8 @@ usage() {
 	echo "  PVTEST_ROOT      prefix stripped from queue entries to form a test id (default: /work)"
 	echo "  PVTEST_LIBDIR    where utils/common live (default: /usr/share/pantavisor/pvtest)"
 	echo "  APPENGINE_LOGS   dir of <target>.log files, tailed into each test's log"
-	echo "  PH_USER/PH_PASS  Hub credentials, for self-claim and Hub-side usrmeta"
+	echo "  PH_USER/PH_TOKEN Hub user and personal token, for self-claim and Hub-side usrmeta"
+	echo "  PH_PASS          deprecated fallback for PH_TOKEN"
 	echo "  PVTEST_HUB_URL   Hub the run targets (default: https://api.pantahub.com)"
 	echo ""
 	echo "See docs/testing/."
@@ -109,15 +110,15 @@ _ae_pvr_home() { printf '/tmp/pvtest_pvrhome_%s' "$(_ae_safe "${1:-${PVTEST_AE:-
 
 # Run a pvr command authenticated against the Hub
 _pvr_auth() {
-	if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
-		pvtest_log ERROR "PH_USER/PH_PASS not set; refusing unauthenticated 'pvr $*'"
+	if [ -z "$PH_USER" ] || [ -z "$PH_TOKEN" ]; then
+		pvtest_log ERROR "PH_USER/PH_TOKEN not set; refusing unauthenticated 'pvr $*'"
 		return 1
 	fi
 	local home; home="$(_ae_pvr_home)"
 	mkdir -p "$home" 2>/dev/null
 	(
 		export HOME="$home"
-		if ! PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1; then
+		if ! PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1; then
 			pvtest_log ERROR "pvr login failed; refusing 'pvr $*'"
 			exit 1
 		fi
@@ -139,10 +140,10 @@ _pvr_logged() {
 # Hub access token
 _hub_token() {
 	local home
-	{ [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; } || return 1
+	{ [ -n "$PH_USER" ] && [ -n "$PH_TOKEN" ]; } || return 1
 	home="$(_ae_pvr_home)"; mkdir -p "$home" 2>/dev/null
 	( export HOME="$home"
-	  PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1 )
+	  PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1 )
 	jq -r 'first(.tokens[]) | .["access-token"] // empty' "$home/.pvr/auth.json" 2>/dev/null
 }
 
@@ -583,7 +584,7 @@ apply_usrmeta() {
 	applied_usrmeta_keys=
 	[ -n "$usrmeta" ] || return 0
 	local device_id=""
-	if [ "$self_claim" = "true" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+	if [ "$self_claim" = "true" ] && [ -n "$PH_USER" ] && [ -n "$PH_TOKEN" ]; then
 		device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
 	fi
 	local kv k v
@@ -1006,7 +1007,7 @@ teardown_test() {
 	# Remove usrmeta applied for this test, locally and on the Hub
 	if [ -n "$applied_usrmeta_keys" ]; then
 		local device_id=""
-		if [ "$self_claim" = "true" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+		if [ "$self_claim" = "true" ] && [ -n "$PH_USER" ] && [ -n "$PH_TOKEN" ]; then
 			device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
 		fi
 		local k
@@ -1027,10 +1028,10 @@ exec_test() {
 	fi
 
 	local pvrhome=""
-	if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+	if [ -n "$PH_USER" ] && [ -n "$PH_TOKEN" ]; then
 		pvrhome="$(_ae_pvr_home)"
 		mkdir -p "$pvrhome" 2>/dev/null
-		HOME="$pvrhome" PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" \
+		HOME="$pvrhome" PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" \
 			pvr login > /dev/null 2>&1 \
 			|| pvtest_log WARN "pvr login failed for test script"
 	fi
@@ -1171,9 +1172,9 @@ run_test_attempt() {
 	fi
 
 	# Preemptive creds check if required by test.json
-	if [ "$self_claim" = "true" ] && { [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; }; then
-		pvtest_log ERROR "PH_USER/PH_PASS not set but required by self-claim test(s)"
-		pvtest_log INFO "'$test_id' SKIPPED (PH_USER/PH_PASS not set)"
+	if [ "$self_claim" = "true" ] && { [ -z "$PH_USER" ] || [ -z "$PH_TOKEN" ]; }; then
+		pvtest_log ERROR "PH_USER/PH_TOKEN not set but required by self-claim test(s)"
+		pvtest_log INFO "'$test_id' SKIPPED (PH_USER/PH_TOKEN not set)"
 		return 2
 	fi
 
@@ -1452,6 +1453,12 @@ if [ -z "$interactive" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$n
 	exit 1
 fi
 if [ "$verbose" = "true" ]; then set -x; fi
+
+if [ -z "$PH_TOKEN" ] && [ -n "$PH_PASS" ]; then
+	pvtest_log WARN "PH_PASS is deprecated. Set PH_TOKEN to a Pantahub personal token"
+	PH_TOKEN=$PH_PASS
+fi
+export PH_TOKEN
 
 required_env=
 usrmeta=

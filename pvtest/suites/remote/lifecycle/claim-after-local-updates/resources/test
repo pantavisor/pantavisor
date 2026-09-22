@@ -2,10 +2,10 @@
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
 
-if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
-    echo "ERROR: PH_USER/PH_PASS not set" >&2; exit 1
+if [ -z "$PH_USER" ] || [ -z "$PH_TOKEN" ]; then
+    echo "ERROR: PH_USER/PH_TOKEN not set" >&2; exit 1
 fi
-PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1 \
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1 \
     || { echo "ERROR: pvr login failed" >&2; exit 1; }
 
 devmeta() { pvcontrol devmeta ls | jq -M -r ".[\"$1\"] // \"unset\""; }

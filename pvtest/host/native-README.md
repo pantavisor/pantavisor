@@ -139,7 +139,7 @@ is the manifest's `type=`:
 ```
 
 `--hub URL` (or `PVTEST_HUB_URL`, default `https://api.pantahub.com`) selects the
-Hub; `PH_USER`/`PH_PASS` must be an account on it.
+Hub; `PH_USER`/`PH_TOKEN` must be an account and a personal token on it.
 
 Results land in the workspace printed at the start of the run (`-w` to choose
 it): `run.log`, `results/<test>/test.log`, `results/<test>/diff`, and the serial
