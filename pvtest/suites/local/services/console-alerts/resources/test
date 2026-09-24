@@ -1,0 +1,76 @@
+#!/bin/sh
+#
+# WALL console alerts: docs/reference/logserver-sockets.md#console-alerts
+#
+# Pantavisor mirrors WALL, ERROR and FATAL to /dev/console (wall.c). An appengine
+# container has no /dev/console of its own, so pv_console_capture_* puts a FIFO
+# there and reads back exactly what pantavisor wrote.
+#
+# test.json pins PV_LOG_SERVER_OUTPUTS=filetree so no stdout output can suppress
+# the alert -- that skip is console-alerts-dedup's job. A container status change
+# is the only WALL producer (platforms.c), so a restart is the trigger.
+#
+# Two rows of #relation-to-logging are covered here:
+#   PV_LOG_LEVEL allows WALL  -> alert printed, message logged
+#   PV_LOG_LEVEL filters WALL -> alert printed, message NOT logged
+# WALL is 3 and the appengine default PV_LOG_LEVEL is 5, so phase 1 needs no
+# config change; phase 2 lowers the level to WARN (2) through user metadata,
+# which is read live and needs no reboot.
+
+PLAT=pv-example-app
+LOGS="$(pv_storage_dir)/logs"
+
+# Sorted unique statuses, so the assertion does not depend on how many
+# transitions a restart happens to produce, nor on the order they land in
+statuses() {
+	pv_console_capture_read \
+		| sed -n "s/.*platform '$PLAT' status is now \([A-Z_]*\).*/\1/p" \
+		| sort -u
+}
+
+# One line with the status masked too, to pin the documented line format
+line_format() {
+	pv_console_capture_read | grep "platform '$PLAT'" | head -1 \
+		| sed "s/is now [A-Z_]*/is now <STATUS>/"
+}
+
+# How many status-change lines pantavisor has written to its own log tree
+logged() {
+	pv_exec sh -c "grep -rhs \"platform '$PLAT' status is now\" '$LOGS' | wc -l" \
+		| tr -d ' \r'
+}
+
+restart_and_settle() {
+	pvcontrol containers restart "$PLAT" > /dev/null
+	wait_for_value \
+		"pvcontrol containers ls | jq -r '.[] | select(.name == \"$PLAT\") | .status'" \
+		STARTED 30 \
+		|| echo "WARN: $PLAT did not report STARTED" >&2
+	# the logserver writes its outputs asynchronously
+	sleep 3
+}
+
+pv_console_capture_start || { echo "ERROR: could not capture the console" >&2; exit 1; }
+trap 'pv_console_capture_stop; pvcontrol usrmeta delete PV_LOG_LEVEL > /dev/null 2>&1' EXIT
+
+echo "== phase 1: PV_LOG_LEVEL allows WALL =="
+logged_before=$(logged)
+restart_and_settle
+echo "-- line format --"
+line_format
+echo "-- statuses on the console --"
+statuses
+echo "-- also written to the logs --"
+[ "$(logged)" -gt "$logged_before" ] && echo yes || echo no
+
+echo "== phase 2: PV_LOG_LEVEL filters WALL =="
+pvcontrol usrmeta save PV_LOG_LEVEL 2 > /dev/null
+# reset the capture so only phase 2 alerts are read back
+pv_console_capture_stop
+pv_console_capture_start || { echo "ERROR: could not re-capture the console" >&2; exit 1; }
+logged_before=$(logged)
+restart_and_settle
+echo "-- statuses on the console --"
+statuses
+echo "-- also written to the logs --"
+[ "$(logged)" -gt "$logged_before" ] && echo yes || echo no

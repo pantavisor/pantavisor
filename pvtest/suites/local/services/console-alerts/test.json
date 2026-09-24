@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "WALL console alerts reach /dev/console",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_LOG_SERVER_OUTPUTS=filetree",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

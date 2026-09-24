@@ -1,0 +1,61 @@
+#!/bin/sh
+#
+# PV_LOG_CONSOLE_ALERTS=0 turns console alerts off entirely: pv_log_level_is_alert
+# returns false for every level, so nothing is mirrored to /dev/console whatever
+# PV_LOG_LEVEL says. The key is read at boot only, so test.json sets it as target
+# config rather than the test writing it at runtime.
+#
+# test.json also pins PV_LOG_SERVER_OUTPUTS=filetree, so a skipped alert cannot be
+# confused with the stdout de-duplication tested by console-alerts-dedup: with
+# alerts enabled this configuration would print, which is what console-alerts
+# asserts. Both PV_LOG_LEVEL cases are checked because is_alert also gates the
+# early return in __log: with alerts off, a filtered WALL never reaches the log
+# server at all.
+#
+# Covers the last row of docs/reference/logserver-sockets.md#relation-to-logging.
+
+PLAT=pv-example-app
+LOGS="$(pv_storage_dir)/logs"
+
+console_lines() {
+	pv_console_capture_read | grep -c "platform '$PLAT'" | tr -d ' \r'
+}
+
+logged() {
+	pv_exec sh -c "grep -rhs \"platform '$PLAT' status is now\" '$LOGS' | wc -l" \
+		| tr -d ' \r'
+}
+
+restart_and_settle() {
+	pvcontrol containers restart "$PLAT" > /dev/null
+	wait_for_value \
+		"pvcontrol containers ls | jq -r '.[] | select(.name == \"$PLAT\") | .status'" \
+		STARTED 30 \
+		|| echo "WARN: $PLAT did not report STARTED" >&2
+	sleep 3
+}
+
+echo "== PV_LOG_CONSOLE_ALERTS as the target sees it =="
+pvcontrol conf ls | jq -M '.[] | select(.key == "PV_LOG_CONSOLE_ALERTS") | .value' | tr -d '\r'
+
+pv_console_capture_start || { echo "ERROR: could not capture the console" >&2; exit 1; }
+trap 'pv_console_capture_stop; pvcontrol usrmeta delete PV_LOG_LEVEL > /dev/null 2>&1' EXIT
+
+echo "== phase 1: WALL allowed by PV_LOG_LEVEL =="
+logged_before=$(logged)
+restart_and_settle
+echo "-- console alert lines --"
+console_lines
+echo "-- still written to the logs --"
+[ "$(logged)" -gt "$logged_before" ] && echo yes || echo no
+
+echo "== phase 2: WALL filtered by PV_LOG_LEVEL =="
+pvcontrol usrmeta save PV_LOG_LEVEL 2 > /dev/null
+pv_console_capture_stop
+pv_console_capture_start || { echo "ERROR: could not re-capture the console" >&2; exit 1; }
+logged_before=$(logged)
+restart_and_settle
+echo "-- console alert lines --"
+console_lines
+echo "-- also written to the logs --"
+[ "$(logged)" -gt "$logged_before" ] && echo yes || echo no

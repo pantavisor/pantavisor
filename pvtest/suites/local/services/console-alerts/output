@@ -1,0 +1,22 @@
+== phase 1: PV_LOG_LEVEL allows WALL ==
+-- line format --
+[TIME] [PANTAVISOR] [platforms] WALL: platform 'pv-example-app' status is now <STATUS>
+-- statuses on the console --
+INSTALLED
+MOUNTED
+STARTED
+STARTING
+STOPPED
+STOPPING
+-- also written to the logs --
+yes
+== phase 2: PV_LOG_LEVEL filters WALL ==
+-- statuses on the console --
+INSTALLED
+MOUNTED
+STARTED
+STARTING
+STOPPED
+STOPPING
+-- also written to the logs --
+no

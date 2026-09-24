@@ -1,0 +1,12 @@
+== PV_LOG_CONSOLE_ALERTS as the target sees it ==
+"0"
+== phase 1: WALL allowed by PV_LOG_LEVEL ==
+-- console alert lines --
+0
+-- still written to the logs --
+yes
+== phase 2: WALL filtered by PV_LOG_LEVEL ==
+-- console alert lines --
+0
+-- also written to the logs --
+no
