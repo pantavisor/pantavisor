@@ -15,7 +15,7 @@
 # GetConnectionUnixUser.
 #
 # The consumer is pv-example-system-dbus-reader (role "avahi-reader", names
-# form, always-on). pv-avahi is on-demand / status_goal MOUNTED, so the
+# form, always-on). pv-avahi is on-demand / status_goal STAGED, so the
 # reader's first call is also the cold call that activates it (same fence as
 # avahi-systembus).
 
@@ -46,7 +46,7 @@ pvcontrol graph ls | tr -d '\r' \
 	| jq -M -c --arg n "$SVC" --arg c "$CONSUMER" \
 	'.[] | select(.consumes == $n and .consumer == $c) | {consumes, consumer, owner, activation}'
 
-# avahi is on-demand / status_goal MOUNTED, so the reader's first call also
+# avahi is on-demand / status_goal STAGED, so the reader's first call also
 # activates it -- wait for the name to gain an owner before asserting on the
 # call itself (same fence as avahi-systembus).
 i=0

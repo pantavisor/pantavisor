@@ -11,7 +11,7 @@
 # JSON says WHO, the fragment narrows HOW.
 #
 # pv-avahi owns org.freedesktop.Avahi (role "avahi-service", on-demand
-# activation, status_goal MOUNTED) with allow ["operator", "monitor",
+# activation, status_goal STAGED) with allow ["operator", "monitor",
 # {narrowing object for "avahi-reader"}, "avahi-limited"] -- "avahi-limited"
 # gets unrestricted access from the JSON. Its fragment
 # (dbus/avahi-policy.xml) denies "avahi-limited" a single member:
@@ -115,7 +115,7 @@ run_negative_case() {
 wait_for_value "pvcontrol containers ls | jq -r '.[] | select(.name == \"$CONSUMER\") | .status'" "STARTED" 60 > /dev/null 2>&1 \
 	|| { echo "ERROR: timeout waiting for $CONSUMER STARTED" >&2; exit 1; }
 
-# pv-avahi is on-demand / status_goal MOUNTED, so the consumer's first call
+# pv-avahi is on-demand / status_goal STAGED, so the consumer's first call
 # also activates it -- wait for the name to gain an owner before asserting on
 # the calls themselves (same fence as avahi-systembus).
 i=0

@@ -4,17 +4,17 @@
 #
 # pv-example-system-dbus-client-onowner requires
 # {"type":"dbus","role":"operator","names":[{"name":"org.freedesktop.Avahi",
-# "activation":{"mode":"on-owner"}}]} and ships status_goal MOUNTED, so at
+# "activation":{"mode":"on-owner"}}]} and ships status_goal STAGED, so at
 # boot its volumes are mounted but no process runs. pv-avahi is itself
-# passive (on-demand, status_goal MOUNTED, nobody owns org.freedesktop.Avahi
-# yet), so with nobody calling it both containers just sit MOUNTED -- that is
+# passive (on-demand, status_goal STAGED, nobody owns org.freedesktop.Avahi
+# yet), so with nobody calling it both containers just sit STAGED -- that is
 # the design, not a stall. pv-example-system-dbus-client is the always-on
 # caller (role "operator", legacy socket form, STARTED at boot, and its
 # built-in loop only ever dials org.pantavisor.Example, never Avahi); its
 # first manual call here is what wakes pv-avahi. Once org.freedesktop.Avahi
 # gains an owner, pv-xconnect's ownership monitor (NameOwnerChanged, backed
 # by the 5s periodic reconcile in xconnect/main.c) promotes the on-owner
-# consumer MOUNTED -> STARTED on its own, with nobody having called it.
+# consumer STAGED -> STARTED on its own, with nobody having called it.
 
 ADDR="unix:path=/run/dbus/system_bus_socket"
 CALLER="pv-example-system-dbus-client"
@@ -55,7 +55,7 @@ pvcontrol graph ls | tr -d '\r' \
 	| jq -M -c --arg n "$SVC" --arg c "$CONSUMER" \
 	'.[] | select(.consumes == $n and .consumer == $c) | {consumes, consumer, owner, activation}'
 
-echo "== passive-on-passive: owner and on-owner consumer both stay MOUNTED until $SVC is called =="
+echo "== passive-on-passive: owner and on-owner consumer both stay STAGED until $SVC is called =="
 # Bounded settle window: nobody has called $SVC yet, so give pv-xconnect's
 # periodic reconcile (5s timer) a couple of cycles to run before asserting
 # idleness, to show this isn't just "too soon to tell".
@@ -75,13 +75,13 @@ wait_for_value "pvcontrol containers ls | jq -r '.[] | select(.name == \"$OWNER\
 state_of "$OWNER"
 name_has_owner
 
-echo "== on-owner consumer $CONSUMER is promoted MOUNTED -> STARTED on its own =="
+echo "== on-owner consumer $CONSUMER is promoted STAGED -> STARTED on its own =="
 wait_for_value "pvcontrol containers ls | jq -r '.[] | select(.name == \"$CONSUMER\") | .status'" "STARTED" 60 > /dev/null 2>&1 \
 	|| echo "WARN: consumer status did not reach STARTED in time" >&2
 state_of "$CONSUMER"
 
 echo "== $CONSUMER has its own bus socket: dbus-send roundtrip to $SVC =="
-# $CONSUMER just transitioned MOUNTED -> STARTED above; pventer needs its
+# $CONSUMER just transitioned STAGED -> STARTED above; pventer needs its
 # cgroup set up, which can lag the STARTED status by a moment, so retry
 # the roundtrip itself rather than a fixed sleep (same idiom as the
 # derived-socket wait in dbus-names).

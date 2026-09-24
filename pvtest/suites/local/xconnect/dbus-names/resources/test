@@ -10,7 +10,7 @@
 # ["operator","monitor"]) and derives the link name (the bus, "system-bus")
 # and target (the hosted-bus default, /run/dbus/system_bus_socket). Both the
 # resolved "consumes" descriptor and the derived link show up in
-# `pvcontrol graph ls`. avahi is on-demand / status_goal MOUNTED, so the
+# `pvcontrol graph ls`. avahi is on-demand / status_goal STAGED, so the
 # first dbus-send call to it also exercises activation, same fence as
 # avahi-systembus.
 #
@@ -50,7 +50,7 @@ pvcontrol graph ls | tr -d '\r' \
 	'.[] | select(.consumer == $c and .name == "system-bus") | {consumer, name, target}'
 
 echo "== derived socket works: dbus-send roundtrip $CONSUMER -> $SVC over /run/dbus/system_bus_socket =="
-# avahi is on-demand / status_goal MOUNTED, so this call also activates it.
+# avahi is on-demand / status_goal STAGED, so this call also activates it.
 i=0
 while [ $i -lt 30 ]; do
 	if dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC" \
