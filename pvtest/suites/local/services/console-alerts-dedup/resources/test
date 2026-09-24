@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# Console alerts are skipped when a stdout output already shows the line, so the
+# same message does not appear twice: logserver.c only calls pv_wall_log when
+# alert && (filtered || !logserver_stdout_shows()).
+#
+# test.json pins PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct -- the same pair
+# the appengine pool boots with -- so logserver_stdout_shows() is true here,
+# unlike in console-alerts.
+#
+# Two rows of docs/reference/logserver-sockets.md#relation-to-logging:
+#   allowed by PV_LOG_LEVEL, a stdout output shows it -> alert SKIPPED, logged
+#   filtered by PV_LOG_LEVEL                          -> alert printed, not logged
+# The second row is what keeps a filtered message reaching the console even when
+# stdout is configured, and it is the only reason the skip is conditional.
+
+PLAT=pv-example-app
+LOGS="$(pv_storage_dir)/logs"
+
+statuses() {
+	pv_console_capture_read \
+		| sed -n "s/.*platform '$PLAT' status is now \([A-Z_]*\).*/\1/p" \
+		| sort -u
+}
+
+console_lines() {
+	pv_console_capture_read | grep -c "platform '$PLAT'" | tr -d ' \r'
+}
+
+logged() {
+	pv_exec sh -c "grep -rhs \"platform '$PLAT' status is now\" '$LOGS' | wc -l" \
+		| tr -d ' \r'
+}
+
+restart_and_settle() {
+	pvcontrol containers restart "$PLAT" > /dev/null
+	wait_for_value \
+		"pvcontrol containers ls | jq -r '.[] | select(.name == \"$PLAT\") | .status'" \
+		STARTED 30 \
+		|| echo "WARN: $PLAT did not report STARTED" >&2
+	sleep 3
+}
+
+pv_console_capture_start || { echo "ERROR: could not capture the console" >&2; exit 1; }
+trap 'pv_console_capture_stop; pvcontrol usrmeta delete PV_LOG_LEVEL > /dev/null 2>&1' EXIT
+
+echo "== phase 1: WALL allowed and stdout_direct shows it =="
+logged_before=$(logged)
+restart_and_settle
+echo "-- console alert lines --"
+console_lines
+echo "-- also written to the logs --"
+[ "$(logged)" -gt "$logged_before" ] && echo yes || echo no
+
+echo "== phase 2: WALL filtered, stdout_direct still configured =="
+pvcontrol usrmeta save PV_LOG_LEVEL 2 > /dev/null
+pv_console_capture_stop
+pv_console_capture_start || { echo "ERROR: could not re-capture the console" >&2; exit 1; }
+logged_before=$(logged)
+restart_and_settle
+echo "-- statuses on the console --"
+statuses
+echo "-- also written to the logs --"
+[ "$(logged)" -gt "$logged_before" ] && echo yes || echo no

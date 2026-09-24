@@ -45,13 +45,13 @@ The supported log levels are:
 * `0`: FATAL
 * `1`: ERROR
 * `2`: WARN
-* `3`: WALL — visible one step before `INFO`; see [console alerts](#console-alerts)
+* `3`: [WALL](#console-alerts)
 * `4`: INFO
 * `5`: DEBUG
 * `6`: TRACE
 
 :::note
-These numbers changed in this release: `WALL` now sits at `3`, and `INFO`/`DEBUG`/`TRACE`
+These numbers changed after the addition of `WALL` now sits at `3`, and `INFO`/`DEBUG`/`TRACE`
 shifted up by one (previously `3`/`4`/`5`). Senders that hardcode the old numeric levels
 must update.
 :::

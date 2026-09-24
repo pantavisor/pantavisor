@@ -253,12 +253,12 @@ accepted values and the keys that set them.
 
 ### Console alerts
 
-Some events matter to whoever is sitting in front of a device rather than reading logs after the
-fact — a container coming up during boot, for instance. Pantavisor mirrors those to `/dev/console`
-as **console alerts**, one line each, alongside the normal log entry. They reach whoever watches a
-[serial console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) only —
-never [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other
-remote sessions:
+Some events are worth seeing live, as they happen, not only in the logs afterwards — a container
+starting during boot, for example. Pantavisor writes those events to `/dev/console` as **console
+alerts**: one line per event, in addition to the normal log entry. Only someone watching the
+[serial console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) sees
+them; they are never sent to [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md)
+or other remote sessions:
 
 ```
 [    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
@@ -289,7 +289,7 @@ pvcontrol usrmeta delete PV_LOG_CONSOLE_ALERTS   # back to the boot value
 Disabling them only silences the console; logging still follows `PV_LOG_LEVEL`. See
 [console alerts](../reference/logserver-sockets.md#console-alerts) for the line format, the
 complete list of what emits them and how they relate to the log level — today,
-[container status changes](containers.md#console-alerts) and Pantavisor errors.
+[container status changes](containers.md#status) and Pantavisor errors.
 
 ### Log Directory Size Management
 

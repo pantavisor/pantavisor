@@ -63,6 +63,72 @@ pv_fetch_file() {
 # SIGTERM to provoke a Valgrind-friendly lenient shutdown
 pv_crash() { pv_exec killall pantavisor; }
 
+# Capture what the target writes to /dev/console (console alerts, see wall.c).
+#
+# A FIFO works where a plain file would not: pv_wall opens the console
+# O_WRONLY|O_NONBLOCK once per message and closes it again, so the read end is
+# held open read-write ("<>") to keep EOF from firing between messages and to
+# keep the writer's open() from failing with ENXIO. Because the open is per
+# message, the FIFO can be swapped in while pantavisor runs.
+#
+# An appengine container has no /dev/console at all (docker only creates one for
+# a tty), which is what makes it replaceable. A real console is left untouched
+# and the caller gets a failure instead.
+pv_console_capture_start() {
+	local helper staged
+	helper=$(mktemp) || return 1
+	cat > "$helper" <<'EOF'
+#!/bin/sh
+if [ -e /dev/console ] && [ ! -L /dev/console ]; then
+	echo "pv_console_capture: refusing to replace real /dev/console" >&2
+	exit 1
+fi
+[ -L /dev/console ] && readlink /dev/console > /tmp/pvtest_console.save
+rm -f /dev/console /tmp/pvtest_console.cap
+mkfifo /dev/console || exit 1
+setsid sh -c 'exec 3<>/dev/console; exec cat <&3 >/tmp/pvtest_console.cap' \
+	>/dev/null 2>&1 &
+echo $! > /tmp/pvtest_console.pid
+EOF
+	staged=$(pv_stage_file "$helper") || { rm -f "$helper"; return 1; }
+	rm -f "$helper"
+	pv_exec sh "$staged" || { pv_unstage_file "$staged"; return 1; }
+	pv_unstage_file "$staged"
+	# an alert arriving before the reader attached is dropped, so settle first
+	sleep 1
+}
+
+# Restore /dev/console and drop the capture. Safe to call more than once.
+pv_console_capture_stop() {
+	local helper staged
+	helper=$(mktemp) || return 1
+	cat > "$helper" <<'EOF'
+#!/bin/sh
+# "exec cat" replaced the shell, so the recorded pid is the reader itself
+if [ -f /tmp/pvtest_console.pid ]; then
+	kill "$(cat /tmp/pvtest_console.pid)" 2>/dev/null
+fi
+rm -f /dev/console /tmp/pvtest_console.pid /tmp/pvtest_console.cap
+if [ -f /tmp/pvtest_console.save ]; then
+	ln -s "$(cat /tmp/pvtest_console.save)" /dev/console
+	rm -f /tmp/pvtest_console.save
+fi
+EOF
+	staged=$(pv_stage_file "$helper") || { rm -f "$helper"; return 1; }
+	rm -f "$helper"
+	pv_exec sh "$staged"
+	pv_unstage_file "$staged"
+}
+
+# Print the captured console lines with the monotonic timestamp masked
+pv_console_capture_read() {
+	local out
+	out=$(mktemp) || return 1
+	pv_fetch_file /tmp/pvtest_console.cap "$out" 2>/dev/null
+	sed -e 's/^\[ *[0-9][0-9]*\.[0-9][0-9]*\]/[TIME]/' -e 's/\r$//' "$out"
+	rm -f "$out"
+}
+
 # Wait for a cmd stdout
 wait_for_value() {
 	local cmd="$1"
