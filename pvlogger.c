@@ -82,14 +82,10 @@ static void pv_log(int level, char *msg, ...)
 			"%s\n", __formatted);
 
 		if (written <= 0)
-			pv_log(ERROR,
-			       "error in pv_logserver_send_log %d from pvlogger",
-			       written);
+			break;
 
 		offset += written;
 		to_write -= written;
-		if (!written)
-			break;
 	}
 }
 

@@ -156,6 +156,21 @@ For now, we only support the `ready` signal, which can be used to get to the [RE
 
 Once all containers have met their [status goal](#status-goal), Pantavisor fires the `system-done` [hook point](hooks.md#hook-points), allowing operators to react to the platform reaching its fully-running state.
 
+### Console Alerts
+
+Every [status](#status) change is also announced on the [device console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) as a [console alert](storage.md#console-alerts), one line per transition. This makes a boot readable over a serial link without tailing any log:
+
+```
+[    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
+[    6.217450] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now BLOCKED
+[    6.341446] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTED
+[    6.419898] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now MOUNTED
+[    6.480485] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now STARTING
+[    6.653835] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now STARTED
+```
+
+Status changes are logged at the `WALL` level: they are recorded in the [Pantavisor logs](storage.md#logs) when [`PV_LOG_LEVEL`](../reference/pantavisor-configuration.md#summary) is `3` (`WALL`) or higher — one step more permissive than `INFO` (`4`) — and reach the console either way. Alerts are enabled by default and are written to the device console only — never to [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other remote sessions. Set [`PV_LOG_CONSOLE_ALERTS`](../reference/pantavisor-configuration.md#summary) to `0` at boot to silence them.
+
 ## Auto-Recovery
 
 Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) or inherited from the container's [group](#groups).

@@ -242,6 +242,35 @@ _conf_value() {
 		"$2" 2>/dev/null
 }
 
+# Echo how required value $2 of config key $1 is reported back by `conf ls`
+#
+# PV_LOG_SERVER_OUTPUTS is set as a token list but reported as the bitmask those
+# tokens OR into, so it can only be compared after translation. Bits mirror
+# log_server_output_mask_t in config.h; the parser always ORs in the internal
+# UPDATE bit (config.c), hence the 128 the mask starts at.
+_cfg_expected_value() {
+	local k="$1" v="$2" tok mask=128 _ifs
+	[ "$k" = "PV_LOG_SERVER_OUTPUTS" ] || { printf '%s' "$v"; return 0; }
+
+	_ifs="$IFS"; IFS=,
+	for tok in $v; do
+		case "$tok" in
+		nullsink)          mask=$((mask | 1)) ;;
+		singlefile)        mask=$((mask | 2)) ;;
+		filetree)          mask=$((mask | 4)) ;;
+		stdout)            mask=$((mask | 8)) ;;
+		stdout.containers) mask=$((mask | 16)) ;;
+		stdout.pantavisor) mask=$((mask | 32)) ;;
+		stdout_direct)     mask=$((mask | 64)) ;;
+		# unknown token: compare verbatim so it fails loudly instead of passing
+		*) IFS="$_ifs"; printf '%s' "$v"; return 0 ;;
+		esac
+	done
+	IFS="$_ifs"
+
+	printf '%d' "$mask"
+}
+
 # True when captured `conf ls` ($2) satisfies every KEY=VALUE in required-config ($1).
 _reqcfg_satisfied() {
 	local kv k v actual
@@ -249,7 +278,7 @@ _reqcfg_satisfied() {
 		k=${kv%%=*}
 		v=${kv#*=}
 		actual=$(_conf_value "$k" "$2")
-		[ "$actual" = "$v" ] || return 1
+		[ "$actual" = "$(_cfg_expected_value "$k" "$v")" ] || return 1
 	done
 	return 0
 }

@@ -111,6 +111,9 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | Test | Description | Done |
 |------|-------------|------|
 | `local/services/log-output-formats` | Log Output Formats (filetree/singlefile) | |
+| `local/services/console-alerts` | WALL console alerts reach `/dev/console` | |
+| `local/services/console-alerts-dedup` | Console alert skipped when a stdout output shows it | |
+| `local/services/console-alerts-disabled` | `PV_LOG_CONSOLE_ALERTS=0` silences console alerts | |
 | `local/services/on-demand-gc` | On-Demand Garbage Collection | ✓ |
 | `local/services/sync-gc` | Synchronous Garbage Collection (/storage/gc) | ✓ |
 | `local/services/daemons` | Daemon list/stop/start (pv-ctrl) | ✓ |

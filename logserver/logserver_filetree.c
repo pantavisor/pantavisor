@@ -25,6 +25,7 @@
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
+#include "log.h"
 
 #include <limits.h>
 #include <string.h>

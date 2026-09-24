@@ -36,7 +36,7 @@ The `buf` contains the log metadata and message, separated by null terminators (
 level\0platform\0source\0data
 ```
 
-* **level**: Log level as a string (e.g., "3" for INFO).
+* **level**: Log level as a string (e.g., "4" for INFO).
 * **platform**: Name of the container or "pantavisor".
 * **source**: The specific source of the log (e.g., a process name or module).
 * **data**: The actual log message content.
@@ -45,9 +45,16 @@ The supported log levels are:
 * `0`: FATAL
 * `1`: ERROR
 * `2`: WARN
-* `3`: INFO
-* `4`: DEBUG
-* `5`: TRACE
+* `3`: WALL — visible one step before `INFO`; see [console alerts](#console-alerts)
+* `4`: INFO
+* `5`: DEBUG
+* `6`: TRACE
+
+:::note
+These numbers changed in this release: `WALL` now sits at `3`, and `INFO`/`DEBUG`/`TRACE`
+shifted up by one (previously `3`/`4`/`5`). Senders that hardcode the old numeric levels
+must update.
+:::
 
 ### JSON Protocol
 
@@ -365,6 +372,72 @@ warning.
 | `nullsink` | `/dev/null` |
 
 See [Output types](../overview/storage.md#output-types) for what each sink is useful for.
+
+## Console alerts
+
+Besides the sinks above, Pantavisor mirrors selected messages of its own to the device console.
+These are **console alerts**: single lines written directly to `/dev/console`, so whoever is
+watching a [serial console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md)
+sees significant events as they happen without tailing a log file. They reach that console only —
+never [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other
+remote sessions. [Storage → Console alerts](../overview/storage.md#console-alerts) explains what the
+channel is for.
+
+They are controlled by [`PV_LOG_CONSOLE_ALERTS`](pantavisor-configuration.md#summary), enabled by
+default and only read at boot:
+
+```bash
+PV_LOG_CONSOLE_ALERTS=0     # silence every console alert
+```
+
+### Line format
+
+```
+[    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
+```
+
+| Field | Content |
+|-------|---------|
+| `[    6.217276]` | Seconds since boot (`CLOCK_MONOTONIC`), `dmesg`-style: 5 digits, 6 decimals |
+| `[PANTAVISOR]` | Fixed tag, so alerts stand out among kernel and container output |
+| `[platforms]` | The emitting Pantavisor module |
+| `WALL` | Level name: `WALL`, `ERROR` or `FATAL` |
+| `platform 'awconnect' …` | The message, without the `(function:line)` prefix it carries in the log files |
+
+A line is limited to 1024 bytes; longer messages are truncated and end in `...`.
+
+### Alert sources
+
+| Source | Emitted when | Level |
+|--------|--------------|-------|
+| `platforms` | A container changes [status](../overview/containers.md#status) — one line per transition | `WALL` |
+| any Pantavisor module | It logs an error | `ERROR` or `FATAL` |
+
+Only messages logged by Pantavisor itself become alerts. Container logs are never mirrored, whatever
+their level.
+
+### Relation to logging
+
+| Condition | Console alert | Log outputs |
+|-----------|---------------|-------------|
+| Level allowed by [`PV_LOG_LEVEL`](pantavisor-configuration.md#summary), no stdout output shows it | printed | logged |
+| Level allowed by `PV_LOG_LEVEL`, a stdout output shows it | skipped | logged |
+| Level filtered out by `PV_LOG_LEVEL` | printed | not logged |
+| `PV_LOG_CONSOLE_ALERTS=0` | never printed | follows `PV_LOG_LEVEL` |
+
+`WALL` becomes visible in the logs one step before `INFO` does: `PV_LOG_LEVEL >= 3` (`WALL`)
+shows `WALL` messages alone, `PV_LOG_LEVEL >= 4` (`INFO`) shows both. With the default
+`PV_LOG_LEVEL=0`, `WALL` and `ERROR` messages are filtered out of the logs but still reach
+the console.
+
+:::note
+A stdout output "shows" an alert when it would already put the same message on standard output:
+`stdout`, `stdout.pantavisor` or `stdout_direct` while the log server runs, and `stdout_direct` or
+`stdout` while it is not running (before it starts and after it stops). Pantavisor enables the kernel's
+`ignore_loglevel` when a stdout output is configured, so that copy reaches the console, and the
+alert is skipped to avoid printing the line twice. `stdout.containers` never carries Pantavisor
+messages, so it does not suppress alerts.
+:::
 
 ## Timestamp formats
 
