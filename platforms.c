@@ -135,6 +135,8 @@ const char *pv_platform_status_string(plat_status_t status)
 		return "INSTALLED";
 	case PLAT_MOUNTED:
 		return "MOUNTED";
+	case PLAT_STAGED:
+		return "STAGED";
 	case PLAT_BLOCKED:
 		return "BLOCKED";
 	case PLAT_STARTING:
@@ -1473,6 +1475,11 @@ void pv_platform_set_mounted(struct pv_platform *p)
 	pv_platform_set_status(p, PLAT_MOUNTED);
 }
 
+void pv_platform_set_staged(struct pv_platform *p)
+{
+	pv_platform_set_status(p, PLAT_STAGED);
+}
+
 void pv_platform_set_blocked(struct pv_platform *p)
 {
 	pv_platform_set_status(p, PLAT_BLOCKED);
@@ -1518,6 +1525,11 @@ bool pv_platform_check_running(struct pv_platform *p)
 bool pv_platform_is_installed(struct pv_platform *p)
 {
 	return (p->status.current == PLAT_INSTALLED);
+}
+
+bool pv_platform_is_staged(struct pv_platform *p)
+{
+	return (p->status.current == PLAT_STAGED);
 }
 
 bool pv_platform_is_blocked(struct pv_platform *p)
