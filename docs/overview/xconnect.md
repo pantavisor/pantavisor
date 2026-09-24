@@ -42,7 +42,7 @@ single point of truth for role-based access control.
 ## Service Activation
 
 On the [hosted D-Bus system bus](../reference/pantavisor-xconnect.md#pantavisor-hosted-system-bus), a
-provider or a consumer can be authored as passive — mounted but not started — and brought up only
+provider or a consumer can be authored as passive — staged but not started — and brought up only
 when it is actually needed:
 
 - a **provider** container starts the first time a client sends a message to a D-Bus name it owns
@@ -50,9 +50,11 @@ when it is actually needed:
 - a **consumer** container starts once every name it depends on has an owner
   (`activation.mode: "on-owner"` on a required name).
 
-Both reuse `status_goal: "MOUNTED"` as the passive state and the same
-[`POST /xconnect/dbus/activate`](../reference/pantavisor-commands.md#xconnect) endpoint; there is no
-new lifecycle state and activation is strictly opt-in. `pvcontrol graph ls` shows which names are
+Both park at `status_goal: "STAGED"` (mounted, drivers loaded, not started; set with
+`PV_STATUS_GOAL: "STAGED"` in the container's `args.json` — see
+[Status Goal](containers.md#status-goal)) and use the same
+[`POST /xconnect/dbus/activate`](../reference/pantavisor-commands.md#xconnect) endpoint;
+activation is strictly opt-in. `pvcontrol graph ls` shows which names are
 activatable and which consumers depend on them (the `activatable` and `consumes` elements — see
 [Graph Output](../reference/pantavisor-xconnect.md#graph-output)). See
 [D-Bus Service Activation](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md#d-bus-service-activation)

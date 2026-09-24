@@ -311,13 +311,14 @@ provider-owned bus pantavisor knows nothing about.
 ##### Consumer activation (`on-owner`)
 
 A `names` entry's `activation.mode` can be `"none"` (default) or `"on-owner"`. A container with at
-least one `on-owner` name is authored with `status_goal: "MOUNTED"`:
+least one `on-owner` name is authored with `status_goal: "STAGED"` (`PV_STATUS_GOAL: "STAGED"` in
+`args.json`; `MOUNTED` still works but is warned as deprecated):
 
 ```json
 {
   "#spec": "service-manifest-run@1",
   "name": "my-ui",
-  "status_goal": "MOUNTED",
+  "status_goal": "STAGED",
   "services": {
     "required": [
       { "type": "dbus", "role": "operator",
@@ -328,8 +329,8 @@ least one `on-owner` name is authored with `status_goal: "MOUNTED"`:
 }
 ```
 
-It stays passive (volumes mounted, no process) until **every** `on-owner` name in its requirements
-has an owner on the bus, then pantavisor promotes it `MOUNTED -> STARTED` the same way it promotes
+It stays passive (volumes mounted, drivers loaded, no process) until **every** `on-owner` name in its
+requirements has an owner on the bus, then pantavisor promotes it `STAGED -> STARTED` the same way it promotes
 an on-demand provider — see
 [D-Bus Service Activation](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md#d-bus-service-activation).
 Names without `on-owner` do not gate startup, and `on-owner` and a provider's own `on-demand`

@@ -393,15 +393,15 @@ Builds directly on [Pantavisor-Hosted System Bus](#pantavisor-hosted-system-bus)
 
 The hosted bus makes D-Bus providers and clients equally cheap single-pid apps, but every declared provider still starts at boot by default. Service activation makes ownership **declarative enough to assemble a system from mostly passive containers**, from either direction:
 
-- a **provider** container is mounted but not started until someone sends traffic to a D-Bus name it owns (`activation.mode: on-demand`);
-- a **consumer** container is mounted but not started until every name it depends on has an owner (`activation.mode: on-owner` on a required name);
+- a **provider** container is staged (mounted, drivers loaded) but not started until someone sends traffic to a D-Bus name it owns (`activation.mode: on-demand`);
+- a **consumer** container is staged but not started until every name it depends on has an owner (`activation.mode: on-owner` on a required name);
 - existing always-on behavior is unchanged — activation is strictly opt-in.
 
-Provider activation is the standard D-Bus *bus activation* contract (a message to an un-owned but activatable name triggers the owner's startup), mapped onto Pantavisor's container lifecycle instead of onto `systemd`/`exec`. Consumer activation is its mirror image: a container with nothing useful to do until its dependency is reachable. Both directions share the same machinery: the `MOUNTED` passive state, the ownership monitor inside `pv-xconnect`, and the single `POST /xconnect/dbus/activate` endpoint.
+Provider activation is the standard D-Bus *bus activation* contract (a message to an un-owned but activatable name triggers the owner's startup), mapped onto Pantavisor's container lifecycle instead of onto `systemd`/`exec`. Consumer activation is its mirror image: a container with nothing useful to do until its dependency is reachable. Both directions share the same machinery: the `STAGED` passive state, the ownership monitor inside `pv-xconnect`, and the single `POST /xconnect/dbus/activate` endpoint.
 
 ### Authoring Model
 
-The model is a small extension of the hosted-bus manifests — no new lifecycle state.
+The model is a small extension of the hosted-bus manifests plus the `STAGED` status goal.
 
 #### Provider: `on-demand`
 
@@ -444,15 +444,15 @@ A consumer marks one or more required names in `names` with `activation.mode: on
 
 See [Consumer Activation (`on-owner`)](#consumer-activation-on-owner) below for what gates startup and what does not.
 
-#### Passivity: `status_goal: MOUNTED`
+#### Passivity: `status_goal: STAGED`
 
-Both patterns reuse the existing lifecycle mechanism — there is no new `PASSIVE` status goal. A container is made activatable-but-not-started with `status_goal: MOUNTED`, which already means "prepared but not started":
+Both patterns use the `STAGED` status goal (see [Status Goal](../docs/overview/containers.md#status-goal)), which means "mounted, drivers loaded, runnable, not started". A container is made activatable-but-not-started with `status_goal: STAGED`:
 
 ```json
 {
   "#spec": "service-manifest-run@1",
   "name": "foo-app",
-  "status_goal": "MOUNTED",
+  "status_goal": "STAGED",
   "services": {
     "required": [
       {
@@ -468,30 +468,32 @@ Both patterns reuse the existing lifecycle mechanism — there is no new `PASSIV
 }
 ```
 
-`status_goal: MOUNTED` plus `activation.mode: on-demand` (provider) or an `on-owner` name (consumer) gives the passive-until-triggered behavior without inventing a parallel lifecycle state. In the runtime (`pv_state_start_platform`), a platform whose `status_goal` is `MOUNTED` has its **volumes mounted** and then stops there — drivers are not loaded and no init process is started, so there is no container namespace or pid until activation. A per-platform `status_goal: "MOUNTED"` in `run.json` is honored and overrides the group default. A container with an `on-owner` name whose `status_goal` is not `MOUNTED` is warned, not rejected, at validation — it deploys, but will not stay passive.
+`status_goal: STAGED` plus `activation.mode: on-demand` (provider) or an `on-owner` name (consumer) gives the passive-until-triggered behavior. In the runtime (`pv_state_start_platform`), a platform whose `status_goal` is `STAGED` has its **volumes mounted and drivers loaded** and then stops there — no init process is started, so there is no container namespace or pid until activation. A per-platform `status_goal: "STAGED"` in `run.json` is honored and overrides the group default. With pvr, set it through `PV_STATUS_GOAL: "STAGED"` in the container's `args.json`; the template writes it into `run.json` with the full container config.
 
-Activation drives the container out of `MOUNTED` by reusing the normal start machinery, not a parallel lifecycle: the engine flips the platform's goal to `STARTED` and re-injects it into the run loop (`set_status_goal(STARTED)` + `set_installed`), after which the existing reconcile tick performs mount → driver load → start. This is done through the activation path itself: the generic container lifecycle API (`PUT /containers/<name>` `start`) only accepts containers already in `STOPPED`/`STOPPING`/`RECOVERING`, so it cannot start a never-started `MOUNTED` container and is not the activation mechanism.
+`MOUNTED` is not the parked state for a runnable container: pvr's template renders a `MOUNTED` container as data-only (no `type`/`config`), so it has nothing to start. A container hand-parked at `MOUNTED` is still activated, and an `on-owner` consumer at `MOUNTED` is warned as deprecated at validation. An `on-owner` consumer with any other goal is warned, not rejected — it deploys, but will not stay passive.
 
-The container is promoted `MOUNTED → STARTED` (never `READY`): `STARTED` is enough to run the app, and — for a provider — the bus name, not the platform goal, is the activation handshake. (Promoting to `READY` would couple activation to the container's separate pv-ctrl `ready` signal, which a name-owning app generally never sends, so its goal timer would spuriously time out even though activation succeeded.)
+Activation drives the container out of `STAGED` by reusing the normal start machinery, not a parallel lifecycle: the engine flips the platform's goal to `STARTED` and re-injects it into the run loop (`set_status_goal(STARTED)` + `set_installed`), after which the existing reconcile tick skips the already-mounted volumes and starts the container. This is the same transition `pvcontrol containers start <name>` performs on a `STAGED` container, so a staged container can also be started by hand.
+
+The container is promoted `STAGED → STARTED` (never `READY`): `STARTED` is enough to run the app, and — for a provider — the bus name, not the platform goal, is the activation handshake. (Promoting to `READY` would couple activation to the container's separate pv-ctrl `ready` signal, which a name-owning app generally never sends, so its goal timer would spuriously time out even though activation succeeded.)
 
 `restart_policy: container` is **recommended** for activatable containers so that, once activated, the container stays independently stoppable/restartable via the lifecycle API (see [Container Restart Policy](../docs/overview/containers.md#restart-policy)). It is not required to *start* on demand — activation uses its own internal path and is not bound by the lifecycle API's restart-policy gate.
 
 ### Consumer Activation (`on-owner`)
 
-A consumer with at least one name marked `activation.mode: on-owner` is authored with `status_goal: MOUNTED`, exactly like an on-demand provider. It stays passive (volumes mounted, no process) until **every** `on-owner` name in its requirements has an owner on the bus. Names without `on-owner` do not gate startup.
+A consumer with at least one name marked `activation.mode: on-owner` is authored with `status_goal: STAGED`, exactly like an on-demand provider. It stays passive (volumes mounted, drivers loaded, no process) until **every** `on-owner` name in its requirements has an owner on the bus. Names without `on-owner` do not gate startup.
 
 This is the mirror image of provider activation and shares its machinery:
 
 - The ownership monitor in `pv-xconnect` (see [Readiness: the monitor connection](#readiness-the-monitor-connection)) watches `NameOwnerChanged`. It gains a second waiter kind: instead of "release a held call when this name is owned", it is "tell pantavisor to start this container when all of its names are owned".
 - At start and after a monitor reconnect the waiters are seeded from `ListNames`, so a name owned before `pv-xconnect` came up still fires.
-- The promotion path is the existing one: `POST /xconnect/dbus/activate` with `{"container": "<name>"}` performs `MOUNTED → STARTED` through `set_status_goal` + `set_installed`. The endpoint accepts either `name` (a bus name, provider activation) or `container`.
+- The promotion path is the existing one: `POST /xconnect/dbus/activate` with `{"container": "<name>"}` performs `STAGED → STARTED` through `set_status_goal` + `set_installed`. The endpoint accepts either `name` (a bus name, provider activation) or `container`.
 - There is no held call, no timer and no synthesized error. The only failure mode is "the name never appears", and the correct behaviour is to keep waiting.
 
 Interactions, all intended:
 
 - **Passive consumer waiting on a passive provider**: nothing starts until an always-on container makes the first call. That is the low-power outcome the feature exists for, not a deadlock. Document it, do not "fix" it.
 - **Owner goes away later**: the consumer is not stopped. Deactivation remains out of scope, as for providers.
-- **Group ordering**: a `MOUNTED` consumer satisfies its group's goal immediately, so it never delays later groups.
+- **Group ordering**: a `STAGED` consumer satisfies its group's goal immediately, so it never delays later groups.
 - **`on-owner` and `on-demand` are independent.** A consumer wakes when the name appears, however it came to be owned.
 
 ### Runtime Design
@@ -501,7 +503,7 @@ Activation happens **inside `pv-xconnect`**, not via `dbus-daemon`'s own bus act
 Two pieces cooperate:
 
 - **xconnect** — for a provider, detects the cold call, holds it, asks Pantavisor to start the owner, waits for the name to be owned, then releases the held call. For a consumer, watches its `on-owner` names and asks Pantavisor to start the container once all of them are owned.
-- **Pantavisor** — performs the `MOUNTED → STARTED` transition behind one internal endpoint, `POST /xconnect/dbus/activate`.
+- **Pantavisor** — performs the `STAGED → STARTED` transition behind one internal endpoint, `POST /xconnect/dbus/activate`.
 
 #### Trigger: in-proxy hold (provider)
 
@@ -532,7 +534,7 @@ A `method_call` carrying the `NO_AUTO_START` flag (`0x2`) is **not** activated: 
 - `name` is mapped to the platform whose export owns it with `activation.mode: on-demand`; the call fails if no export declares it activatable.
 - `container` is looked up directly as a platform in the current state; the call fails if it does not exist.
 
-In both cases, if the target is already started (or was never `MOUNTED`), the call is a no-op. Otherwise Pantavisor promotes it `MOUNTED → STARTED` and returns immediately — **the endpoint does not resolve, recurse into, or wait on the target's own required services.** See [Dependency Semantics](#dependency-semantics) for what that means for a container that itself depends on another passive provider.
+For `name`, an owner that is already starting or running is left alone; for `container`, only a parked container (`STAGED`, or a legacy `MOUNTED`) is promoted and anything else is a no-op. Otherwise Pantavisor promotes the target to `STARTED` and returns immediately — **the endpoint does not resolve, recurse into, or wait on the target's own required services.** See [Dependency Semantics](#dependency-semantics) for what that means for a container that itself depends on another passive provider.
 
 #### Readiness: the monitor connection
 
@@ -563,7 +565,7 @@ Added to the existing state validation (`pv_state_validate_services()`), so a co
 - `activation` is only valid on a D-Bus export that declares `owns`;
 - activation is limited to the hosted `system-bus` in the first implementation;
 - an activatable provider should use `restart_policy: container` (recommended, warned-not-rejected) so it stays independently controllable after activation — it is not required to start on demand;
-- a container with an `on-owner` name should have `status_goal: MOUNTED` (warned, not rejected) or it will not stay passive;
+- a container with an `on-owner` name should have `status_goal: STAGED` (warned, not rejected; `MOUNTED` is warned as deprecated) or it will not stay passive;
 - a `names` entry (consumer) or `owns` entry it depends on with no resolvable counterpart fails validation the same way any other missing service dependency does.
 
 ### Scope Boundaries
@@ -849,8 +851,9 @@ Added to `pv_state_validate_services()`:
 - all names in one entry resolve to the same bus;
 - at most one entry per bus takes the default `target`; explicit targets are
   unique per container;
-- a container with any `on-owner` name has `status_goal: MOUNTED` (warned, not
-  rejected, matching the `restart_policy` recommendation for providers);
+- a container with any `on-owner` name has `status_goal: STAGED` (warned, not
+  rejected, matching the `restart_policy` recommendation for providers;
+  `MOUNTED` is warned as deprecated);
 - role pins are consistent device-wide and do not collide with the pool;
 - policy fragments pass the three validation levels above.
 
@@ -885,8 +888,9 @@ Facts an implementer should not have to rediscover:
   `/storage/config/dbus-role-uids.json` and is append-only.
 - The generated passwd is what makes `policy user=` resolvable; the throwaway
   validator instance must see the same one.
-- `pvr app add --status-goal MOUNTED` drops `type`/`config` and skips the LXC
-  render; set `status_goal` via `PVR_APP_POST_FIXUP` instead.
+- pvr's template renders `PV_STATUS_GOAL: MOUNTED` as data-only (no
+  `type`/`config`, no LXC render); park runnable containers with
+  `PV_STATUS_GOAL: STAGED` in `args.json`.
 - Test tarballs come from `PV_PVTEST_CONTAINERS_XCONNECT` in
   `pantavisor-appengine-distro.bb`; a new example container must be added
   there to reach the tester.

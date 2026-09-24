@@ -346,7 +346,7 @@ The same endpoint also accepts `container` in place of `name`, called by `pv-xco
 curl -X POST --header "Content-Type: application/json" --data "{\"container\":\"my-consumer\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect/dbus/activate"
 ```
 
-`container` must name a platform in the current state. Pantavisor promotes it `MOUNTED -> STARTED`; if it is already started (or was never `MOUNTED`), the call is a no-op. Exactly one of `name` or `container` must be present in the body.
+`container` must name a platform in the current state. Pantavisor promotes it to `STARTED` if it is parked at `STAGED` (or a legacy `MOUNTED`); any other status is a no-op. Exactly one of `name` or `container` must be present in the body.
 
 On success, returns `200` with an empty body. On failure:
 
