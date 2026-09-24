@@ -336,7 +336,7 @@ This is an internal endpoint used by `pv-xconnect` to drive [D-Bus service activ
 curl -X POST --header "Content-Type: application/json" --data "{\"name\":\"org.example.Foo\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect/dbus/activate"
 ```
 
-`name` must be a name declared with `owns` and `activation.mode: on-demand` on the hosted `system-bus` (see [Pantavisor xconnect](pantavisor-xconnect.md)). Pantavisor maps it to the platform that owns it and promotes that platform `MOUNTED -> STARTED`; if the owner is already started, the call is a no-op.
+`name` must be a name declared with `owns` and `activation.mode: on-demand` on the hosted `system-bus` (see [Pantavisor xconnect](pantavisor-xconnect.md)). Pantavisor maps it to the platform that owns it and promotes that platform to `STARTED`, normally from a `STAGED` [status goal](../overview/containers.md#status-goal); if the owner is already starting or running, the call is a no-op.
 
 On success, returns `200` with an empty body. On failure:
 
