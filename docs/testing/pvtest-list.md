@@ -93,7 +93,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/xconnect/dbus-systembus` | Hosted system bus (masquerade + generated policy) | ✓ |
 | `local/xconnect/dbus-collision` | Hosted system bus (duplicate owns rejected) | ✓ |
 | `local/xconnect/avahi-systembus` | Hosted system bus (real avahi daemon) | ✓ |
-| `local/xconnect/dbus-activation` | On-demand activation (passive owner started on first call) | ✓ |
+| `local/xconnect/dbus-activation` | On-demand activation (STAGED owner started on first call, volumes mounted once) | ✓ |
 
 ### security
 
