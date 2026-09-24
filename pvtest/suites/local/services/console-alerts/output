@@ -1,0 +1,44 @@
+== phase 1: PV_LOG_LEVEL allows WALL ==
+-- line format --
+[TIME] [PANTAVISOR] [platforms] WALL: platform 'pv-example-app' status is now <STATUS>
+-- statuses on the console --
+INSTALLED
+MOUNTED
+STARTED
+STARTING
+STOPPED
+STOPPING
+-- also written to the logs --
+yes
+== phase 2: PV_LOG_LEVEL filters WALL ==
+-- statuses on the console --
+INSTALLED
+MOUNTED
+STARTED
+STARTING
+STOPPED
+STOPPING
+-- also written to the logs --
+no
+== phase 3: alerts disabled at runtime, PV_LOG_LEVEL filters WALL ==
+-- PV_LOG_CONSOLE_ALERTS as the target sees it --
+"0"
+-- console alert lines --
+0
+-- also written to the logs --
+no
+== phase 4: alerts disabled at runtime, PV_LOG_LEVEL allows WALL ==
+-- console alert lines --
+0
+-- still written to the logs --
+yes
+== phase 5: alerts back to the boot value ==
+-- PV_LOG_CONSOLE_ALERTS as the target sees it --
+"1"
+-- statuses on the console --
+INSTALLED
+MOUNTED
+STARTED
+STARTING
+STOPPED
+STOPPING

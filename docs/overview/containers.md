@@ -131,6 +131,8 @@ These are the different [status](../reference/pantavisor-commands.md#status-valu
 * STOPPING: container is stopping because of an [update transition](updates.md).
 * STOPPED: container has stopped.
 
+Every [status](#status) change is also announced on the [device console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) as a [console alert](storage.md#console-alerts), one line per transition.
+
 This status is also stored at the [group](#groups) level. The status of a group is always READY, except if any of the containers that form the group has not yet achieved their [status goal](#status-goal). In that case, the status of a group is the same as the container with the lower status, not counting the containers that have reached its status goal. This group status can be consulted from our [local control interface](../reference/pantavisor-commands.md#groups) and is also registered at the [Pantavisor logs](storage.md#logs).
 
 Same way as with the group status, a [revision](revisions.md) global status is also stored. The way to calculate this status is the same as with the group one, but taking all containers from the revision into account. The revision status is stored in [device metadata](../reference/pantavisor-metadata.md#device-metadata), can be consulted from our [local control interface](../reference/pantavisor-commands.md#device-meta) and changes are registered at the [Pantavisor logs](storage.md#logs).
@@ -167,21 +169,6 @@ Signals can be sent from the container namespace to Pantavisor using the [local 
 For now, we only support the `ready` signal, which can be used to get to the [READY status goal](#status-goal) from a container.
 
 Once all containers have met their [status goal](#status-goal), Pantavisor fires the `system-done` [hook point](hooks.md#hook-points), allowing operators to react to the platform reaching its fully-running state.
-
-### Console Alerts
-
-Every [status](#status) change is also announced on the [device console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) as a [console alert](storage.md#console-alerts), one line per transition. This makes a boot readable over a serial link without tailing any log:
-
-```
-[    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
-[    6.217450] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now BLOCKED
-[    6.341446] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTED
-[    6.419898] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now MOUNTED
-[    6.480485] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now STARTING
-[    6.653835] [PANTAVISOR] [platforms] WALL: platform 'pvr-sdk' status is now STARTED
-```
-
-Status changes are logged at the `WALL` level: they are recorded in the [Pantavisor logs](storage.md#logs) when [`PV_LOG_LEVEL`](../reference/pantavisor-configuration.md#summary) is `3` (`WALL`) or higher — one step more permissive than `INFO` (`4`) — and reach the console either way. Alerts are enabled by default and are written to the device console only — never to [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other remote sessions. Set [`PV_LOG_CONSOLE_ALERTS`](../reference/pantavisor-configuration.md#summary) to `0`, at boot or at runtime through [user metadata](pantavisor-configuration-levels.md#user-metadata), to silence them.
 
 ## Auto-Recovery
 
