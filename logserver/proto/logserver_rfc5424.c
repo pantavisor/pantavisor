@@ -34,15 +34,15 @@
 #define LOGSERVER_RFC5424_NILVALUE '-'
 #define LOGSERVER_RFC5424_PARTS (8)
 
-static bool logserver_rfc5424_is_nil(const char *buf)
+static bool pv_ls_rfc5424_is_nil(const char *buf)
 {
 	return (*buf == LOGSERVER_RFC5424_NILVALUE &&
 		(*(buf - 1) == ' ' && *(buf + 1) == ' '));
 }
 
-static int logserver_rfc5424_get_timestamp(const char *buf, time_t *tst)
+static int pv_ls_rfc5424_get_timestamp(const char *buf, time_t *tst)
 {
-	if (logserver_rfc5424_is_nil(buf)) {
+	if (pv_ls_rfc5424_is_nil(buf)) {
 		*tst = time(NULL);
 		return 0;
 	}
@@ -57,9 +57,9 @@ static int logserver_rfc5424_get_timestamp(const char *buf, time_t *tst)
 	return 0;
 }
 
-static int logserver_rfc5424_get_str(char *beg, char *end, char **str)
+static int pv_ls_rfc5424_get_str(char *beg, char *end, char **str)
 {
-	if (logserver_rfc5424_is_nil(beg)) {
+	if (pv_ls_rfc5424_is_nil(beg)) {
 		*str = NULL;
 		return 0;
 	}
@@ -71,7 +71,7 @@ static int logserver_rfc5424_get_str(char *beg, char *end, char **str)
 	return 0;
 }
 
-static int logserver_rfc5424_parse(char *buf, struct logserver_rfc *rfc)
+static int pv_ls_rfc5424_parse(char *buf, struct pv_ls_rfc *rfc)
 {
 	char *parts[LOGSERVER_RFC5424_PARTS] = { 0 };
 	char *ptr = buf;
@@ -94,14 +94,14 @@ static int logserver_rfc5424_parse(char *buf, struct logserver_rfc *rfc)
 	if (i < LOGSERVER_RFC5424_PARTS)
 		return -1;
 
-	rfc->prival = logserver_rfc_get_prival(parts[0]);
+	rfc->prival = pv_ls_rfc_get_prival(parts[0]);
 	if (rfc->prival < 0)
 		return -1;
 
-	if (logserver_rfc5424_get_timestamp(parts[1], &rfc->time) != 0)
+	if (pv_ls_rfc5424_get_timestamp(parts[1], &rfc->time) != 0)
 		return -1;
 
-	logserver_rfc5424_get_str(parts[3], parts[4] - 1, &rfc->app);
+	pv_ls_rfc5424_get_str(parts[3], parts[4] - 1, &rfc->app);
 
 	if (!rfc->app)
 		rfc->app = "unknown-app";
@@ -109,23 +109,21 @@ static int logserver_rfc5424_parse(char *buf, struct logserver_rfc *rfc)
 	// ignoring PROCID, MSGID and STRUCTURED-DATA
 	// parts 4, 5 and 6
 
-	logserver_rfc5424_get_str(parts[7], NULL, &rfc->msg);
+	pv_ls_rfc5424_get_str(parts[7], NULL, &rfc->msg);
 	if (!rfc->msg)
 		rfc->msg = " ";
 
 	return 0;
 }
 
-int logserver_rfc5424_to_log(struct logserver_log_data *data,
-			     struct logserver_log *log)
+int pv_ls_rfc5424_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log)
 {
-	struct logserver_rfc rfc = {
-		.code = logserver_rfc_check_type(data->buf),
+	struct pv_ls_rfc rfc = {
+		.code = pv_ls_rfc_check_type(data->buf),
 	};
 
-	if (logserver_rfc5424_parse(data->buf, &rfc) != 0)
+	if (pv_ls_rfc5424_parse(data->buf, &rfc) != 0)
 		return -1;
 
-	return logserver_rfc_to_log(&rfc, data->cgroup, data->rev, data->upd,
-				    log);
+	return pv_ls_rfc_to_log(&rfc, data->cgroup, data->rev, data->upd, log);
 }

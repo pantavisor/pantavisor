@@ -6,7 +6,7 @@
 # arrived on, not to a cgroup lookup, and the syslog tag becomes the file name
 # under the container's log directory.
 #
-# Covers the filetree src rules from get_src() (logserver/logserver_filetree.c):
+# Covers the filetree src rules from pv_ls_filetree_get_src() (logserver/outputs/logserver_filetree.c):
 # a tag with no '/' is filed under syslog/, a path-shaped source keeps its shape,
 # and a traversing source collapses to unknown-src instead of escaping the tree.
 #

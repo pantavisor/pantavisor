@@ -20,50 +20,15 @@
  * SOFTWARE.
  */
 
-#include "logserver_out.h"
+#ifndef LOGSERVER_TIMESTAMP_H
+#define LOGSERVER_TIMESTAMP_H
 
-#include <stdlib.h>
-#include <string.h>
+#include <time.h>
+#include <stdint.h>
 
-struct logserver_out *logserver_out_new(
-	int id, const char *name,
-	int (*add)(struct logserver_out *out, const struct logserver_log *log),
-	void (*free)(struct logserver_out *out), void *opaque)
-{
-	if (!add)
-		return NULL;
+int pv_ls_timestamp_get_formated(char *buf, int buf_size, const time_t *time,
+				 const char *name);
 
-	struct logserver_out *out = calloc(1, sizeof(struct logserver_out));
-	if (!out)
-		return NULL;
+uint64_t pv_ls_timestamp_get_tsec(time_t time);
 
-	out->name = strdup(name);
-	if (!out->name) {
-		free(out);
-		return NULL;
-	}
-
-	memset(out->last_log, 0, PATH_MAX);
-
-	out->id = id;
-	out->add = add;
-	out->free = free;
-	out->opaque = opaque;
-	dl_list_init(&out->list);
-
-	return out;
-}
-
-void logserver_out_free(struct logserver_out *out)
-{
-	if (!out)
-		return;
-
-	if (out->name)
-		free(out->name);
-
-	if (out->free)
-		out->free(out);
-
-	free(out);
-}
+#endif

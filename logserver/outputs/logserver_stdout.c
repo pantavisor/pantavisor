@@ -20,13 +20,42 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_STDOUT_H
-#define LOGSERVER_STDOUT_H
+#include "logserver_stdout.h"
+#include "logserver/utils/logserver_utils.h"
+#include "config.h"
 
-#include "logserver_out.h"
+#include <string.h>
 
-struct logserver_out *logserver_stdout_new(void);
-struct logserver_out *logserver_stdout_containers_new(void);
-struct logserver_out *logserver_stdout_pantavisor_new(void);
+static int pv_ls_stdout_add_log(struct pv_ls_out *out,
+				const struct pv_ls_log *log)
+{
+	if (!strcmp(out->name, "stdout_containers") &&
+	    !strncmp(log->plat, "pantavisor", strlen("pantavisor")))
+		return 0;
 
-#endif
+	if (!strcmp(out->name, "stdout_pantavisor") &&
+	    strncmp(log->plat, "pantavisor", strlen("pantavisor")))
+		return 0;
+
+	return pv_ls_utils_stdout(log);
+}
+
+struct pv_ls_out *pv_ls_stdout_new()
+{
+	return pv_ls_out_new(LOG_SERVER_OUTPUT_STDOUT, "stdout",
+			     pv_ls_stdout_add_log, NULL, NULL);
+}
+
+struct pv_ls_out *pv_ls_stdout_containers_new()
+{
+	return pv_ls_out_new(LOG_SERVER_OUTPUT_STDOUT_CONTAINERS,
+			     "stdout_containers", pv_ls_stdout_add_log, NULL,
+			     NULL);
+}
+
+struct pv_ls_out *pv_ls_stdout_pantavisor_new()
+{
+	return pv_ls_out_new(LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR,
+			     "stdout_pantavisor", pv_ls_stdout_add_log, NULL,
+			     NULL);
+}

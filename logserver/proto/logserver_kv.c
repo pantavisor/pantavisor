@@ -21,23 +21,23 @@
  */
 
 #include "logserver_kv.h"
-#include "logserver/logserver_timestamp.h"
+#include "logserver/utils/logserver_timestamp.h"
 #include "log.h"
 
 #include <ctype.h>
 #include <string.h>
 
-#define LOGSERVER_KV_KEY_LVL "level"
-#define LOGSERVER_KV_KEY_SRC "src"
-#define LOGSERVER_KV_KEY_MSG "message"
+#define PV_LS_KV_KEY_LVL "level"
+#define PV_LS_KV_KEY_SRC "src"
+#define PV_LS_KV_KEY_MSG "message"
 
-#define LOGSERVER_KV_FLAG_LVL (1 << 0)
-#define LOGSERVER_KV_FLAG_SRC (1 << 1)
-#define LOGSERVER_KV_FLAG_MSG (1 << 2)
-#define LOGSERVER_KV_FLAG_ALL                                                  \
-	(LOGSERVER_KV_FLAG_LVL | LOGSERVER_KV_FLAG_SRC | LOGSERVER_KV_FLAG_MSG)
+#define PV_LS_KV_FLAG_LVL (1 << 0)
+#define PV_LS_KV_FLAG_SRC (1 << 1)
+#define PV_LS_KV_FLAG_MSG (1 << 2)
+#define PV_LS_KV_FLAG_ALL                                                      \
+	(PV_LS_KV_FLAG_LVL | PV_LS_KV_FLAG_SRC | PV_LS_KV_FLAG_MSG)
 
-static void logserver_kv_skip_space(char **ptr)
+static void pv_ls_kv_skip_space(char **ptr)
 {
 	char *p = *ptr;
 	while (*p && isspace((unsigned char)*p))
@@ -45,17 +45,16 @@ static void logserver_kv_skip_space(char **ptr)
 	*ptr = p;
 }
 
-static bool logserver_kv_key_comp(const char *start, size_t len,
-				  const char *key)
+static bool pv_ls_kv_key_comp(const char *start, size_t len, const char *key)
 {
 	return len == strlen(key) && !strncmp(start, key, strlen(key));
 }
 
-static int logserver_kv_check_key(char **buf)
+static int pv_ls_kv_check_key(char **buf)
 {
 	char *ptr = *buf;
 
-	logserver_kv_skip_space(&ptr);
+	pv_ls_kv_skip_space(&ptr);
 	if (*ptr == '\0')
 		return 0;
 
@@ -72,29 +71,27 @@ static int logserver_kv_check_key(char **buf)
 
 	*buf = ptr;
 
-	if (logserver_kv_key_comp(start, len, LOGSERVER_KV_KEY_LVL))
-		return LOGSERVER_KV_FLAG_LVL;
-	else if (logserver_kv_key_comp(start, len, LOGSERVER_KV_KEY_SRC))
-		return LOGSERVER_KV_FLAG_SRC;
-	else if (logserver_kv_key_comp(start, len, LOGSERVER_KV_KEY_MSG))
-		return LOGSERVER_KV_FLAG_MSG;
+	if (pv_ls_kv_key_comp(start, len, PV_LS_KV_KEY_LVL))
+		return PV_LS_KV_FLAG_LVL;
+	else if (pv_ls_kv_key_comp(start, len, PV_LS_KV_KEY_SRC))
+		return PV_LS_KV_FLAG_SRC;
+	else if (pv_ls_kv_key_comp(start, len, PV_LS_KV_KEY_MSG))
+		return PV_LS_KV_FLAG_MSG;
 
 	return 0;
 }
 
-bool debug = false;
-
-static bool logserver_kv_check_val(char **buf, char **val, int *vlen)
+static bool pv_ls_kv_check_val(char **buf, char **val, int *vlen)
 {
 	char *ptr = *buf;
 
-	logserver_kv_skip_space(&ptr);
+	pv_ls_kv_skip_space(&ptr);
 	if (*ptr != '=')
 		return false;
 
 	ptr++;
 
-	logserver_kv_skip_space(&ptr);
+	pv_ls_kv_skip_space(&ptr);
 	if (*ptr == '\0')
 		return false;
 
@@ -142,44 +139,35 @@ static bool logserver_kv_check_val(char **buf, char **val, int *vlen)
 	return closed;
 }
 
-static char *logserver_kv_check_kv(char *ptr, int *found)
+static char *pv_ls_kv_check_kv(char *ptr, int *found)
 {
-	int f = logserver_kv_check_key(&ptr);
+	int f = pv_ls_kv_check_key(&ptr);
 	if (f == 0)
 		return NULL;
 
 	*found |= f;
 
-	if (f > 0)
-		debug = true;
-
-	bool x = logserver_kv_check_val(&ptr, NULL, NULL);
-
-	if (debug)
-		debug = false;
-
-	if (!x)
+	if (!pv_ls_kv_check_val(&ptr, NULL, NULL))
 		return NULL;
 
 	return ptr;
 }
 
-log_protocol_code_t logserver_kv_check_type(const char *buf)
+pv_ls_proto_code_t pv_ls_kv_check_type(const char *buf)
 {
 	int found = 0;
 	char *ptr = (char *)buf;
 
-	while ((ptr = logserver_kv_check_kv(ptr, &found)))
+	while ((ptr = pv_ls_kv_check_kv(ptr, &found)))
 		;
 
-	if (found != LOGSERVER_KV_FLAG_ALL)
+	if (found != PV_LS_KV_FLAG_ALL)
 		return LOG_PROTOCOL_UNKNOWN;
 
 	return LOG_PROTOCOL_KEY_VAL;
 }
 
-int logserver_kv_to_log(struct logserver_log_data *data,
-			struct logserver_log *log)
+int pv_ls_kv_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log)
 {
 	char *ptr = data->buf;
 	char *val = NULL;
@@ -188,14 +176,14 @@ int logserver_kv_to_log(struct logserver_log_data *data,
 
 	char *end = &data->buf[strlen(data->buf)];
 
-	while ((key = logserver_kv_check_key(&ptr)) > 0) {
-		if (!logserver_kv_check_val(&ptr, &val, &vlen))
+	while ((key = pv_ls_kv_check_key(&ptr)) > 0) {
+		if (!pv_ls_kv_check_val(&ptr, &val, &vlen))
 			return -1;
 
 		if (!val || vlen == 0)
 			return -1;
 
-		if (key & LOGSERVER_KV_FLAG_LVL) {
+		if (key & PV_LS_KV_FLAG_LVL) {
 			char *lvl = calloc(vlen + 1, sizeof(char));
 			if (!lvl)
 				return -1;
@@ -209,7 +197,7 @@ int logserver_kv_to_log(struct logserver_log_data *data,
 			if (log->lvl == -1)
 				return -1;
 
-		} else if (key & LOGSERVER_KV_FLAG_MSG) {
+		} else if (key & PV_LS_KV_FLAG_MSG) {
 			log->data.len = vlen;
 			log->data.buf = val;
 			ptr = val + vlen;
@@ -217,7 +205,7 @@ int logserver_kv_to_log(struct logserver_log_data *data,
 				*ptr = '\0';
 				ptr++;
 			}
-		} else if (key & LOGSERVER_KV_FLAG_SRC) {
+		} else if (key & PV_LS_KV_FLAG_SRC) {
 			log->src = val;
 			ptr = val + vlen;
 			if (*ptr && ptr < end) {
@@ -227,13 +215,13 @@ int logserver_kv_to_log(struct logserver_log_data *data,
 		}
 	}
 
-	if (logserver_proto_set_platform_name(data->cgroup, log->plat) != 0)
+	if (pv_ls_proto_set_platform_name(data->cgroup, log->plat) != 0)
 		return -1;
 
 	log->code = LOG_PROTOCOL_KEY_VAL;
 	log->tnano = 0;
 	log->time = time(NULL);
-	log->tsec = logserver_timestamp_get_tsec(log->time);
+	log->tsec = pv_ls_timestamp_get_tsec(log->time);
 	log->running_rev = data->rev;
 	log->updated_rev = data->upd;
 

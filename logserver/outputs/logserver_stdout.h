@@ -20,11 +20,13 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_NULL_H
-#define LOGSERVER_NULL_H
+#ifndef LOGSERVER_STDOUT_H
+#define LOGSERVER_STDOUT_H
 
 #include "logserver_out.h"
 
-struct logserver_out *logserver_null_new(void);
+struct pv_ls_out *pv_ls_stdout_new(void);
+struct pv_ls_out *pv_ls_stdout_containers_new(void);
+struct pv_ls_out *pv_ls_stdout_pantavisor_new(void);
 
 #endif

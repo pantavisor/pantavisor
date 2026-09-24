@@ -21,7 +21,7 @@
  */
 
 #include "logserver_filetree.h"
-#include "logserver_utils.h"
+#include "logserver/utils/logserver_utils.h"
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
@@ -33,9 +33,9 @@
 #include <linux/limits.h>
 #include <stdio.h>
 
-#define MAIN_PLATFORM "pantavisor"
+#define PV_LS_MAIN_PLATFORM "pantavisor"
 
-static void get_src(const struct logserver_log *log, char *out)
+static void pv_ls_filetree_get_src(const struct pv_ls_log *log, char *out)
 {
 	const char *src = log->src ? log->src : "";
 
@@ -59,7 +59,8 @@ static void get_src(const struct logserver_log *log, char *out)
 		snprintf(out, PATH_MAX, "%s", src);
 }
 
-static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
+static int pv_ls_filetree_create_dir(const struct pv_ls_log *log, bool is_pv,
+				     char *path)
 {
 	if (!log->running_rev) {
 		WARN_ONCE(
@@ -71,7 +72,7 @@ static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
 	char src[PATH_MAX] = { 0 };
 
 	if (!is_pv)
-		get_src(log, src);
+		pv_ls_filetree_get_src(log, src);
 
 	char tmp_path[PATH_MAX] = { 0 };
 	pv_paths_pv_log_file(tmp_path, PATH_MAX, log->running_rev, log->plat,
@@ -91,17 +92,19 @@ static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
 	return 0;
 }
 
-static int add_log(struct logserver_out *out, const struct logserver_log *log)
+static int pv_ls_filetree_add_log(struct pv_ls_out *out,
+				  const struct pv_ls_log *log)
 {
 	if (log->lvl > pv_config_get_int(PV_LOG_LEVEL))
 		return 0;
 
-	bool is_pv = !strncmp(log->plat, MAIN_PLATFORM, strlen(MAIN_PLATFORM));
+	bool is_pv = !strncmp(log->plat, PV_LS_MAIN_PLATFORM,
+			      strlen(PV_LS_MAIN_PLATFORM));
 
-	if (create_dir(log, is_pv, out->last_log) != 0)
+	if (pv_ls_filetree_create_dir(log, is_pv, out->last_log) != 0)
 		return -1;
 
-	int fd = logserver_utils_open_logfile(out->last_log);
+	int fd = pv_ls_utils_open_logfile(out->last_log);
 
 	if (fd < 0) {
 		WARN_ONCE("Error opening file %s/%s, errno = %d\n", platform,
@@ -114,17 +117,17 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 	int len = 0;
 
 	if (is_pv)
-		len = logserver_utils_print_pvfmt(fd, log, "pantavisor", true);
+		len = pv_ls_utils_print_pvfmt(fd, log, "pantavisor", true);
 	else
-		len = logserver_utils_print_raw(fd, log);
+		len = pv_ls_utils_print_raw(fd, log);
 
 	close(fd);
 
 	return len;
 }
 
-struct logserver_out *logserver_filetree_new()
+struct pv_ls_out *pv_ls_filetree_new()
 {
-	return logserver_out_new(LOG_SERVER_OUTPUT_FILE_TREE, "filetree",
-				 add_log, NULL, NULL);
+	return pv_ls_out_new(LOG_SERVER_OUTPUT_FILE_TREE, "filetree",
+			     pv_ls_filetree_add_log, NULL, NULL);
 }

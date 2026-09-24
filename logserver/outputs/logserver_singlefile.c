@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Pantacor Ltd.
+ * Copyright (c) 2023-2024 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,49 +20,51 @@
  * SOFTWARE.
  */
 
-#include "logserver_update.h"
-#include "logserver_utils.h"
-#include "log.h"
+#include "logserver_singlefile.h"
+#include "logserver/utils/logserver_utils.h"
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
+#include "log.h"
 
+#include <limits.h>
 #include <string.h>
 #include <linux/limits.h>
 #include <unistd.h>
 #include <libgen.h>
 #include <stdio.h>
 
-static int create_dir(const struct logserver_log *log, char *path)
+static int pv_ls_singlefile_create_dir(const struct pv_ls_log *log, char *path)
 {
-	if (!log->updated_rev)
-		return -1;
-
-	char tmp_path[PATH_MAX] = { 0 };
-	pv_paths_storage_trail_pv_file(tmp_path, PATH_MAX, log->updated_rev,
-				       "");
-
-	if (pv_fs_mkdir_p(tmp_path, 0755)) {
+	if (!log->running_rev) {
+		WARN_ONCE(
+			"Log with no revision (null) arrives to singlefile output: %s",
+			log->data.buf);
 		return -1;
 	}
 
+	char tmp_path[PATH_MAX] = { 0 };
+	pv_paths_pv_log(tmp_path, PATH_MAX, log->running_rev);
+
+	if (pv_fs_mkdir_p(tmp_path, 0755))
+		return -1;
+
 	memset(path, 0, PATH_MAX);
-	pv_paths_storage_trail_pv_file(path, PATH_MAX, log->updated_rev,
-				       LOGS_TMP_FNAME);
+	pv_paths_pv_log_plat(path, PATH_MAX, log->running_rev, "pv.log");
 
 	return 0;
 }
 
-static int add_log(struct logserver_out *out, const struct logserver_log *log)
+static int pv_ls_singlefile_add_log(struct pv_ls_out *out,
+				    const struct pv_ls_log *log)
 {
-	if (log->lvl > ERROR)
+	if (log->lvl > pv_config_get_int(PV_LOG_LEVEL))
 		return 0;
 
-	if (create_dir(log, out->last_log) != 0)
+	if (pv_ls_singlefile_create_dir(log, out->last_log) != 0)
 		return -1;
 
-	int fd = logserver_utils_open_logfile(out->last_log);
-
+	int fd = pv_ls_utils_open_logfile(out->last_log);
 	if (fd < 0) {
 		WARN_ONCE("Error opening file %s, errno = %d\n", out->last_log,
 			  errno);
@@ -70,17 +72,15 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 		return -1;
 	}
 
-	char *json = logserver_utils_jsonify_log(log);
-	int len = dprintf(fd, "%s\n", json);
+	int len = pv_ls_utils_print_json_fmt(fd, log);
 
 	close(fd);
-	free(json);
 
 	return len;
 }
 
-struct logserver_out *logserver_update_new()
+struct pv_ls_out *pv_ls_singlefile_new()
 {
-	return logserver_out_new(LOG_SERVER_OUTPUT_UPDATE, "update", add_log,
-				 NULL, NULL);
+	return pv_ls_out_new(LOG_SERVER_OUTPUT_SINGLE_FILE, "singlefile",
+			     pv_ls_singlefile_add_log, NULL, NULL);
 }

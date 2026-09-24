@@ -42,16 +42,16 @@
 static logfn pv_log = NULL;
 
 // maximum log files types in the same folder
-#define PV_LOG_SERVER_ROT_MAX_FILES 10
+#define PV_LS_ROTATION_MAX_FILES (10)
 
-struct logserver_rot_dirs {
+struct pv_ls_rot_dirs {
 	off_t size;
 	char path[PATH_MAX];
 	struct dl_list list;
 };
 
-static void pv_logserver_rot_get_comp_name(char *comp, const char *dir,
-					   const char *name, int seq)
+static void pv_ls_rotation_get_comp_name(char *comp, const char *dir,
+					 const char *name, int seq)
 {
 	char tmp[PATH_MAX] = { 0 };
 	snprintf(tmp, PATH_MAX, "%s.%d", name, seq);
@@ -59,7 +59,7 @@ static void pv_logserver_rot_get_comp_name(char *comp, const char *dir,
 	pv_fs_path_concat(comp, 2, dir, tmp);
 }
 
-static long pv_logserver_rot_get_num(const char *fname)
+static long pv_ls_rotation_get_num(const char *fname)
 {
 	char fn[NAME_MAX] = { 0 };
 	strncpy(fn, fname, NAME_MAX);
@@ -82,7 +82,7 @@ static long pv_logserver_rot_get_num(const char *fname)
 	return rot;
 }
 
-static long pv_logserver_rot_get_next_rot(const char *path, const char *fname)
+static long pv_ls_rotation_get_next_rot(const char *path, const char *fname)
 {
 	DIR *dir = opendir(path);
 	if (!dir)
@@ -98,7 +98,7 @@ static long pv_logserver_rot_get_next_rot(const char *path, const char *fname)
 		if (strncmp(fname, entry->d_name, strlen(fname)))
 			continue;
 
-		long new = pv_logserver_rot_get_num(entry->d_name);
+		long new = pv_ls_rotation_get_num(entry->d_name);
 
 		if (new > max_rot)
 			max_rot = new;
@@ -108,7 +108,7 @@ static long pv_logserver_rot_get_next_rot(const char *path, const char *fname)
 	return max_rot + 1;
 }
 
-void pv_logserver_rot_show_status(struct logserver_rot *rot, int level)
+static void pv_ls_rotation_show_status(struct pv_ls_rot *rot, int level)
 {
 	pv_log(level, "\t* path          : %s", rot->path);
 	pv_log(level, "\t* total_size    : %jd", rot->total_size);
@@ -118,7 +118,7 @@ void pv_logserver_rot_show_status(struct logserver_rot *rot, int level)
 	pv_log(level, "\t* current size  : %jd", rot->cur_size);
 }
 
-void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev)
+void pv_ls_rotation_update(struct pv_ls_rot *rot, const char *rev)
 {
 	pv_paths_pv_log(rot->path, PATH_MAX, rev);
 
@@ -135,29 +135,29 @@ void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev)
 
 	pv_log(DEBUG, "updating log rotation status (size: %jd)",
 	       rot->total_size);
-	pv_logserver_rot_show_status(rot, TRACE);
+	pv_ls_rotation_show_status(rot, TRACE);
 }
 
-void pv_logserver_rot_add(struct logserver_rot *rot, int len)
+void pv_ls_rotation_add(struct pv_ls_rot *rot, int len)
 {
 	if (len > 0)
 		rot->cur_size += len;
 }
 
-struct logserver_rot pv_logserver_rot_init(const char *rev, logfn log)
+struct pv_ls_rot pv_ls_rotation_init(const char *rev, logfn log)
 {
-	struct logserver_rot rot = { 0 };
+	struct pv_ls_rot rot = { 0 };
 	if (!log)
 		return rot;
 
 	pv_log = log;
-	pv_logserver_rot_update(&rot, rev);
-	pv_logserver_rot_show_status(&rot, DEBUG);
+	pv_ls_rotation_update(&rot, rev);
+	pv_ls_rotation_show_status(&rot, DEBUG);
 
 	return rot;
 }
 
-int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname)
+int pv_ls_rotation_log_rot(struct pv_ls_rot *rot, const char *fname)
 {
 	if (!fname || fname[0] == 0)
 		return 0;
@@ -175,10 +175,10 @@ int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname)
 	char bname[NAME_MAX] = { 0 };
 	pv_fs_basename(fname, bname);
 
-	long next = pv_logserver_rot_get_next_rot(parent, bname);
+	long next = pv_ls_rotation_get_next_rot(parent, bname);
 
 	char comp[PATH_MAX] = { 0 };
-	pv_logserver_rot_get_comp_name(comp, parent, bname, next);
+	pv_ls_rotation_get_comp_name(comp, parent, bname, next);
 
 	pv_fs_file_gzip(fname, comp);
 	pv_fs_path_remove(fname, false);
@@ -193,7 +193,7 @@ int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname)
 	return 0;
 }
 
-static off_t pv_logserver_rot_get_dirs(const char *path, struct dl_list *dirs)
+static off_t pv_ls_rotation_get_dirs(const char *path, struct dl_list *dirs)
 {
 	DIR *current_dir = opendir(path);
 	if (!current_dir)
@@ -231,13 +231,13 @@ static off_t pv_logserver_rot_get_dirs(const char *path, struct dl_list *dirs)
 			continue;
 		}
 
-		struct logserver_rot_dirs *dsize = calloc(1, sizeof(*dsize));
+		struct pv_ls_rot_dirs *dsize = calloc(1, sizeof(*dsize));
 
 		if (!dsize)
 			continue;
 
 		dsize->size =
-			pv_logserver_rot_get_dirs(abs_path, dirs) + total_size;
+			pv_ls_rotation_get_dirs(abs_path, dirs) + total_size;
 
 		memccpy(dsize->path, abs_path, 0, PATH_MAX);
 		dl_list_init(&dsize->list);
@@ -247,7 +247,7 @@ static off_t pv_logserver_rot_get_dirs(const char *path, struct dl_list *dirs)
 	return total_size;
 }
 
-static void pv_logserver_rot_get_oldest_file(const char *path, char *oldest)
+static void pv_ls_rotation_get_oldest_file(const char *path, char *oldest)
 {
 	struct log_files {
 		char logname[NAME_MAX];
@@ -256,7 +256,7 @@ static void pv_logserver_rot_get_oldest_file(const char *path, char *oldest)
 		long lower_seq;
 	};
 
-	struct log_files files[PV_LOG_SERVER_ROT_MAX_FILES] = { { { 0 } } };
+	struct log_files files[PV_LS_ROTATION_MAX_FILES] = { { { 0 } } };
 
 	memset(oldest, 0, PATH_MAX);
 
@@ -280,7 +280,7 @@ static void pv_logserver_rot_get_oldest_file(const char *path, char *oldest)
 
 		int i = 0;
 
-		for (; i < PV_LOG_SERVER_ROT_MAX_FILES; i++) {
+		for (; i < PV_LS_ROTATION_MAX_FILES; i++) {
 			struct log_files *lf = &files[i];
 
 			if (lf->logname[0] == 0) {
@@ -290,14 +290,14 @@ static void pv_logserver_rot_get_oldest_file(const char *path, char *oldest)
 						  entry->d_name);
 				lf->n_logs = 1;
 				lf->lower_seq =
-					pv_logserver_rot_get_num(entry->d_name);
+					pv_ls_rotation_get_num(entry->d_name);
 
 				break;
 			}
 
 			if (!strcmp(lf->logname, logname)) {
 				long seq =
-					pv_logserver_rot_get_num(entry->d_name);
+					pv_ls_rotation_get_num(entry->d_name);
 				if (lf->lower_seq > seq) {
 					lf->lower_seq = seq;
 					pv_fs_path_concat(lf->path, 2, path,
@@ -314,7 +314,7 @@ static void pv_logserver_rot_get_oldest_file(const char *path, char *oldest)
 
 	struct log_files *old = &files[0];
 
-	for (int i = 1; i < PV_LOG_SERVER_ROT_MAX_FILES; i++) {
+	for (int i = 1; i < PV_LS_ROTATION_MAX_FILES; i++) {
 		if (old->n_logs < files[i].n_logs)
 			old = &files[i];
 	}
@@ -322,7 +322,7 @@ static void pv_logserver_rot_get_oldest_file(const char *path, char *oldest)
 	memccpy(oldest, old->path, 0, PATH_MAX);
 }
 
-off_t pv_logserver_rot_deletion(struct logserver_rot *rot)
+off_t pv_ls_rotation_deletion(struct pv_ls_rot *rot)
 {
 	if (rot->cur_size < rot->high_wm)
 		return 0;
@@ -330,19 +330,19 @@ off_t pv_logserver_rot_deletion(struct logserver_rot *rot)
 	struct dl_list dirs;
 	dl_list_init(&dirs);
 
-	pv_logserver_rot_get_dirs(rot->path, &dirs);
+	pv_ls_rotation_get_dirs(rot->path, &dirs);
 
 	if (dl_list_empty(&dirs))
 		return -1;
 
 	off_t prev_sz = rot->cur_size;
-	struct logserver_rot_dirs *it = NULL, *tmp = NULL;
+	struct pv_ls_rot_dirs *it = NULL, *tmp = NULL;
 
 	while (rot->cur_size > rot->low_wm && !dl_list_empty(&dirs)) {
 		off_t max = 0;
-		struct logserver_rot_dirs *big = NULL;
+		struct pv_ls_rot_dirs *big = NULL;
 
-		dl_list_for_each_safe(it, tmp, &dirs, struct logserver_rot_dirs,
+		dl_list_for_each_safe(it, tmp, &dirs, struct pv_ls_rot_dirs,
 				      list)
 		{
 			if (max < it->size) {
@@ -355,7 +355,7 @@ off_t pv_logserver_rot_deletion(struct logserver_rot *rot)
 			continue;
 
 		char oldest[PATH_MAX] = { 0 };
-		pv_logserver_rot_get_oldest_file(big->path, oldest);
+		pv_ls_rotation_get_oldest_file(big->path, oldest);
 
 		if (oldest[0] == 0) {
 			dl_list_del(&big->list);
@@ -370,7 +370,7 @@ off_t pv_logserver_rot_deletion(struct logserver_rot *rot)
 		big->size -= oldest_sz;
 	}
 
-	dl_list_for_each_safe(it, tmp, &dirs, struct logserver_rot_dirs, list)
+	dl_list_for_each_safe(it, tmp, &dirs, struct pv_ls_rot_dirs, list)
 	{
 		free(it);
 	}

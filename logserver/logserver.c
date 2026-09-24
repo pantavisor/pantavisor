@@ -35,18 +35,18 @@
 #include <stdarg.h>
 #include <fcntl.h>
 
+#include "logserver.h"
+#include "internal/logserver_rotation.h"
+#include "outputs/logserver_out.h"
+#include "outputs/logserver_null.h"
+#include "outputs/logserver_filetree.h"
+#include "outputs/logserver_singlefile.h"
+#include "outputs/logserver_update.h"
+#include "outputs/logserver_stdout.h"
 #include "proto/logserver_binary.h"
 #include "proto/logserver_proto.h"
-#include "logserver_rotation.h"
-#include "logserver_out.h"
-#include "logserver_utils.h"
-#include "logserver_null.h"
-#include "logserver_filetree.h"
-#include "logserver_singlefile.h"
-#include "logserver_update.h"
-#include "logserver_stdout.h"
-#include "logserver_timestamp.h"
-#include "logserver.h"
+#include "utils/logserver_timestamp.h"
+#include "utils/logserver_utils.h"
 #include "utils/fs.h"
 #include "utils/json.h"
 #include "utils/system.h"
@@ -67,11 +67,11 @@
 #include "log.h"
 
 #define PH_LOGGER_MAX_EPOLL_FD (50)
-#define LOGSERVER_FLAG_STOP (1 << 0)
-#define LOGSERVER_BACKLOG (20)
-#define LOGSERVER_MAX_EV (5)
-#define LOGSERVER_MAX_HEADER_LEN (50)
-#define LOGSERVER_UPDATE_ROTATION_INTERVAL (50)
+#define PV_LS_FLAG_STOP (1 << 0)
+#define PV_LS_BACKLOG (20)
+#define PV_LS_MAX_EV (5)
+#define PV_LS_MAX_HEADER_LEN (50)
+#define PV_LS_UPDATE_ROTATION_INTERVAL (50)
 
 #define MODULE_NAME "logserver"
 
@@ -85,7 +85,7 @@ typedef enum {
 	LOG_CMD_RM_PLAT_SOCKET
 } log_cmd_code_t;
 
-struct logserver_fd {
+struct pv_ls_fd {
 	char *platform;
 	char *src;
 	char *path;
@@ -94,14 +94,14 @@ struct logserver_fd {
 	struct dl_list list;
 };
 
-struct logserver_conninfo {
+struct pv_ls_conninfo {
 	int fd;
 	pid_t pid;
 	char *cgroup;
 	struct dl_list list;
 };
 
-struct logserver {
+struct pv_ls {
 	pid_t pid;
 	pid_t cmd_pid;
 	int flags;
@@ -112,8 +112,8 @@ struct logserver {
 	int active_out;
 	char *running_rev;
 	char *updated_rev;
-	struct logserver_rot rot;
-	// logserver_fd
+	struct pv_ls_rot rot;
+	// pv_ls_fd
 	struct dl_list fdlst;
 	// tmp store for fd returned by connect
 	// only if was sent to the fd_sock
@@ -123,7 +123,7 @@ struct logserver {
 	struct dl_list psock;
 };
 
-static struct logserver logserver = {
+static struct pv_ls logserver = {
 	.pid = -1,
 	.flags = 0,
 	.epfd = -1,
@@ -136,26 +136,25 @@ static struct logserver logserver = {
 	.rot = { 0 },
 };
 
-typedef struct logserver_out *(*logserver_outputs_builder_t)(void);
+typedef struct pv_ls_out *(*pv_ls_outputs_builder_t)(void);
 
 #define LOGSERVER_MAX_OUTPUTS (8)
 
-static logserver_outputs_builder_t
-	logserver_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
-		logserver_null_new,
-		logserver_singlefile_new,
-		logserver_filetree_new,
-		logserver_null_new,
-		logserver_update_new,
-		logserver_stdout_new,
-		logserver_stdout_containers_new,
-		logserver_stdout_pantavisor_new
-	};
+static pv_ls_outputs_builder_t pv_ls_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
+	pv_ls_null_new,
+	pv_ls_singlefile_new,
+	pv_ls_filetree_new,
+	pv_ls_null_new,
+	pv_ls_update_new,
+	pv_ls_stdout_new,
+	pv_ls_stdout_containers_new,
+	pv_ls_stdout_pantavisor_new
+};
 
 static int pv_log(int level, char *msg, ...);
-static void logserver_remove_fd(int fd);
+static void pv_ls_remove_fd(int fd);
 
-static void logserver_conninfo_free(struct logserver_conninfo *ci)
+static void pv_ls_conninfo_free(struct pv_ls_conninfo *ci)
 {
 	if (!ci)
 		return;
@@ -164,12 +163,12 @@ static void logserver_conninfo_free(struct logserver_conninfo *ci)
 	free(ci);
 }
 
-static struct logserver_conninfo *logserver_conninfo_new(int fd)
+static struct pv_ls_conninfo *pv_ls_conninfo_new(int fd)
 {
 	if (fd < 0)
 		return NULL;
 
-	struct logserver_conninfo *ci = calloc(1, sizeof(*ci));
+	struct pv_ls_conninfo *ci = calloc(1, sizeof(*ci));
 	if (!ci)
 		return NULL;
 
@@ -186,16 +185,16 @@ static struct logserver_conninfo *logserver_conninfo_new(int fd)
 	return ci;
 err:
 	if (ci)
-		logserver_conninfo_free(ci);
+		pv_ls_conninfo_free(ci);
 
 	return NULL;
 }
 
-static struct logserver_conninfo *logserver_conninfo_search(int fd)
+static struct pv_ls_conninfo *pv_ls_conninfo_search(int fd)
 {
-	struct logserver_conninfo *it, *tmp;
+	struct pv_ls_conninfo *it, *tmp;
 	dl_list_for_each_safe(it, tmp, &logserver.conninfo,
-			      struct logserver_conninfo, list)
+			      struct pv_ls_conninfo, list)
 	{
 		if (it->fd == fd)
 			return it;
@@ -203,10 +202,46 @@ static struct logserver_conninfo *logserver_conninfo_search(int fd)
 	return NULL;
 }
 
-static struct logserver_fd *logserver_fd_new(const char *platform, char *src,
-					     int fd, int level)
+static int pv_ls_epoll_command(int fd, int cmd)
 {
-	struct logserver_fd *lfd = calloc(1, sizeof(struct logserver_fd));
+	struct epoll_event ev;
+	ev.events = EPOLLIN | EPOLLRDHUP;
+	ev.data.fd = fd;
+	errno = 0;
+	return epoll_ctl(logserver.epfd, cmd, fd, &ev);
+}
+
+static int pv_ls_epoll_add(int fd)
+{
+	return pv_ls_epoll_command(fd, EPOLL_CTL_ADD);
+}
+
+static int pv_ls_epoll_del(int fd)
+{
+	return pv_ls_epoll_command(fd, EPOLL_CTL_DEL);
+}
+
+static int pv_ls_epoll_wait(struct epoll_event *ev)
+{
+	int ready = 0;
+	errno = 0;
+	do {
+		ready = epoll_wait(logserver.epfd, ev, PV_LS_MAX_EV, -1);
+
+		if (errno != 0 && errno != EINTR) {
+			pv_log(ERROR, "error calling epoll_wait: %s",
+			       strerror(errno));
+			return 0;
+		}
+	} while (ready < 0);
+
+	return ready;
+}
+
+static struct pv_ls_fd *pv_ls_fd_new(const char *platform, char *src, int fd,
+				     int level)
+{
+	struct pv_ls_fd *lfd = calloc(1, sizeof(struct pv_ls_fd));
 	if (!lfd)
 		return NULL;
 
@@ -224,7 +259,7 @@ static struct logserver_fd *logserver_fd_new(const char *platform, char *src,
 	return lfd;
 }
 
-static void logserver_fd_free(struct logserver_fd *lfd)
+static void pv_ls_fd_free(struct pv_ls_fd *lfd)
 {
 	if (!lfd)
 		return;
@@ -238,62 +273,47 @@ static void logserver_fd_free(struct logserver_fd *lfd)
 	free(lfd);
 }
 
-static struct logserver_fd *logserver_fetch_fd_from_list(struct dl_list *l,
-							 int fd)
+static bool pv_ls_list_exists(struct dl_list *lst, int fd)
 {
-	struct logserver_fd *it, *tmp;
-	dl_list_for_each_safe(it, tmp, l, struct logserver_fd, list)
+	struct pv_ls_fd *it = NULL, *tmp = NULL;
+
+	dl_list_for_each_safe(it, tmp, lst, struct pv_ls_fd, list)
 	{
-		if (it->fd == fd) {
-			return it;
+		if (fd == it->fd)
+			return true;
+	}
+
+	return false;
+}
+
+static void pv_ls_list_del(struct dl_list *lst, int fd, const char *platform)
+{
+	struct pv_ls_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, lst, struct pv_ls_fd, list)
+	{
+		if (platform) {
+			if (strcmp(it->platform, platform) == 0) {
+				dl_list_del(&it->list);
+				pv_ls_fd_free(it);
+				return;
+			}
+		} else {
+			if (it->fd == fd) {
+				dl_list_del(&it->list);
+				pv_ls_fd_free(it);
+				return;
+			}
 		}
 	}
-	return NULL;
 }
 
-static int logserver_epoll_command(int fd, int cmd)
-{
-	struct epoll_event ev;
-	ev.events = EPOLLIN | EPOLLRDHUP;
-	ev.data.fd = fd;
-	errno = 0;
-	return epoll_ctl(logserver.epfd, cmd, fd, &ev);
-}
-
-static int logserver_epoll_add(int fd)
-{
-	return logserver_epoll_command(fd, EPOLL_CTL_ADD);
-}
-
-static int logserver_epoll_del(int fd)
-{
-	return logserver_epoll_command(fd, EPOLL_CTL_DEL);
-}
-
-static int logserver_epoll_wait(struct epoll_event *ev)
-{
-	int ready = 0;
-	errno = 0;
-	do {
-		ready = epoll_wait(logserver.epfd, ev, LOGSERVER_MAX_EV, -1);
-
-		if (errno != 0 && errno != EINTR) {
-			pv_log(ERROR, "error calling epoll_wait: %s",
-			       strerror(errno));
-			return 0;
-		}
-	} while (ready < 0);
-
-	return ready;
-}
-
-static int logserver_log_msg_data(const struct logserver_log *log, int output)
+static int pv_ls_log_msg_data(const struct pv_ls_log *log, int output)
 {
 	if ((output > 0 && !(logserver.active_out & output)) || output < 0)
 		return -1;
 
-	struct logserver_out *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct logserver_out,
+	struct pv_ls_out *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct pv_ls_out,
 			      list)
 	{
 		if (output == 0) {
@@ -306,20 +326,20 @@ static int logserver_log_msg_data(const struct logserver_log *log, int output)
 		}
 
 		if (it->last_log[0] != '\0') {
-			pv_logserver_rot_log_rot(&logserver.rot, it->last_log);
-			pv_logserver_rot_add(&logserver.rot, log->data.len);
+			pv_ls_rotation_log_rot(&logserver.rot, it->last_log);
+			pv_ls_rotation_add(&logserver.rot, log->data.len);
 		}
 	}
 
-	off_t size = pv_logserver_rot_deletion(&logserver.rot);
+	off_t size = pv_ls_rotation_deletion(&logserver.rot);
 	if (size > 0)
 		pv_log(DEBUG, "deletion process %jd bytes recovered", size);
 
 	if (!strncmp(log->plat, "pantavisor", strlen("pantavisor")))
 		logserver.update_rot++;
 
-	if (logserver.update_rot == LOGSERVER_UPDATE_ROTATION_INTERVAL) {
-		pv_logserver_rot_update(&logserver.rot, logserver.running_rev);
+	if (logserver.update_rot == PV_LS_UPDATE_ROTATION_INTERVAL) {
+		pv_ls_rotation_update(&logserver.rot, logserver.running_rev);
 		logserver.update_rot = 0;
 	}
 
@@ -339,20 +359,20 @@ static int pv_log(int level, char *msg, ...)
 		buf_len = vsnprintf(buf, pv_buffer->size, msg, args);
 
 		time_t now = time(NULL);
-		struct logserver_log data = {
+		struct pv_ls_log data = {
 			.code = LOG_PROTOCOL_LEGACY,
 			.lvl = level,
-			.tsec = logserver_timestamp_get_tsec(now),
+			.tsec = pv_ls_timestamp_get_tsec(now),
 			.time = now,
 			.plat = PV_PLATFORM_STR,
 			.src = "logserver",
 			.running_rev = logserver.running_rev,
 			.updated_rev = logserver.updated_rev,
 			.data.buf = buf,
-			.data.len = buf_len
+			.data.len = buf_len,
 		};
 
-		logserver_log_msg_data(&data, 0);
+		pv_ls_log_msg_data(&data, 0);
 
 		pv_buffer_drop(pv_buffer);
 	} else {
@@ -373,7 +393,7 @@ static void sigchld_handler(int signum)
 		;
 }
 
-static void logserver_rename_update(const char *rev)
+static void pv_ls_rename_update(const char *rev)
 {
 	char path_tmp[PATH_MAX];
 	pv_paths_storage_trail_pv_file(path_tmp, PATH_MAX, rev, LOGS_TMP_FNAME);
@@ -385,7 +405,7 @@ static void logserver_rename_update(const char *rev)
 	pv_fs_path_rename(path_tmp, path_perm);
 }
 
-static int logserver_open_dgram_socket(const char *path)
+static int pv_ls_open_dgram_socket(const char *path)
 {
 	if (!path || !*path)
 		return -1;
@@ -421,7 +441,7 @@ err:
 	return -1;
 }
 
-static char *logserver_get_platform_from_socket_path(const char *path)
+static char *pv_ls_get_platform_from_socket_path(const char *path)
 {
 	if (!path)
 		return NULL;
@@ -438,40 +458,39 @@ static char *logserver_get_platform_from_socket_path(const char *path)
 	return strdup(base);
 }
 
-static void logserver_remove_platform_socket(const char *path)
+static void pv_ls_remove_platform_socket(const char *path)
 {
 	if (!path) {
 		pv_log(DEBUG, "cannot remove a platform with NULL path");
 		return;
 	}
 
-	struct logserver_fd *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &logserver.psock, struct logserver_fd,
-			      list)
+	struct pv_ls_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &logserver.psock, struct pv_ls_fd, list)
 	{
 		if (!it->path || strcmp(it->path, path))
 			continue;
 
 		unlink(path);
-		logserver_epoll_del(it->fd);
+		pv_ls_epoll_del(it->fd);
 		close(it->fd);
 		dl_list_del(&it->list);
-		logserver_fd_free(it);
+		pv_ls_fd_free(it);
 		break;
 	}
 }
 
-static void logserver_create_platform_socket(const char *plat, const char *path)
+static void pv_ls_create_platform_socket(const char *plat, const char *path)
 {
-	logserver_remove_platform_socket(path);
+	pv_ls_remove_platform_socket(path);
 
-	int fd = logserver_open_dgram_socket(path);
+	int fd = pv_ls_open_dgram_socket(path);
 	if (fd < 0) {
 		pv_log(ERROR, "socket %s for %s cannot be created", path, plat);
 		return;
 	}
 
-	struct logserver_fd *lfd = logserver_fd_new(plat, NULL, fd, -1);
+	struct pv_ls_fd *lfd = pv_ls_fd_new(plat, NULL, fd, -1);
 	if (!lfd) {
 		pv_log(ERROR, "socket %s for %s cannot be allocated", path,
 		       plat);
@@ -482,7 +501,7 @@ static void logserver_create_platform_socket(const char *plat, const char *path)
 	if (!lfd->path)
 		goto clean;
 
-	if (logserver_epoll_add(lfd->fd) != 0) {
+	if (pv_ls_epoll_add(lfd->fd) != 0) {
 		pv_log(ERROR, "socket %s for %s cannot be watched: %s", path,
 		       plat, strerror(errno));
 		unlink(path);
@@ -496,12 +515,12 @@ static void logserver_create_platform_socket(const char *plat, const char *path)
 	return;
 clean:
 	if (lfd)
-		logserver_fd_free(lfd);
+		pv_ls_fd_free(lfd);
 	if (fd >= 0)
 		close(fd);
 }
 
-static int logserver_process_cmd(const struct logserver_log *log)
+static int pv_ls_process_cmd(const struct pv_ls_log *log)
 {
 	int tokc;
 	jsmntok_t *tokv = NULL;
@@ -516,7 +535,7 @@ static int logserver_process_cmd(const struct logserver_log *log)
 	switch (cmd_code) {
 	case LOG_CMD_EXIT:
 		pv_log(DEBUG, "exit command received");
-		logserver.flags = LOGSERVER_FLAG_STOP;
+		logserver.flags = PV_LS_FLAG_STOP;
 		break;
 	case LOG_CMD_START_UPDATE:
 		if (!data) {
@@ -533,7 +552,7 @@ static int logserver_process_cmd(const struct logserver_log *log)
 		break;
 	case LOG_CMD_STOP_UPDATE:
 		pv_log(DEBUG, "stop update command received");
-		logserver_rename_update(logserver.updated_rev);
+		pv_ls_rename_update(logserver.updated_rev);
 		if (logserver.updated_rev)
 			free(logserver.updated_rev);
 		logserver.updated_rev = NULL;
@@ -549,7 +568,7 @@ static int logserver_process_cmd(const struct logserver_log *log)
 		if (logserver.running_rev)
 			free(logserver.running_rev);
 		logserver.running_rev = strdup(data);
-		pv_logserver_rot_update(&logserver.rot, logserver.running_rev);
+		pv_ls_rotation_update(&logserver.rot, logserver.running_rev);
 		break;
 	case LOG_CMD_NULL:
 		pv_log(WARN, "unknown command received");
@@ -562,14 +581,14 @@ static int logserver_process_cmd(const struct logserver_log *log)
 		}
 
 		pv_log(DEBUG, "add platform socket called for: %s", data);
-		char *plat = logserver_get_platform_from_socket_path(data);
+		char *plat = pv_ls_get_platform_from_socket_path(data);
 		if (!plat) {
 			pv_log(ERROR,
 			       "couldn't get the platform, malformed path: %s",
 			       data);
 			break;
 		}
-		logserver_create_platform_socket(plat, data);
+		pv_ls_create_platform_socket(plat, data);
 		free(plat);
 		break;
 	case LOG_CMD_RM_PLAT_SOCKET:
@@ -580,7 +599,7 @@ static int logserver_process_cmd(const struct logserver_log *log)
 		}
 
 		pv_log(DEBUG, "removing platform socket at %s", data);
-		logserver_remove_platform_socket(data);
+		pv_ls_remove_platform_socket(data);
 		break;
 	}
 
@@ -592,20 +611,7 @@ static int logserver_process_cmd(const struct logserver_log *log)
 	return 0;
 }
 
-static bool logserver_list_exists(struct dl_list *lst, int fd)
-{
-	struct logserver_fd *it = NULL, *tmp = NULL;
-
-	dl_list_for_each_safe(it, tmp, lst, struct logserver_fd, list)
-	{
-		if (fd == it->fd)
-			return true;
-	}
-
-	return false;
-}
-
-static struct buffer *logserver_get_log_data(int fd)
+static struct buffer *pv_ls_get_log_data(int fd)
 {
 	struct buffer *buffer = pv_buffer_get(true);
 	if (!buffer) {
@@ -620,7 +626,7 @@ static struct buffer *logserver_get_log_data(int fd)
 	errno = 0;
 
 	ssize_t total = 0;
-	bool is_dgram = logserver_list_exists(&logserver.psock, fd);
+	bool is_dgram = pv_ls_list_exists(&logserver.psock, fd);
 	if (is_dgram) {
 		do {
 			total = recv(fd, buffer->buf, buffer->size - 1, 0);
@@ -640,30 +646,29 @@ static struct buffer *logserver_get_log_data(int fd)
 	if (!is_dgram && errno != EAGAIN)
 		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
 		       strerror(errno));
-
 	if (buffer)
 		pv_buffer_drop(buffer);
 
 	return NULL;
 }
 
-static int logserver_handle_msg(int fd, int pid, const char *cgroup)
+static int pv_ls_handle_msg(int fd, int pid, const char *cgroup)
 {
 	int ret = -1;
 
-	struct buffer *buffer = logserver_get_log_data(fd);
+	struct buffer *buffer = pv_ls_get_log_data(fd);
 	if (!buffer)
 		goto out;
 
-	struct logserver_log_data data = {
+	struct pv_ls_log_data data = {
 		.rev = logserver.running_rev,
 		.upd = logserver.updated_rev,
 		.cgroup = (char *)cgroup,
 		.buf = buffer->buf,
 	};
 
-	struct logserver_log log = { 0 };
-	ret = logserver_proto_to_log(&data, &log);
+	struct pv_ls_log log = { 0 };
+	ret = pv_ls_proto_to_log(&data, &log);
 	if (ret != 0) {
 		pv_log(WARN, "logserver message could not be handled");
 		goto out;
@@ -675,7 +680,7 @@ static int logserver_handle_msg(int fd, int pid, const char *cgroup)
 	case LOG_PROTOCOL_RFC3164:
 	case LOG_PROTOCOL_JSON:
 	case LOG_PROTOCOL_KEY_VAL:
-		ret = logserver_log_msg_data(&log, 0);
+		ret = pv_ls_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:
 		if (pid != logserver.cmd_pid) {
@@ -686,7 +691,7 @@ static int logserver_handle_msg(int fd, int pid, const char *cgroup)
 			ret = -1;
 			goto out;
 		}
-		ret = logserver_process_cmd(&log);
+		ret = pv_ls_process_cmd(&log);
 		break;
 	case LOG_PROTOCOL_UNKNOWN:
 		pv_log(DEBUG, "unknown log protocol");
@@ -698,7 +703,7 @@ out:
 	return ret;
 }
 
-static int logserver_accept_connection(int sockd)
+static int pv_ls_accept_connection(int sockd)
 {
 	int fd = -1;
 	errno = 0;
@@ -714,29 +719,7 @@ static int logserver_accept_connection(int sockd)
 	return fd;
 }
 
-static void logserver_list_del(struct dl_list *lst, int fd,
-			       const char *platform)
-{
-	struct logserver_fd *it, *tmp;
-	dl_list_for_each_safe(it, tmp, lst, struct logserver_fd, list)
-	{
-		if (platform) {
-			if (strcmp(it->platform, platform) == 0) {
-				dl_list_del(&it->list);
-				logserver_fd_free(it);
-				return;
-			}
-		} else {
-			if (it->fd == fd) {
-				dl_list_del(&it->list);
-				logserver_fd_free(it);
-				return;
-			}
-		}
-	}
-}
-
-static int logserver_list_add(struct dl_list *tmplst, struct logserver_fd *lfd)
+static int pv_ls_list_add(struct dl_list *tmplst, struct pv_ls_fd *lfd)
 {
 	if (!lfd)
 		return -1;
@@ -744,23 +727,35 @@ static int logserver_list_add(struct dl_list *tmplst, struct logserver_fd *lfd)
 	return 0;
 }
 
-static struct logserver_fd *logserver_get_fd(int sockfd)
+static struct pv_ls_fd *pv_ls_fetch_fd_from_list(struct dl_list *l, int fd)
+{
+	struct pv_ls_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, l, struct pv_ls_fd, list)
+	{
+		if (it->fd == fd) {
+			return it;
+		}
+	}
+	return NULL;
+}
+
+static struct pv_ls_fd *pv_ls_get_fd(int sockfd)
 {
 	union {
 		char buf[CMSG_SPACE(sizeof(int))];
 		struct cmsghdr align;
 	} ctrl;
 
-	char platform[LOGSERVER_MAX_HEADER_LEN] = { 0 };
-	char src[LOGSERVER_MAX_HEADER_LEN] = { 0 };
+	char platform[PV_LS_MAX_HEADER_LEN] = { 0 };
+	char src[PV_LS_MAX_HEADER_LEN] = { 0 };
 	int loglevel = -1;
 	int add = 0;
 
 	struct iovec iov[4];
 	iov[0] = (struct iovec){ .iov_base = platform,
-				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
+				 .iov_len = PV_LS_MAX_HEADER_LEN };
 	iov[1] = (struct iovec){ .iov_base = src,
-				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
+				 .iov_len = PV_LS_MAX_HEADER_LEN };
 	iov[2] =
 		(struct iovec){ .iov_base = &loglevel, .iov_len = sizeof(int) };
 	iov[3] = (struct iovec){ .iov_base = &add, .iov_len = sizeof(int) };
@@ -791,40 +786,40 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 	if (add)
 		memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
 
-	return logserver_fd_new(platform, src, fd, loglevel);
+	return pv_ls_fd_new(platform, src, fd, loglevel);
 }
 
-static void logserver_remove_fd(int fd)
+static void pv_ls_remove_fd(int fd)
 {
 	if (fd < 0)
 		return;
 
-	if (logserver_list_exists(&logserver.psock, fd))
+	if (pv_ls_list_exists(&logserver.psock, fd))
 		return;
 
-	if (logserver_list_exists(&logserver.fdlst, fd)) {
-		struct logserver_fd *lfd =
-			logserver_fetch_fd_from_list(&logserver.fdlst, fd);
+	if (pv_ls_list_exists(&logserver.fdlst, fd)) {
+		struct pv_ls_fd *lfd =
+			pv_ls_fetch_fd_from_list(&logserver.fdlst, fd);
 
 		pv_log(DEBUG, "fd (%d) for platform %s:%s unsubscribed",
 		       lfd->fd, lfd->platform, lfd->src);
 
-		logserver_list_del(&logserver.fdlst, fd, NULL);
+		pv_ls_list_del(&logserver.fdlst, fd, NULL);
 
-	} else if (logserver_list_exists(&logserver.tmplst, fd))
-		logserver_list_del(&logserver.tmplst, fd, NULL);
+	} else if (pv_ls_list_exists(&logserver.tmplst, fd))
+		pv_ls_list_del(&logserver.tmplst, fd, NULL);
 
-	struct logserver_conninfo *ci = logserver_conninfo_search(fd);
+	struct pv_ls_conninfo *ci = pv_ls_conninfo_search(fd);
 	if (ci) {
 		dl_list_del(&ci->list);
-		logserver_conninfo_free(ci);
+		pv_ls_conninfo_free(ci);
 	}
 
-	logserver_epoll_del(fd);
+	pv_ls_epoll_del(fd);
 	close(fd);
 }
 
-static void logserver_consume_fd(int fd)
+static void pv_ls_consume_fd(int fd)
 {
 	struct buffer *buffer = pv_buffer_get(true);
 	ssize_t size = 0;
@@ -835,14 +830,14 @@ static void logserver_consume_fd(int fd)
 	size = pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
 
 	if (size > 0) {
-		struct logserver_fd *lfd =
-			logserver_fetch_fd_from_list(&logserver.fdlst, fd);
+		struct pv_ls_fd *lfd =
+			pv_ls_fetch_fd_from_list(&logserver.fdlst, fd);
 
 		time_t now = time(NULL);
-		struct logserver_log d = {
+		struct pv_ls_log d = {
 			.code = LOG_PROTOCOL_LEGACY,
 			.lvl = lfd->lvl,
-			.tsec = logserver_timestamp_get_tsec(now),
+			.tsec = pv_ls_timestamp_get_tsec(now),
 			.time = now,
 			.src = lfd->src,
 			.running_rev = logserver.running_rev,
@@ -851,29 +846,29 @@ static void logserver_consume_fd(int fd)
 			.data.len = size,
 		};
 
-		snprintf(d.plat, LOGSERVER_PLAT_MAX_LEN, "%s", lfd->platform);
+		snprintf(d.plat, PV_LS_PLATFORM_MAX, "%s", lfd->platform);
 
-		logserver_log_msg_data(&d, 0);
+		pv_ls_log_msg_data(&d, 0);
 		if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT) &&
 		    d.src &&
 		    (!strcmp(d.src, PV_PLATFORM_LXC_LOG) ||
 		     !strcmp(d.src, PV_PLATFORM_LXC_CONSOLE_LOG)))
-			logserver_utils_stdout(&d);
+			pv_ls_utils_stdout(&d);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG,
 		       "dead fd subscribed found (%d) trying to read: %s",
 		       errno, strerror(errno));
-		logserver_remove_fd(fd);
+		pv_ls_remove_fd(fd);
 	}
 	pv_buffer_drop(buffer);
 }
 
-static int logserver_process_fd(int curfd)
+static int pv_ls_process_fd(int curfd)
 {
 	int ret = 0;
-	struct logserver_fd *lfd = NULL;
+	struct pv_ls_fd *lfd = NULL;
 
-	lfd = logserver_get_fd(curfd);
+	lfd = pv_ls_get_fd(curfd);
 
 	if (!lfd) {
 		ret = -1;
@@ -882,17 +877,17 @@ static int logserver_process_fd(int curfd)
 
 	// unsubscribe the platform
 	if (lfd->fd < 0) {
-		logserver_remove_fd(curfd);
+		pv_ls_remove_fd(curfd);
 		goto clean_all;
 	}
 
 	// subcribe new fd
-	if (logserver_list_add(&logserver.fdlst, lfd) != 0) {
+	if (pv_ls_list_add(&logserver.fdlst, lfd) != 0) {
 		ret = -1;
 		goto clean_all;
 	}
 
-	if (logserver_epoll_add(lfd->fd) != 0) {
+	if (pv_ls_epoll_add(lfd->fd) != 0) {
 		ret = -1;
 		goto clean_all;
 	}
@@ -911,15 +906,15 @@ clean_all:
 	}
 
 	if (lfd)
-		logserver_fd_free(lfd);
+		pv_ls_fd_free(lfd);
 
 	return ret;
 }
 
-static void logserver_loop()
+static void pv_ls_loop()
 {
-	struct epoll_event ev[LOGSERVER_MAX_EV];
-	int n_events = logserver_epoll_wait(ev);
+	struct epoll_event ev[PV_LS_MAX_EV];
+	int n_events = pv_ls_epoll_wait(ev);
 
 	if (n_events < 1) {
 		return;
@@ -940,67 +935,66 @@ static void logserver_loop()
 			if (curev & EPOLLRDHUP || curev & EPOLLHUP ||
 			    curev & EPOLLERR) {
 				pv_log(DEBUG, "dead fd found (fd = %d)", curfd);
-				logserver_remove_fd(curfd);
+				pv_ls_remove_fd(curfd);
 			}
 
 			continue;
 		}
 
 		if (curfd == logsock || curfd == fdsock) {
-			int fd = logserver_accept_connection(curfd);
+			int fd = pv_ls_accept_connection(curfd);
 			if (fd < 0)
 				continue;
 
 			if (curfd == logsock) {
-				struct logserver_conninfo *ci =
-					logserver_conninfo_new(fd);
+				struct pv_ls_conninfo *ci =
+					pv_ls_conninfo_new(fd);
 
 				if (ci)
 					dl_list_add(&logserver.conninfo,
 						    &ci->list);
 			}
 
-			if (logserver_epoll_add(fd) != 0) {
-				logserver_remove_fd(fd);
+			if (pv_ls_epoll_add(fd) != 0) {
+				pv_ls_remove_fd(fd);
 				continue;
 			}
 
 			if (curfd == fdsock) {
-				struct logserver_fd *lfd =
-					logserver_fd_new(NULL, NULL, fd, ALL);
+				struct pv_ls_fd *lfd =
+					pv_ls_fd_new(NULL, NULL, fd, ALL);
 
-				if (logserver_list_add(tmplst, lfd) != 0) {
-					logserver_fd_free(lfd);
-					logserver_remove_fd(fd);
+				if (pv_ls_list_add(tmplst, lfd) != 0) {
+					pv_ls_fd_free(lfd);
+					pv_ls_remove_fd(fd);
 				}
 			}
-		} else if (logserver_list_exists(tmplst, curfd)) {
-			logserver_process_fd(curfd);
-			logserver_remove_fd(curfd);
-		} else if (logserver_list_exists(psock, curfd)) {
-			struct logserver_fd *lfd = logserver_fetch_fd_from_list(
+		} else if (pv_ls_list_exists(tmplst, curfd)) {
+			pv_ls_process_fd(curfd);
+			pv_ls_remove_fd(curfd);
+		} else if (pv_ls_list_exists(psock, curfd)) {
+			struct pv_ls_fd *lfd = pv_ls_fetch_fd_from_list(
 				&logserver.psock, curfd);
 
-			logserver_handle_msg(curfd, -1, lfd->platform);
+			pv_ls_handle_msg(curfd, -1, lfd->platform);
 
-		} else if (logserver_list_exists(fdlst, curfd)) {
-			logserver_consume_fd(curfd);
+		} else if (pv_ls_list_exists(fdlst, curfd)) {
+			pv_ls_consume_fd(curfd);
 		} else {
-			struct logserver_conninfo *ci =
-				logserver_conninfo_search(curfd);
+			struct pv_ls_conninfo *ci =
+				pv_ls_conninfo_search(curfd);
 
 			if (!ci)
-				logserver_handle_msg(curfd, -1, NULL);
+				pv_ls_handle_msg(curfd, -1, NULL);
 			else
-				logserver_handle_msg(curfd, ci->pid,
-						     ci->cgroup);
+				pv_ls_handle_msg(curfd, ci->pid, ci->cgroup);
 
-			logserver_remove_fd(curfd);
+			pv_ls_remove_fd(curfd);
 		}
 	}
 }
 
-static int logserver_open_client_socket(const char *fname)
+static int pv_ls_open_client_socket(const char *fname)
 {
 	struct sockaddr_un addr = { 0 };
 
@@ -1024,7 +1018,7 @@ static int logserver_open_client_socket(const char *fname)
 	return fd;
 }
 
-static int logserver_open_server_socket(const char *fname)
+static int pv_ls_open_server_socket(const char *fname)
 {
 	struct sockaddr_un addr = { 0 };
 	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -1047,8 +1041,8 @@ static int logserver_open_server_socket(const char *fname)
 		return -1;
 	}
 
-	// queue upto LOGSERVER_BACKLOG commands
-	if (listen(fd, LOGSERVER_BACKLOG) == -1) {
+	// queue upto PV_LS_BACKLOG commands
+	if (listen(fd, PV_LS_BACKLOG) == -1) {
 		pv_log(ERROR, "unable to listen to control socket: %d",
 		       strerror(errno));
 		close(fd);
@@ -1058,18 +1052,18 @@ static int logserver_open_server_socket(const char *fname)
 	return fd;
 }
 
-static void logserver_drop_fds(struct dl_list *lst)
+static void pv_ls_drop_fds(struct dl_list *lst)
 {
-	struct logserver_fd *it, *tmp;
-	dl_list_for_each_safe(it, tmp, lst, struct logserver_fd, list)
+	struct pv_ls_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, lst, struct pv_ls_fd, list)
 	{
-		logserver_epoll_del(it->fd);
+		pv_ls_epoll_del(it->fd);
 		dl_list_del(&it->list);
-		logserver_fd_free(it);
+		pv_ls_fd_free(it);
 	}
 }
 
-static pid_t logserver_start_service(const char *running_revision)
+static pid_t pv_ls_start_service(const char *running_revision)
 {
 	sigset_t oldmask;
 	logserver.cmd_pid = getpid();
@@ -1091,8 +1085,8 @@ static pid_t logserver_start_service(const char *running_revision)
 		}
 
 		if (pv_config_get_bool(PV_LOG_AUTO_DEVLOG)) {
-			logserver_create_platform_socket(PV_PLATFORM_STR,
-							 "/dev/log");
+			pv_ls_create_platform_socket(PV_PLATFORM_STR,
+						     "/dev/log");
 		}
 
 		pv_wdt_stop();
@@ -1103,13 +1097,13 @@ static pid_t logserver_start_service(const char *running_revision)
 
 		pv_log(DEBUG, "starting logserver loop");
 
-		while (!(logserver.flags & LOGSERVER_FLAG_STOP)) {
-			logserver_loop();
+		while (!(logserver.flags & PV_LS_FLAG_STOP)) {
+			pv_ls_loop();
 		}
 
-		logserver_drop_fds(&logserver.fdlst);
-		logserver_drop_fds(&logserver.tmplst);
-		logserver_drop_fds(&logserver.psock);
+		pv_ls_drop_fds(&logserver.fdlst);
+		pv_ls_drop_fds(&logserver.tmplst);
+		pv_ls_drop_fds(&logserver.psock);
 
 		_exit(EXIT_SUCCESS);
 	}
@@ -1122,10 +1116,10 @@ static pid_t logserver_start_service(const char *running_revision)
 	return logserver.pid;
 }
 
-static void logserver_start(const char *running_revision)
+static void pv_ls_start(const char *running_revision)
 {
 	if (logserver.pid == -1) {
-		logserver_start_service(running_revision);
+		pv_ls_start_service(running_revision);
 		pv_log(DEBUG, "starting log service with pid %d",
 		       logserver.pid);
 
@@ -1149,17 +1143,17 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *running_rev)
 
 	// only start if we have log_capture configured
 	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
-		logserver_start(running_rev);
+		pv_ls_start(running_rev);
 	}
 }
 
-static void logserver_capture_dmesg()
+static void pv_ls_capture_dmesg()
 {
 	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
 	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR))
 		return;
 
-	if (logserver_utils_printk_devmsg_on() == 0)
+	if (pv_ls_utils_printk_devmsg_on() == 0)
 		pv_log(DEBUG,
 		       "setting printk_devmsg=on, all message will be captured");
 
@@ -1176,23 +1170,22 @@ static void logserver_capture_dmesg()
 
 static void pv_logserver_delete_outputs()
 {
-	struct logserver_out *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct logserver_out,
+	struct pv_ls_out *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct pv_ls_out,
 			      list)
 	{
 		dl_list_del(&it->list);
-		logserver_out_free(it);
+		pv_ls_out_free(it);
 	}
 }
 
-static void logserver_load_outputs()
+static void pv_ls_load_outputs()
 {
-	dl_list_init(&logserver.outputs);
 	for (int i = 0; i < LOGSERVER_MAX_OUTPUTS; i++) {
-		struct logserver_out *out = logserver_outputs_new[i]();
+		struct pv_ls_out *out = pv_ls_outputs_new[i]();
 		if (!out) {
 			pv_log(WARN, "cannot create output %s",
-			       logserver_utils_output_to_str(1 << i));
+			       pv_ls_utils_output_to_str(1 << i));
 			continue;
 		}
 		dl_list_add(&logserver.outputs, &out->list);
@@ -1204,16 +1197,22 @@ int pv_logserver_init(const char *rev)
 	if (!rev)
 		return -1;
 
+	dl_list_init(&logserver.fdlst);
+	dl_list_init(&logserver.tmplst);
+	dl_list_init(&logserver.conninfo);
+	dl_list_init(&logserver.psock);
+	dl_list_init(&logserver.outputs);
+
 	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
 		logserver.active_out = pv_config_get_log_server_outputs();
-		logserver_load_outputs();
+		pv_ls_load_outputs();
 	}
 
 	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
 	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
 	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_CONTAINERS) ||
 	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR)) {
-		if (logserver_utils_ignore_loglevel() == 0)
+		if (pv_ls_utils_ignore_loglevel() == 0)
 			pv_log(DEBUG,
 			       "stdout: ignoring kernel log level, all messages will be shown");
 		else
@@ -1222,7 +1221,7 @@ int pv_logserver_init(const char *rev)
 			       strerror(errno));
 		if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
 		    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT)) {
-			if (logserver_utils_printk_devmsg_on() == 0)
+			if (pv_ls_utils_printk_devmsg_on() == 0)
 				pv_log(DEBUG,
 				       "stdout: setting printk_devmsg=on, all messages will be captured");
 			else
@@ -1240,40 +1239,35 @@ int pv_logserver_init(const char *rev)
 		return -1;
 	}
 
-	logserver.logsock = logserver_open_server_socket(LOGCTRL_FNAME);
+	logserver.logsock = pv_ls_open_server_socket(LOGCTRL_FNAME);
 	if (logserver.logsock < 0)
 		pv_log(WARN,
 		       "could not initialize log socket, logs will not be captured");
 
-	logserver.fdsock = logserver_open_server_socket(LOGFD_FNAME);
+	logserver.fdsock = pv_ls_open_server_socket(LOGFD_FNAME);
 	if (logserver.fdsock < 0)
 		pv_log(WARN,
 		       "could not open fd socket, some containers logs will be lost");
 
-	dl_list_init(&logserver.fdlst);
-	dl_list_init(&logserver.tmplst);
-	dl_list_init(&logserver.conninfo);
-	dl_list_init(&logserver.psock);
-
-	if (logserver_epoll_add(logserver.logsock) == -1) {
+	if (pv_ls_epoll_add(logserver.logsock) == -1) {
 		pv_log(WARN,
 		       "could not init log socket, logs will not be captured");
 		goto out;
 	}
 
-	if (logserver_epoll_add(logserver.fdsock) == -1) {
+	if (pv_ls_epoll_add(logserver.fdsock) == -1) {
 		pv_log(WARN,
 		       "could not init fd socket, some containers logs will be lost");
 		goto out;
 	}
 
-	logserver.rot = pv_logserver_rot_init(rev, pv_log);
+	logserver.rot = pv_ls_rotation_init(rev, pv_log);
 
-	logserver_start_service(rev);
+	pv_ls_start_service(rev);
 	pv_log(DEBUG, "started log service with pid %d", logserver.pid);
 
 	if (pv_config_get_bool(PV_LOG_CAPTURE_DMESG))
-		logserver_capture_dmesg();
+		pv_ls_capture_dmesg();
 
 	return 0;
 out:
@@ -1287,8 +1281,7 @@ out:
 	return -1;
 }
 
-static int logserver_msg_fill(struct logserver_log *log,
-			      struct logserver_msg *msg)
+static int pv_ls_msg_fill(struct pv_ls_log *log, struct pv_ls_msg *msg)
 {
 	int avail_len = msg->len;
 	ssize_t written = 0;
@@ -1326,7 +1319,7 @@ static int logserver_msg_fill(struct logserver_log *log,
 	return 0;
 }
 
-static bool logserver_stdout_shows()
+static bool pv_ls_stdout_shows()
 {
 	int out = logserver.active_out;
 
@@ -1339,7 +1332,7 @@ static bool logserver_stdout_shows()
 		LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR);
 }
 
-static const char *logserver_skip_func_prefix(const char *msg)
+static const char *pv_ls_skip_func_prefix(const char *msg)
 {
 	if (msg[0] != '(')
 		return msg;
@@ -1355,16 +1348,16 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args)
 {
 	time_t now = time(NULL);
-	struct logserver_log log = {
+	struct pv_ls_log log = {
 		.code = LOG_PROTOCOL_LEGACY,
 		.lvl = level,
-		.tsec = logserver_timestamp_get_tsec(now),
+		.tsec = pv_ls_timestamp_get_tsec(now),
 		.tnano = 0,
 		.time = now,
 		.src = src,
 	};
 
-	snprintf(log.plat, LOGSERVER_PLAT_MAX_LEN, "%s", platform);
+	snprintf(log.plat, PV_LS_PLATFORM_MAX, "%s", platform);
 
 	bool filtered =
 		(level != FATAL) && (level > pv_config_get_int(PV_LOG_LEVEL));
@@ -1389,12 +1382,12 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	     (pv_config_get_log_server_outputs() &
 	      LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
 	     (level == FATAL))) {
-		logserver_utils_stdout(&log);
+		pv_ls_utils_stdout(&log);
 	}
 
-	if (alert && (filtered || !logserver_stdout_shows()))
+	if (alert && (filtered || !pv_ls_stdout_shows()))
 		pv_wall_log(log.lvl, log.src, "%s",
-			    logserver_skip_func_prefix(log.data.buf));
+			    pv_ls_skip_func_prefix(log.data.buf));
 
 	if (filtered || logserver.pid < 1) {
 		pv_buffer_drop(log_buf);
@@ -1407,10 +1400,10 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 		return -1;
 	}
 
-	struct logserver_msg *lsmsg = (struct logserver_msg *)msg_buf->buf;
+	struct pv_ls_msg *lsmsg = (struct pv_ls_msg *)msg_buf->buf;
 	lsmsg->len = msg_buf->size - sizeof(*lsmsg);
 
-	int len = logserver_msg_fill(&log, lsmsg);
+	int len = pv_ls_msg_fill(&log, lsmsg);
 
 	char path[PATH_MAX] = { 0 };
 	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
@@ -1437,7 +1430,7 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 	return ret;
 }
 
-static void logserver_close_socket(int sockd, const char *name)
+static void pv_ls_close_socket(int sockd, const char *name)
 {
 	if (sockd < 0)
 		return;
@@ -1454,12 +1447,12 @@ static void pv_logserver_close(void)
 {
 	if (logserver.logsock >= 0) {
 		pv_log(DEBUG, "closing logsock...");
-		logserver_close_socket(logserver.logsock, LOGCTRL_FNAME);
+		pv_ls_close_socket(logserver.logsock, LOGCTRL_FNAME);
 		logserver.logsock = -1;
 	}
 	if (logserver.fdsock >= 0) {
 		pv_log(DEBUG, "closing fdsock...");
-		logserver_close_socket(logserver.fdsock, LOGFD_FNAME);
+		pv_ls_close_socket(logserver.fdsock, LOGFD_FNAME);
 		logserver.fdsock = -1;
 	}
 
@@ -1472,7 +1465,7 @@ static void pv_logserver_close(void)
 
 static void pv_logserver_send_cmd(log_cmd_code_t code, const char *data)
 {
-	struct logserver_log log = {
+	struct pv_ls_log log = {
 		.code = LOG_PROTOCOL_CMD,
 	};
 
@@ -1489,10 +1482,10 @@ static void pv_logserver_send_cmd(log_cmd_code_t code, const char *data)
 	char msg_buf[CMD_BUF_SIZE];
 	memset(msg_buf, 0, CMD_BUF_SIZE);
 
-	struct logserver_msg *lsmsg = (struct logserver_msg *)msg_buf;
+	struct pv_ls_msg *lsmsg = (struct pv_ls_msg *)msg_buf;
 	lsmsg->len = CMD_BUF_SIZE - sizeof(*lsmsg);
 
-	logserver_msg_fill(&log, lsmsg);
+	pv_ls_msg_fill(&log, lsmsg);
 
 	char path[PATH_MAX] = { 0 };
 	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
@@ -1597,20 +1590,20 @@ void pv_logserver_remove_platform_socket(const char *path)
 	pv_logserver_send_cmd(LOG_CMD_RM_PLAT_SOCKET, path);
 }
 
-static int logserver_send_subs_msg(int type, int fd, const char *platform,
-				   const char *src, int loglevel)
+static int pv_ls_send_subs_msg(int type, int fd, const char *platform,
+			       const char *src, int loglevel)
 {
-	char plat_buf[LOGSERVER_MAX_HEADER_LEN] = { 0 };
-	char src_buf[LOGSERVER_MAX_HEADER_LEN] = { 0 };
+	char plat_buf[PV_LS_MAX_HEADER_LEN] = { 0 };
+	char src_buf[PV_LS_MAX_HEADER_LEN] = { 0 };
 
-	strncpy(plat_buf, platform, LOGSERVER_MAX_HEADER_LEN - 1);
-	strncpy(src_buf, src, LOGSERVER_MAX_HEADER_LEN - 1);
+	strncpy(plat_buf, platform, PV_LS_MAX_HEADER_LEN - 1);
+	strncpy(src_buf, src, PV_LS_MAX_HEADER_LEN - 1);
 
 	struct iovec iov[4];
 	iov[0] = (struct iovec){ .iov_base = plat_buf,
-				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
+				 .iov_len = PV_LS_MAX_HEADER_LEN };
 	iov[1] = (struct iovec){ .iov_base = src_buf,
-				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
+				 .iov_len = PV_LS_MAX_HEADER_LEN };
 	iov[2] =
 		(struct iovec){ .iov_base = &loglevel, .iov_len = sizeof(int) };
 	iov[3] = (struct iovec){ .iov_base = &type, .iov_len = sizeof(int) };
@@ -1636,7 +1629,7 @@ static int logserver_send_subs_msg(int type, int fd, const char *platform,
 	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
 	memcpy(CMSG_DATA(cmsg), &fd, sizeof(int));
 
-	int sockfd = logserver_open_client_socket(LOGFD_FNAME);
+	int sockfd = pv_ls_open_client_socket(LOGFD_FNAME);
 	if (sockfd < 0)
 		return -1;
 
@@ -1648,10 +1641,10 @@ static int logserver_send_subs_msg(int type, int fd, const char *platform,
 int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
 			      int loglevel)
 {
-	return logserver_send_subs_msg(1, fd, platform, src, loglevel);
+	return pv_ls_send_subs_msg(1, fd, platform, src, loglevel);
 }
 
 int pv_logserver_unsubscribe_fd(const char *platform, const char *src)
 {
-	return logserver_send_subs_msg(0, -1, platform, src, 0);
+	return pv_ls_send_subs_msg(0, -1, platform, src, 0);
 }
