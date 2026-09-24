@@ -1,6 +1,6 @@
 {
 	"#spec": "pv-test@1",
-	"description": "On-demand D-Bus activation: passive MOUNTED owner is started by a consumer's first call to its well-known name",
+	"description": "On-demand D-Bus activation: STAGED owner is started by a consumer's first call to its well-known name, volumes mounted once",
 	"setup": {
 		"config": {
 			"env": "PV_CONTROL_REMOTE=0",
