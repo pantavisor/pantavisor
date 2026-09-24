@@ -187,6 +187,13 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 			p->auto_recovery.current_retries = 0;
 			p->auto_recovery.recovery_failed = false;
 			pv_platform_set_installed(p);
+		} else if (pv_platform_is_staged(p)) {
+			// STAGED's goal is already achieved; bump it to STARTED to fork the container.
+			pv_log(DEBUG,
+			       "Container %s is STAGED; starting on request",
+			       p->name);
+			pv_platform_set_status_goal(p, PLAT_STARTED);
+			pv_platform_set_installed(p);
 		} else if (pv_platform_is_stopping(p)) {
 			// Already stopping — swap callback to restart
 			p->on_stopped = ctrl_on_stopped_restart;
@@ -197,7 +204,7 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 			free(data);
 			pv_ctrl_utils_send_error(
 				req, HTTP_BADREQUEST,
-				"Container must be in STOPPED, STOPPING, or RECOVERING state to start");
+				"Container must be in STOPPED, STOPPING, RECOVERING, or STAGED state to start");
 			return;
 		}
 	} else if (strcmp(action, "restart") == 0) {
@@ -207,6 +214,13 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 			p->auto_recovery.user_stopped = false;
 			p->auto_recovery.current_retries = 0;
 			p->auto_recovery.recovery_failed = false;
+			pv_platform_set_installed(p);
+		} else if (pv_platform_is_staged(p)) {
+			// Nothing running to stop — same as start from STAGED.
+			pv_log(DEBUG,
+			       "Container %s is STAGED; starting on request (restart)",
+			       p->name);
+			pv_platform_set_status_goal(p, PLAT_STARTED);
 			pv_platform_set_installed(p);
 		} else if (pv_platform_is_started(p) ||
 			   pv_platform_is_starting(p) ||
