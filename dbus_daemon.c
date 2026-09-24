@@ -262,8 +262,10 @@ int pv_dbus_daemon_activate(struct pv_state *s, const char *name)
 	if (!owner)
 		return -1; // no activatable owner for this name
 
-	if (pv_platform_is_started(owner))
-		return 0; // already active — nothing to do
+	// Already running (or on its way): nothing to do.
+	if (pv_platform_is_starting(owner) || pv_platform_is_started(owner) ||
+	    pv_platform_is_ready(owner))
+		return 0;
 
 	// Reuse the normal lifecycle: flip the goal to STARTED and re-inject the
 	// owner into the run loop (set_installed). The next pv_state_run tick
