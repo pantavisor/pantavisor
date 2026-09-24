@@ -92,7 +92,7 @@ Defines how containers are grouped and started.
 |:---|:---|:---:|:---|
 | `name` | string | **Mandatory** | Unique logical name for the group. |
 | `description` | string | empty | Human-readable description. |
-| `status_goal` | enum | `STARTED` | Goal for all members: `MOUNTED`, `STARTED`, `READY`. |
+| `status_goal` | enum | `STARTED` | Goal for all members: `MOUNTED`, `STAGED`, `STARTED`, `READY`. |
 | `restart_policy` | enum | `container` | Policy on failure: `system`, `container`. |
 | `timeout` | integer | 30 | Seconds to wait for members to reach `status_goal`. |
 | `auto_recovery` | object | none | Default [auto-recovery](#auto-recovery-object) for containers in this group. Inherited all-or-nothing by containers without their own `auto_recovery`. |
@@ -167,7 +167,7 @@ Configures an individual container runtime.
 | `root-volume` | path string | Yes | Path to the rootfs squashfs artifact. |
 | `volumes` | array | No | Additional artifacts to mount as volumes. |
 | `group` | string | No | Orchestration group name (from `device.json`). |
-| `status_goal` | enum | No | Target state: `MOUNTED`, `STARTED`, `READY`. |
+| `status_goal` | enum | No | Target state: `MOUNTED`, `STAGED`, `STARTED`, `READY`. |
 | `restart_policy` | enum | No | `system` (reboot on crash) or `container` (restart LXC). |
 | `roles` | array | No | Capability roles: `mgmt` (control API access) or `nobody`. |
 | `storage` | object | Yes | [Persistence settings](#storage-object) for rootfs paths. |

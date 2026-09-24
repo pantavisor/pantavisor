@@ -76,6 +76,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/control/basic-endpoints` | Basic Endpoints (Containers, Objects, etc.) | ✓ |
 | `local/control/basic-endpoints-curl` | Basic Endpoints via cURL | ✓ |
 | `local/control/status-codes` | HTTP status-code contract (commands, signals, drivers, buildinfo) | ✓ |
+| `local/control/staged-start` | STAGED status goal: stage, API start/stop/start, reject start on MOUNTED goal | ✓ |
 | `local/control/pvcontrol-responsiveness` | pvcontrol responds normally during a time-consuming local operation (e.g. object transfer, sequential update) | |
 
 ### xconnect

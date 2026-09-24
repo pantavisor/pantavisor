@@ -39,6 +39,7 @@ The same values are reported per group by [`/groups`](#groups) and per revision 
 | `NONE` | No status yet assigned |
 | `INSTALLED` | Installed and ready to go |
 | `MOUNTED` | Volumes mounted, not started |
+| `STAGED` | Mounted, drivers loaded, runnable — waiting to be [started on demand](#lifecycle-control) |
 | `BLOCKED` | A container in an earlier [group](../overview/containers.md#groups) has not met its status goal |
 | `STARTING` | Starting |
 | `STARTED` | The container PID is running |
@@ -47,8 +48,8 @@ The same values are reported per group by [`/groups`](#groups) and per revision 
 | `STOPPING` | Stopping because of an [update transition](../overview/updates.md) |
 | `STOPPED` | Stopped |
 
-`MOUNTED`, `STARTED` and `READY` are also the three values accepted as a container's or group's
-[`status_goal`](pantavisor-state-format-v2.md#7-container-containerrunjson).
+`MOUNTED`, `STAGED`, `STARTED` and `READY` are also the four values accepted as a container's or
+group's [`status_goal`](pantavisor-state-format-v2.md#7-container-containerrunjson).
 
 ### Lifecycle control
 
@@ -82,6 +83,7 @@ Restart force-stops the container and resets the retry counter to zero. For cont
 | ------ | ------------ | -------------------- |
 | stop | Running → STOPPED | `user_stopped` set; recovery skipped |
 | start | STOPPED → INSTALLED → start | `user_stopped` cleared; recovery restored |
+| start (from STAGED) | STAGED → INSTALLED → start | unaffected (was never running) |
 | restart (with recovery) | Running → STOPPED → recovery engine restarts | Retry counter reset to 0 |
 | restart (no recovery) | Running → STOPPED → INSTALLED → start | Direct restart |
 
