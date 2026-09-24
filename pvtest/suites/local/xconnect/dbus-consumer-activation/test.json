@@ -1,6 +1,6 @@
 {
 	"#spec": "pv-test@1",
-	"description": "Consumer D-Bus on-owner activation: a passive MOUNTED consumer is started once its required name gains an owner, with no call of its own",
+	"description": "Consumer D-Bus on-owner activation: a passive STAGED consumer is started once its required name gains an owner, with no call of its own",
 	"setup": {
 		"config": {
 			"env": "PV_CONTROL_REMOTE=0",
