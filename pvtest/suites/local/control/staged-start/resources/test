@@ -1,0 +1,90 @@
+#!/bin/sh
+#
+# STAGED status goal: a container that is mounted and drivers-loaded but not
+# started, to be started on demand via the control socket.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+# Per-test isolation: clone into a unique per-test temp dir.
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+# $1: new status_goal value, or "" to drop the key entirely
+set_status_goal() {
+	tmp=$(mktemp)
+	if [ -z "$1" ]; then
+		jq 'del(."status_goal")' pv-example-app/run.json > "$tmp"
+	else
+		jq --arg g "$1" '."status_goal" = $g' pv-example-app/run.json > "$tmp"
+	fi
+	mv "$tmp" pv-example-app/run.json
+	pvr add pv-example-app/run.json > /dev/null 2>&1
+}
+
+container_field() {
+	pvcontrol containers ls | jq -r --arg f "$1" 'map(select(.name=="pv-example-app"))[0][$f]'
+}
+
+# Count of pantavisor's own mounts at /volumes/pv-example-app/$1; catches a stacked re-mount.
+volume_mount_count() {
+	pv_exec sh -c "grep -c ' /volumes/pv-example-app/$1 ' /proc/1/mountinfo" 2>/dev/null | tr -d ' \r'
+}
+
+echo_mount_counts() {
+	echo "mounts: root.squashfs=$(volume_mount_count root.squashfs) lxc-overlay=$(volume_mount_count lxc-overlay)"
+}
+
+echo "== post revision with status_goal STAGED =="
+set_status_goal "STAGED"
+pvr commit -m "set status_goal to STAGED" > /dev/null 2>&1
+pvr post --rev "locals/staged" > /dev/null 2>&1
+wait_for_revision_state "locals/staged" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/staged to reach UPDATED" >&2; exit 1; }
+echo "locals/staged: UPDATED"
+
+echo "== container status while STAGED =="
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
+echo "process not running while STAGED: $(pventer -c pv-example-app true > /dev/null 2>&1 && echo no || echo yes)"
+echo_mount_counts
+
+echo "== start via API =="
+pvcontrol containers start pv-example-app > /dev/null
+wait_for_value 'container_field status' "STARTED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for pv-example-app to reach STARTED" >&2; exit 1; }
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
+echo "process running after start: $(pventer -c pv-example-app true > /dev/null 2>&1 && echo yes || echo no)"
+echo_mount_counts
+
+echo "== stop via API =="
+pvcontrol containers stop pv-example-app > /dev/null
+wait_for_value 'container_field status' "STOPPED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for pv-example-app to reach STOPPED" >&2; exit 1; }
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
+echo_mount_counts
+
+echo "== start again via API (goal stays STARTED, not STAGED) =="
+pvcontrol containers start pv-example-app > /dev/null
+wait_for_value 'container_field status' "STARTED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for pv-example-app to reach STARTED again" >&2; exit 1; }
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
+echo_mount_counts
+
+echo "== negative: cannot start a MOUNTED-goal container via API =="
+set_status_goal "MOUNTED"
+pvr commit -m "set status_goal to MOUNTED" > /dev/null 2>&1
+pvr post --rev "locals/mounted" > /dev/null 2>&1
+wait_for_revision_state "locals/mounted" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/mounted to reach UPDATED" >&2; exit 1; }
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
+pvcontrol containers start pv-example-app > /dev/null 2>&1
+start_rc=$?
+echo "start on MOUNTED-goal container rejected: $([ "$start_rc" -ne 0 ] && echo yes || echo no)"
+
+echo "== restore: remove status_goal override =="
+set_status_goal ""
+pvr commit -m "remove status_goal override" > /dev/null 2>&1
+pvr post --rev "locals/restore" > /dev/null 2>&1
+wait_for_revision_state "locals/restore" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/restore to reach UPDATED" >&2; exit 1; }
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
