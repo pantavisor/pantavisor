@@ -1451,6 +1451,8 @@ static plat_status_t parse_status_goal(char *value, size_t len)
 {
 	if (pv_str_matches(value, len, "MOUNTED", strlen("MOUNTED")))
 		return PLAT_MOUNTED;
+	else if (pv_str_matches(value, len, "STAGED", strlen("STAGED")))
+		return PLAT_STAGED;
 	else if (pv_str_matches(value, len, "STARTED", strlen("STARTED")))
 		return PLAT_STARTED;
 	else if (pv_str_matches(value, len, "READY", strlen("READY")))
