@@ -1,0 +1,39 @@
+== post revision with status_goal STAGED ==
+locals/staged: UPDATED
+== container status while STAGED ==
+{
+  "status": "STAGED",
+  "status_goal": "STAGED"
+}
+process not running while STAGED: yes
+mounts: root.squashfs=1 lxc-overlay=1
+== start via API ==
+{
+  "status": "STARTED",
+  "status_goal": "STARTED"
+}
+process running after start: yes
+mounts: root.squashfs=1 lxc-overlay=1
+== stop via API ==
+{
+  "status": "STOPPED",
+  "status_goal": "STARTED"
+}
+mounts: root.squashfs=0 lxc-overlay=0
+== start again via API (goal stays STARTED, not STAGED) ==
+{
+  "status": "STARTED",
+  "status_goal": "STARTED"
+}
+mounts: root.squashfs=1 lxc-overlay=1
+== negative: cannot start a MOUNTED-goal container via API ==
+{
+  "status": "MOUNTED",
+  "status_goal": "MOUNTED"
+}
+start on MOUNTED-goal container rejected: yes
+== restore: remove status_goal override ==
+{
+  "status": "STARTED",
+  "status_goal": "STARTED"
+}
