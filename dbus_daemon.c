@@ -1338,8 +1338,9 @@ int pv_dbus_daemon_activate_container(struct pv_state *s, const char *container)
 	if (!p)
 		return -1; // unknown container
 
-	if (!pv_platform_is_mounted(p))
-		return 0; // already started (or never passive) — success no-op
+	// Only a parked consumer (STAGED, or legacy MOUNTED) is promoted; anything else is a no-op.
+	if (!pv_platform_is_staged(p) && !pv_platform_is_mounted(p))
+		return 0;
 
 	pv_log(INFO, "on-owner activation: starting consumer container '%s'",
 	       container);

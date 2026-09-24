@@ -862,9 +862,13 @@ static int pv_state_validate_service_names(struct pv_state *s,
 		svc->target = derived_target;
 	targets_seen[(*targets_seen_n)++] = svc->target;
 
-	if (any_on_owner && p->status.goal != PLAT_MOUNTED) {
+	if (any_on_owner && p->status.goal == PLAT_MOUNTED) {
 		pv_log(WARN,
-		       "platform '%s' has an 'on-owner' name requirement but status_goal is not 'MOUNTED'; it will not stay passive until the name is owned",
+		       "platform '%s' has an 'on-owner' name requirement and a plain status_goal 'MOUNTED', which is deprecated for runnable consumers; add lifecycle_goal 'STAGED' (PV_LIFECYCLE_GOAL)",
+		       p->name);
+	} else if (any_on_owner && p->status.goal != PLAT_STAGED) {
+		pv_log(WARN,
+		       "platform '%s' has an 'on-owner' name requirement but does not resolve to the STAGED status (status_goal 'MOUNTED' + lifecycle_goal 'STAGED'); it will not stay passive until the name is owned",
 		       p->name);
 	}
 
