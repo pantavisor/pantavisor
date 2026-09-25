@@ -6,18 +6,20 @@
 <workspace>/
   run.log        <- aggregate output (host + tester) + SUMMARY
   <name>.log     <- console capture for <name> device
+  dev-setbootconfig-<name>-<id>.log <- setbootconfig= output, per device re-type
+  dev-flash-<name>-<revision>.log   <- flash= output, per test in volatile model
   README.md
   results/
     <tag>/<scope>/<category>/<name>/
       test.log   <- aggregate output per test (host + tester + worker)
-      diff       <- golden output diff (expected vs actual). Only present when test fail
-  storage/       <- appengine mode only (a real device keeps its own on-device storage)
+      diff       <- golden output diff, only present when the test fails
+  storage/       <- appengine only (a real device keeps its own storage)
     <tag>/<key>/ <- only in persistent model with appengine
       trails/ objects/ logs/ ...
     <tag>/<scope>/<category>/<name>/ <- only in volatile model with appengine
       trails/ objects/ logs/ ...
   valgrind/      <- only with appengine and -V
-    <container>/ <-
+    <container>/ <- one directory per valgrinded container
       valgrind.log.<pid>
 ```
 
@@ -29,19 +31,25 @@ All structured log lines follow the pantavisor log convention:
 [hostname] <epoch> LEVEL -- [source]: message
 ```
 
-Sources: `test.docker.sh`, `pvtest-run`, `pv-appengine` and Pantavisor specific
-sources.
+Sources:
+
+- [`test.docker.sh`](#testdockersh) — host-side orchestrator
+- [`pvtest-run`](#pvtest-run) — inner test runner, in the tester container
+- [`pv-appengine`](#pv-appengine) — runtime launcher, in the appengine container
+- [Pantavisor specific sources](#pantavisor-specifig-sources) — `core`, `ctrl`, ...
 
 To filter by source:
 
-    grep '\[pvtest-run\]'   test.log    # pvtest-run messages only
-    grep '\[pv-appengine\]' test.log    # pv-appengine messages only
-    grep '\[ctrl\]'         test.log    # pantavisor ctrl module messages only
-    grep 'WARN\|ERROR'      test.log    # all warnings and errors
+```sh
+grep '\[pvtest-run\]'   test.log    # pvtest-run messages only
+grep '\[pv-appengine\]' test.log    # pv-appengine messages only
+grep '\[ctrl\]'         test.log    # pantavisor ctrl module messages only
+grep 'WARN\|ERROR'      test.log    # all warnings and errors
+```
 
 ### test.docker.sh
 
-Host-side orchestrator. With `-v`, it  produces `set -x` traces, covering
+Host-side orchestrator. With `-v`, it produces `set -x` traces, covering
 container startup and network setup.
 
 ### pvtest-run
@@ -58,8 +66,9 @@ device reboots).
 
 ### Pantavisor specific sources
 
-Enabled by default at appengine workers, needs to be set in the device manifest
-for real devices `setbootconfig_base=PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct`.
+Enabled by default at appengine workers. For real devices the boot-config hook
+has to set `PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct`, as one of the base
+tokens in its own conf file in order to get these logs.
 
 Some relevant Pantavisor modules: `core`, `ctrl`.
 
@@ -81,8 +90,8 @@ One result line per test, with the diff inlined right after a failure:
 ```
 [pvtest] 1748000000 INFO -- launching 'local/core/legacy-config-overload'
 [pvtest] 1748000023 INFO -- 'local/core/legacy-config-overload' PASSED (23 s)
-[pvtest] 1748000110 ERROR -- 'local/lifecycle/reboot-nonreboot-rollback' FAILED (110 s)
---- diff: local/lifecycle/reboot-nonreboot-rollback ---
+[pvtest] 1748000110 ERROR -- 'local/lifecycle/reboot-rollback' FAILED (110 s)
+--- diff: local/lifecycle/reboot-rollback ---
 -expected line
 +actual line
 --- end diff ---
@@ -96,7 +105,9 @@ test starts, so parallel test timelines can be correlated by timestamp.
 
 Quick scan for failures:
 
-    grep ERROR run.log
+```sh
+grep ERROR run.log
+```
 
 ## test.log
 
@@ -104,12 +115,18 @@ Per test aggregate log (host + tester + worker) interleaved stream.
 
 ## Valgrind Logs (appengine mode, -V)
 
-Valgrind output is under `valgrind/<N>/valgrind.log.<pid>`. The main worker is typically
-the largest file. Check with:
+Valgrind output is under `valgrind/<N>/valgrind.log.<pid>`. The main worker is
+typically the largest file. Check with:
 
-    grep -E "definitely lost|possibly lost|ERROR SUMMARY" valgrind/<N>/valgrind.log.<largest-pid>
+```sh
+grep -E "definitely lost|possibly lost|ERROR SUMMARY" \
+     valgrind/<N>/valgrind.log.<largest-pid>
+```
 
-- `definitely lost` — real leaks, investigate.
-- `possibly lost` — typically PV buffer pools; consistent at ~3.7 MB, not a regression.
-- `ERROR SUMMARY` — mostly `Syscall param` warnings from liblxc, not pantavisor code.
-- No summary at the end of a file — the process was killed before valgrind could flush.
+- `definitely lost`: real leaks, investigate.
+- `possibly lost`: typically PV buffer pools. Consistent at ~3.7 MB, not a
+  regression.
+- `ERROR SUMMARY`: mostly `Syscall param` warnings from liblxc, not pantavisor
+  code.
+- No summary at the end of a file: the process was killed before valgrind could
+  flush.

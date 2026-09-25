@@ -10,18 +10,11 @@ tester. This page covers running the suite against the pool, debugging a failure
 tests. For the framework itself see [pvtest-harness.md](pvtest-harness.md); for real hardware,
 [device.md](device.md).
 
-## Install
+## Installing and running tests
 
-Extract the tarball and load the Docker images as described in the tarball's own `README.md`.
-When working directly on the build machine, the deploy directory already holds the unpacked
-tree — cd into it and run `test.docker.sh` without extracting anything. Building the tarball in
-the first place is a meta-pantavisor Yocto build:
-[Building the pvtest distro](../../meta-pantavisor/overview/testing/automated/index.md).
-
-## Running tests
-
-`./test.docker.sh -h` lists every command, flag, path selector and environment override. The
-tarball `README.md` has ready-made examples.
+Installing and running are covered by the tarball's own `README.md`. `./test.docker.sh -h`
+lists every command, flag, path selector and environment override. Building the tarball is
+covered in [pvtest-harness.md](pvtest-harness.md#build-and-install).
 
 ## Debugging a failing test
 
@@ -29,20 +22,12 @@ Every run creates a workspace with a `README.md` inside that documents the full 
 log format and its four sources, the useful greps, and how to read valgrind output. Besides
 that, pvtest provides interactive and manual modes for the appengine target.
 
-Interactive mode opens a console in the tester container and, in parallel, starts an appengine
+Interactive mode (`-i`) opens a console in the tester container and, in parallel, starts an appengine
 container instance. From that console the device is reachable and the full test script can be
 run by hand.
 
-```bash
-./test.docker.sh run local/core/legacy-config-overload -i
-```
-
-Manual mode opens a console in the appengine container without starting Pantavisor, which is
+Manual mode (`-m`) opens a console in the appengine container without starting Pantavisor, which is
 handy to start Pantavisor by hand when it crashes or fails to reach READY.
-
-```bash
-./test.docker.sh -v run local/core/legacy-config-overload -m
-```
 
 ## Adding a new test
 
