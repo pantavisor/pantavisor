@@ -34,6 +34,8 @@
 #include <unistd.h>
 #include <linux/limits.h>
 #include "../include/xconnect.h"
+#include "../dbus_codec.h"
+#include "../dbus_activation.h"
 #include "proxy_common.h"
 
 #define MODULE_NAME "pvx-dbus"
@@ -42,6 +44,12 @@ struct dbus_proxy_session {
 	struct pvx_proxy proxy; // must stay first: shared callbacks cast to it
 	struct pvx_link *link;
 	int authenticated;
+	int begun; // client sent BEGIN -> binary D-Bus message phase started
+	// On-demand activation gating (post-auth, client->bus direction):
+	int passthrough; // parsing gave up -> splice the rest untouched
+	int holding; // a cold method_call is held awaiting activation
+	uint32_t held_serial; // its serial, for a synthesized error reply
+	struct evbuffer *held; // the held message bytes
 };
 
 static void hex_encode(const char *src, char *dst, size_t dst_size, size_t len)
@@ -93,13 +101,135 @@ static int lookup_uid_in_provider(const char *username, int provider_pid)
 	return uid;
 }
 
+static void dbus_on_ready(void *ctx);
+static void dbus_on_fail(void *ctx, const char *err, const char *msg);
+
+// Forward `n` bytes from the client input to the provider (bus) output.
+static void dbus_forward(struct dbus_proxy_session *sess, size_t n)
+{
+	evbuffer_remove_buffer(bufferevent_get_input(sess->proxy.be_client),
+			       bufferevent_get_output(sess->proxy.be_provider),
+			       n);
+}
+
+// Post-auth client->bus pump: frame each D-Bus message and, for a method_call to
+// an on-demand activatable name with no current owner, hold it and trigger
+// activation instead of splicing. Everything else forwards untouched.
+static void dbus_process_client(struct dbus_proxy_session *sess)
+{
+	if (sess->holding)
+		return;
+
+	struct evbuffer *src = bufferevent_get_input(sess->proxy.be_client);
+	for (;;) {
+		if (sess->passthrough) {
+			dbus_forward(sess, evbuffer_get_length(src));
+			return;
+		}
+		size_t avail = evbuffer_get_length(src);
+		if (avail < 16)
+			return;
+
+		unsigned char *data = evbuffer_pullup(src, -1);
+		struct pv_dbus_msg m;
+		int r = pv_dbus_msg_parse(data, avail, &m);
+		if (r == 0)
+			return; // need more bytes to frame this message
+		if (r < 0) {
+			// Not a message shape we model; stop gating this
+			// connection and splice the rest verbatim so a working
+			// client is never broken by our parser.
+			fprintf(stderr,
+				"%s: unparseable client frame, passthrough\n",
+				MODULE_NAME);
+			sess->passthrough = 1;
+			continue;
+		}
+
+		if (m.type == PV_DBUS_TYPE_METHOD_CALL && m.destination[0] &&
+		    !(m.flags & PV_DBUS_FLAG_NO_AUTO_START) &&
+		    pvx_act_is_activatable(m.destination) &&
+		    !pvx_act_name_has_owner(m.destination)) {
+			printf("%s: holding cold call to %s (serial %u) — activating\n",
+			       MODULE_NAME, m.destination, m.serial);
+			if (!sess->held)
+				sess->held = evbuffer_new();
+			sess->held_serial = m.serial;
+			evbuffer_remove_buffer(src, sess->held, m.total_len);
+			sess->holding = 1;
+			bufferevent_disable(sess->proxy.be_client, EV_READ);
+			if (pvx_act_hold(m.destination, dbus_on_ready,
+					 dbus_on_fail, sess) < 0) {
+				// Could not register: forward best-effort and let
+				// the bus answer (likely NameHasNoOwner).
+				sess->holding = 0;
+				bufferevent_enable(sess->proxy.be_client,
+						   EV_READ);
+				evbuffer_add_buffer(
+					bufferevent_get_output(
+						sess->proxy.be_provider),
+					sess->held);
+				continue;
+			}
+			return; // wait for ready/fail
+		}
+
+		dbus_forward(sess, m.total_len);
+	}
+}
+
+// Activation succeeded (name now owned): flush the held call to the bus and
+// resume pumping.
+static void dbus_on_ready(void *ctx)
+{
+	struct dbus_proxy_session *sess = ctx;
+	sess->holding = 0;
+	if (sess->held)
+		evbuffer_add_buffer(
+			bufferevent_get_output(sess->proxy.be_provider),
+			sess->held);
+	bufferevent_enable(sess->proxy.be_client, EV_READ);
+	dbus_process_client(sess);
+}
+
+// Activation failed/timed out: answer the held call with a typed D-Bus error so
+// the client fails cleanly instead of hanging, then resume pumping.
+static void dbus_on_fail(void *ctx, const char *err, const char *msg)
+{
+	struct dbus_proxy_session *sess = ctx;
+	sess->holding = 0;
+	uint8_t out[512];
+	size_t n = pv_dbus_build_error(out, sizeof(out), 1, sess->held_serial,
+				       err, msg);
+	if (n)
+		evbuffer_add(bufferevent_get_output(sess->proxy.be_client), out,
+			     n);
+	if (sess->held)
+		evbuffer_drain(sess->held, evbuffer_get_length(sess->held));
+	bufferevent_enable(sess->proxy.be_client, EV_READ);
+	dbus_process_client(sess);
+}
+
+// Session teardown hook (invoked by pvx_proxy_free): drop any pending activation
+// waiter pointing at this session and free the held buffer.
+static void dbus_session_on_free(struct pvx_proxy *p)
+{
+	struct dbus_proxy_session *sess = (struct dbus_proxy_session *)p;
+	pvx_act_cancel(sess);
+	if (sess->held) {
+		evbuffer_free(sess->held);
+		sess->held = NULL;
+	}
+}
+
 static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 {
 	struct dbus_proxy_session *sess = arg;
 
-	if (sess->authenticated) {
-		// Past the auth handshake: behave as a plain byte splice.
-		pvx_proxy_read_cb(bev, arg);
+	if (sess->begun) {
+		// Past BEGIN: binary message phase. Gate cold calls to
+		// activatable names, otherwise splice through.
+		dbus_process_client(sess);
 		return;
 	}
 
@@ -179,6 +309,8 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
 			     "BEGIN\r\n", 7);
 		sess->authenticated = 1;
+		// Only now do binary D-Bus messages begin; framing/gating starts.
+		sess->begun = 1;
 	} else {
 		// Pass-through anything else during auth
 		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
@@ -227,6 +359,7 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 		return;
 	}
 	sess->link = link;
+	sess->proxy.on_free = dbus_session_on_free;
 
 	// DEFER_CALLBACKS keeps bufferevent_socket_connect() from invoking our
 	// event callback re-entrantly on an immediate connect failure (which

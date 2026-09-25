@@ -1,0 +1,81 @@
+#!/bin/sh
+#
+# On-demand D-Bus service activation on the hosted system bus.
+#
+# pv-avahi declares owns org.freedesktop.Avahi with activation.mode=on-demand
+# and ships with status_goal STAGED, so at boot its volumes are mounted and its
+# drivers loaded but no process runs and the name has no owner. The consumer is
+# pv-example-system-dbus-client (role "operator", in pv-avahi's allow list); it
+# never talks to Avahi on its own, so the first call to the name is the one this
+# test makes. pv-xconnect must hold that cold call, promote pv-avahi
+# STAGED -> STARTED, wait for the name to gain an owner and release the call,
+# so the caller sees a normal reply. A second call proves the warm path.
+# pantavisor's mounts of the owner's volumes are counted before and after
+# activation: starting from STAGED must not mount them a second time.
+
+ADDR="unix:path=/run/dbus/system_bus_socket"
+OWNER="pv-avahi"
+SVC="org.freedesktop.Avahi"
+OBJ="/"
+IFACE="org.freedesktop.Avahi.Server"
+
+dsend() {
+	# Exec dbus-send directly inside the consumer (not via "sh -c": under
+	# pventer a busybox "sh -c" wrapper swallows dbus-send's stdout).
+	# shellcheck disable=SC2086
+	pventer -c "pv-example-system-dbus-client" \
+		env DBUS_SYSTEM_BUS_ADDRESS="$ADDR" \
+		dbus-send --system --print-reply $* 2>&1
+}
+
+owner_state() {
+	pvcontrol containers ls | tr -d '\r' \
+		| jq -M -c --arg n "$OWNER" 'map(select(.name == $n))[0] | {status, status_goal}'
+}
+
+# Per-mountpoint count of pantavisor's own mounts under /volumes/<owner>/.
+owner_mount_counts() {
+	pv_exec cat /proc/1/mountinfo 2>/dev/null | tr -d '\r' \
+		| awk -v pre="/volumes/$OWNER/" 'index($5, pre) == 1 { c[substr($5, length(pre) + 1)]++ }
+			END { for (m in c) print "mounts: " m "=" c[m] }' \
+		| sort
+}
+
+name_has_owner() {
+	dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC" \
+		| grep -o "boolean \(true\|false\)"
+}
+
+# Wait for the consumer to be up so pventer has a pid to enter.
+wait_for_value "pvcontrol containers ls | jq -r '.[] | select(.name == \"pv-example-system-dbus-client\") | .status'" "STARTED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for pv-example-system-dbus-client STARTED" >&2; exit 1; }
+
+echo "== activatable name is exposed in the xconnect graph =="
+pvcontrol graph ls | tr -d '\r' \
+	| jq -M -c --arg n "$SVC" '.[] | select(.activatable == $n) | {activatable, owner}'
+
+echo "== passive owner: staged, not started, name unowned =="
+owner_state
+name_has_owner
+owner_mount_counts
+
+echo "== first call to $SVC activates the owner transparently =="
+if dsend "--dest=$SVC $OBJ $IFACE.GetVersionString" | grep -q 'string "avahi'; then
+	echo "cold GetVersionString: OK"
+else
+	echo "cold GetVersionString: FAILED"
+fi
+
+echo "== owner promoted STAGED -> STARTED, name owned =="
+wait_for_value "pvcontrol containers ls | jq -r '.[] | select(.name == \"$OWNER\") | .status'" "STARTED" 30 > /dev/null 2>&1 \
+	|| echo "WARN: owner status did not reach STARTED in time" >&2
+owner_state
+name_has_owner
+owner_mount_counts
+
+echo "== warm path: second call goes straight through =="
+if dsend "--dest=$SVC $OBJ $IFACE.GetHostName" | grep -qE 'string "[^"]+"'; then
+	echo "warm GetHostName: OK"
+else
+	echo "warm GetHostName: FAILED"
+fi
