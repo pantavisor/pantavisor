@@ -1,0 +1,112 @@
+#!/bin/sh
+#
+# Name-based D-Bus consumer requirement (`names` instead of a hardcoded
+# name/target).
+#
+# pv-avahi-browse declares:
+#   {"type":"dbus","role":"monitor","names":["org.freedesktop.Avahi"]}
+# pv_state_validate_service_names() resolves org.freedesktop.Avahi to its
+# owner (pv-avahi, which exports it on bus "system-bus" with allow
+# ["operator","monitor"]) and derives the link name (the bus, "system-bus")
+# and target (the hosted-bus default, /run/dbus/system_bus_socket). Both the
+# resolved "consumes" descriptor and the derived link show up in
+# `pvcontrol graph ls`. avahi is on-demand / status_goal STAGED, so the
+# first dbus-send call to it also exercises activation, same fence as
+# avahi-systembus.
+#
+# The negative half merges pv-example-system-dbus-names-orphan, whose only
+# requirement names org.pantavisor.NoSuchService -- a name nobody owns.
+# pv_state_validate_service_names() rejects the state before any container
+# starts, so the revision errors and the device rolls back to the revision
+# it came from (same pattern as dbus-collision).
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+ADDR="unix:path=/run/dbus/system_bus_socket"
+SVC="org.freedesktop.Avahi"
+OBJ="/"
+IFACE="org.freedesktop.Avahi.Server"
+CONSUMER="pv-avahi-browse"
+
+dsend() {
+	# run dbus-send inside the consumer container against the injected bus
+	# socket. Exec dbus-send directly (via env for the address) rather than
+	# through "sh -c": under pventer a busybox "sh -c" wrapper swallows
+	# dbus-send's stdout, so the reply would be lost.
+	# shellcheck disable=SC2086
+	pventer -c "$CONSUMER" \
+		env DBUS_SYSTEM_BUS_ADDRESS="$ADDR" \
+		dbus-send --system --print-reply $* 2>&1
+}
+
+echo "== names-derived consumes descriptor: $CONSUMER -> $SVC =="
+pvcontrol graph ls | tr -d '\r' \
+	| jq -M -c --arg n "$SVC" --arg c "$CONSUMER" \
+	'.[] | select(.consumes == $n and .consumer == $c) | {consumes, bus, consumer, owner, activation}'
+
+echo "== derived link: name and target for $CONSUMER =="
+pvcontrol graph ls | tr -d '\r' \
+	| jq -M -c --arg c "$CONSUMER" \
+	'.[] | select(.consumer == $c and .name == "system-bus") | {consumer, name, target}'
+
+echo "== derived socket works: dbus-send roundtrip $CONSUMER -> $SVC over /run/dbus/system_bus_socket =="
+# avahi is on-demand / status_goal STAGED, so this call also activates it.
+i=0
+while [ $i -lt 30 ]; do
+	if dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC" \
+		| grep -q "boolean true"; then
+		break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
+if dsend "--dest=$SVC $OBJ $IFACE.GetVersionString" | grep -q 'string "avahi'; then
+	echo "monitor GetVersionString: OK"
+else
+	echo "monitor GetVersionString: FAILED"
+fi
+
+posted_rev="locals/dbus-names-orphan"
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+# Merge a container pvrexport tarball (from the staged common tarballs) into
+# the checkout. The orphan requirement must arrive as a posted revision, so
+# it is deliberately NOT part of the setup tarballs.
+merge_tarball() {
+    dir=$(mktemp -d)
+    tar xzf "$1" -C "$dir" > /dev/null 2>&1 \
+        || { echo "ERROR: failed to extract $1" >&2; exit 1; }
+    pvr merge "$dir" > /dev/null 2>&1 \
+        || { echo "ERROR: pvr merge failed for $1" >&2; exit 1; }
+    rm -rf "$dir"
+}
+
+echo "== post revision with a names requirement nobody owns =="
+merge_tarball ${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-system-dbus-names-orphan.pvrexport.tgz
+pvr checkout > /dev/null 2>&1
+pvr commit > /dev/null 2>&1
+pvr post --rev "$posted_rev" > /dev/null 2>&1
+
+# $posted_rev triggers a rollback (validation rejects the unowned name).
+# Longer timeouts than the container-mode default: on scarce-resource real
+# devices the rollback itself, not just the validation, takes longer.
+wait_for_value "pvcontrol steps show-progress $posted_rev | jq -r '.status'" "ERROR" 180 > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for $posted_rev to reach ERROR" >&2; exit 1; }
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantavisor.status\"'" "READY" 90 > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for pantavisor.status READY after rollback" >&2; exit 1; }
+echo "== $posted_rev: ERROR (rolled back) =="
+pvcontrol steps show-progress "$posted_rev" | sed 's/\\\"tsec\\\":[0-9]\+/\\\"tsec\\\":0/g; s/\\\"tnano\\\":[0-9]\+/\\\"tnano\\\":0/g; s/\\\"msg\\\":\\\"([a-zA-Z_][a-zA-Z0-9_]*:[0-9]\+) /\\\"msg\\\":\\\"/g'
+
+# Assert only what this test created: the device is no longer running the
+# failed revision. The revision it actually lands on depends on prior device
+# state (a real trail step vs. this run's hot-loaded setup), so print a fixed
+# marker instead of the raw (and therefore device-state-dependent) value.
+current_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]')
+if [ "$current_rev" != "$posted_rev" ]; then
+	echo "rolled back off $posted_rev: yes"
+else
+	echo "rolled back off $posted_rev: no"
+fi

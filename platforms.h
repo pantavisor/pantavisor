@@ -80,6 +80,21 @@ typedef enum {
 	SERVICE_MANUAL = (1 << 2)
 } plat_service_t;
 
+// One well-known name a consumer requirement depends on (see
+// "Name-Based D-Bus Requirements" in xconnect/XCONNECT.md). bus/owner are
+// resolved against the state's exports at pv_state_validate_services() time,
+// not parsed.
+struct pv_platform_service_name {
+	char *name;
+	bool on_owner;
+	// true when the JSON gave an activation.mode this build does not
+	// recognize; caught as a validation error, not silently ignored.
+	bool activation_unknown;
+	char *bus;
+	char *owner;
+	struct dl_list list;
+};
+
 struct pv_platform_service {
 	plat_service_t type;
 	service_type_t svc_type;
@@ -87,6 +102,23 @@ struct pv_platform_service {
 	char *role;
 	char *interface;
 	char *target;
+	struct dl_list names; // pv_platform_service_name
+	struct dl_list list;
+};
+
+// One `allow` list entry for an "owns" export. The plain string form (today's
+// meaning: full send/receive access) is `role` set with every *_count at 0;
+// the object form narrows send access to the listed interfaces/members/paths
+// (cross product — see pv_dbus_daemon_generate()). receive_sender is never
+// narrowed.
+struct pv_platform_service_allow {
+	char *role;
+	char **interfaces;
+	int interfaces_count;
+	char **members;
+	int members_count;
+	char **paths;
+	int paths_count;
 	struct dl_list list;
 };
 
@@ -96,18 +128,31 @@ struct pv_platform_service_export {
 	char *socket;
 	// Hosted system-bus (xconnect dbus) "owns" declaration: this platform
 	// owns the well-known name `owns` on bus `bus`, under owner role `role`,
-	// callable by the roles listed in allow[]. name/socket stay NULL for
+	// callable by the roles listed in allow. name/socket stay NULL for
 	// these entries — they are not consumed as a per-provider service.
 	char *bus;
 	char *owns;
 	char *role;
-	char **allow;
-	int allow_count;
+	struct dl_list allow; // pv_platform_service_allow
 	// Hosted-bus D-Bus service activation (see xconnect/XCONNECT.md):
 	// true when the owned name declares activation.mode="on-demand", i.e.
 	// the owner is started on first message to `owns` rather than at boot.
 	// Meaningful only on an `owns` dbus export; false ("always") otherwise.
 	bool activatable;
+	// Optional raw D-Bus policy fragment path, relative to this platform's
+	// trail directory (xconnect/XCONNECT.md "Policy Fragments"); valid only
+	// alongside `owns` on the hosted system bus, enforced in
+	// pv_dbus_daemon_validate().
+	char *policy;
+	struct dl_list list;
+};
+
+// One role->uid pin, declared under a platform's top-level "roles" map (see
+// xconnect/XCONNECT.md "Role UID Pinning"). Only a platform with at least one
+// "owns" export may pin; enforced in pv_dbus_daemon_validate().
+struct pv_platform_role_pin {
+	char *role;
+	int uid;
 	struct dl_list list;
 };
 typedef enum {
@@ -194,6 +239,7 @@ struct pv_platform {
 	struct dl_list drivers; // pv_platform_driver
 	struct dl_list services; // pv_platform_service
 	struct dl_list service_exports; // pv_platform_service_export
+	struct dl_list role_pins; // pv_platform_role_pin
 	struct pv_platform_network *network; // dynamic IPAM network config
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
@@ -208,17 +254,28 @@ void pv_platform_free(struct pv_platform *p);
 
 void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
 			    char *value);
-void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
-			     service_type_t svc_type, char *name, char *role,
-			     char *interface, char *target);
-void pv_platform_add_service_export(struct pv_platform *p,
-				    service_type_t svc_type, char *name,
-				    char *socket);
-void pv_platform_add_service_owns(struct pv_platform *p,
-				  service_type_t svc_type, const char *bus,
-				  const char *owns, const char *role,
-				  char **allow, int allow_count,
-				  bool activatable);
+struct pv_platform_service *
+pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			service_type_t svc_type, char *name, char *role,
+			char *interface, char *target);
+struct pv_platform_service_name *
+pv_platform_service_add_name(struct pv_platform_service *svc, const char *name,
+			     bool on_owner, bool activation_unknown);
+struct pv_platform_service_export *
+pv_platform_add_service_export(struct pv_platform *p, service_type_t svc_type,
+			       char *name, char *socket);
+struct pv_platform_service_export *
+pv_platform_add_service_owns(struct pv_platform *p, service_type_t svc_type,
+			     const char *bus, const char *owns,
+			     const char *role, bool activatable);
+struct pv_platform_service_allow *pv_platform_service_export_add_allow(
+	struct pv_platform_service_export *se, const char *role,
+	char **interfaces, int interfaces_count, char **members,
+	int members_count, char **paths, int paths_count);
+void pv_platform_service_export_set_policy(
+	struct pv_platform_service_export *se, const char *policy);
+struct pv_platform_role_pin *
+pv_platform_add_role_pin(struct pv_platform *p, const char *role, int uid);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
 void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
@@ -241,6 +298,7 @@ int pv_platform_set_ready(struct pv_platform *p);
 void pv_platform_set_updated(struct pv_platform *p);
 
 bool pv_platform_is_installed(struct pv_platform *p);
+bool pv_platform_is_mounted(struct pv_platform *p);
 bool pv_platform_is_staged(struct pv_platform *p);
 bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
