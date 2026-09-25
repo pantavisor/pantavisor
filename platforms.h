@@ -40,6 +40,8 @@ typedef enum {
 	PLAT_NONE,
 	PLAT_INSTALLED,
 	PLAT_MOUNTED,
+	// Mounted + drivers loaded + runnable, not started; started on demand (pv-ctrl start, later D-Bus activation).
+	PLAT_STAGED,
 	PLAT_BLOCKED,
 	PLAT_STARTING,
 	PLAT_STARTED,
@@ -226,12 +228,14 @@ bool pv_platform_check_running(struct pv_platform *p);
 
 void pv_platform_set_installed(struct pv_platform *p);
 void pv_platform_set_mounted(struct pv_platform *p);
+void pv_platform_set_staged(struct pv_platform *p);
 void pv_platform_set_blocked(struct pv_platform *p);
 void pv_platform_set_recovering(struct pv_platform *p);
 int pv_platform_set_ready(struct pv_platform *p);
 void pv_platform_set_updated(struct pv_platform *p);
 
 bool pv_platform_is_installed(struct pv_platform *p);
+bool pv_platform_is_staged(struct pv_platform *p);
 bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
 bool pv_platform_is_started(struct pv_platform *p);

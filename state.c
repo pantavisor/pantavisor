@@ -631,9 +631,10 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 {
 	struct pv_volume *v, *tmp;
 
+	// Skip already-mounted volumes (e.g. re-entering here to start a STAGED platform).
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
 	{
-		if (v->plat == p)
+		if (v->plat == p && !v->mounted)
 			if (pv_volume_mount(v)) {
 				pv_log(ERROR, "volume %s could not be mounted",
 				       v->name);
@@ -650,6 +651,12 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 				     DRIVER_REQUIRED | DRIVER_OPTIONAL) < 0) {
 		pv_log(ERROR, "failed to load drivers");
 		return -1;
+	}
+
+	// STAGED: mounted + drivers loaded, but never forked; waits to be started on demand.
+	if (p->status.goal == PLAT_STAGED) {
+		pv_platform_set_staged(p);
+		return 0;
 	}
 
 	if (pv_platform_start(p)) {

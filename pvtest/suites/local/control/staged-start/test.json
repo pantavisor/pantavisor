@@ -1,0 +1,19 @@
+{
+	"#spec": "pv-test@1",
+	"description": "STAGED status goal: stage, API start/stop/start, reject start on MOUNTED goal",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

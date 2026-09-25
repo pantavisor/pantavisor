@@ -416,6 +416,7 @@ int pv_volume_mount(struct pv_volume *v)
 	v->dest = strdup(mntpoint);
 	v->loop_fd = loop_fd;
 	v->file_fd = file_fd;
+	v->mounted = true;
 	if (umount_cmd)
 		v->umount_cmd = strdup(umount_cmd);
 
@@ -458,6 +459,9 @@ int pv_volume_unmount(struct pv_volume *v)
 	if (ret < 0)
 		pv_log(ERROR, "error unmounting volume") else pv_log(
 			DEBUG, "unmounted successfully");
+
+	if (ret == 0)
+		v->mounted = false;
 
 	return ret;
 }
