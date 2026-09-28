@@ -1,0 +1,75 @@
+#!/bin/sh
+#
+# The state parser checks structure, not full syntax/semantics: it must
+# never make a revision WONTGO just because it carries a value or key this
+# pantavisor doesn't know yet. See
+# docs/reference/pantavisor-state-format-v2.md#compatibility.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+# Per-test isolation: clone into a unique per-test temp dir.
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+# $1: jq filter applied in place to pv-example-app/run.json
+edit_run_json() {
+	tmp=$(mktemp)
+	jq "$1" pv-example-app/run.json > "$tmp"
+	mv "$tmp" pv-example-app/run.json
+	pvr add pv-example-app/run.json > /dev/null 2>&1
+}
+
+container_field() {
+	pvcontrol containers ls | jq -r --arg f "$1" 'map(select(.name=="pv-example-app"))[0][$f]'
+}
+
+echo "== unknown status_goal value: falls back to MOUNTED, revision still succeeds =="
+edit_run_json '.status_goal = "FUTURE_GOAL"'
+pvr commit -m "set status_goal to an unknown value" > /dev/null 2>&1
+pvr post --rev "locals/unknown-status-goal" > /dev/null 2>&1
+wait_for_revision_state "locals/unknown-status-goal" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/unknown-status-goal to reach UPDATED" >&2; exit 1; }
+echo "locals/unknown-status-goal: UPDATED"
+container_field status_goal
+
+echo "== unknown restart_policy value: falls back to system, revision still succeeds =="
+# fallback lands on the "system" restart policy, which forces a reboot transition (state.c
+# pv_state_platform_requires_reboot), so this one lands on DONE, not UPDATED.
+edit_run_json '.status_goal = "STARTED" | .restart_policy = "future_policy"'
+pvr commit -m "set restart_policy to an unknown value" > /dev/null 2>&1
+pvr post --rev "locals/unknown-restart-policy" > /dev/null 2>&1
+wait_for_revision_state "locals/unknown-restart-policy" "DONE" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/unknown-restart-policy to reach DONE" >&2; exit 1; }
+echo "locals/unknown-restart-policy: DONE"
+container_field restart_policy
+
+echo "== unknown extra run.json key: ignored, revision still succeeds =="
+# the currently-running platform still carries the "system" fallback from the previous
+# step, so this transition also reboots even though the new restart_policy is "container".
+edit_run_json '.restart_policy = "container" | .some_future_key = "some_future_value"'
+pvr commit -m "add an unknown extra key" > /dev/null 2>&1
+pvr post --rev "locals/unknown-extra-key" > /dev/null 2>&1
+wait_for_revision_state "locals/unknown-extra-key" "DONE" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/unknown-extra-key to reach DONE" >&2; exit 1; }
+echo "locals/unknown-extra-key: DONE"
+container_field status
+
+echo "== key sharing a known key's prefix must not be mistaken for it =="
+# status_goal is "STARTED" from the previous step; status_goal_extra must not
+# be fed to the status_goal handler and override it to MOUNTED.
+edit_run_json 'del(.some_future_key) | .status_goal_extra = "MOUNTED"'
+pvr commit -m "add a key sharing the status_goal prefix" > /dev/null 2>&1
+pvr post --rev "locals/prefix-key" > /dev/null 2>&1
+wait_for_revision_state "locals/prefix-key" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/prefix-key to reach UPDATED" >&2; exit 1; }
+echo "locals/prefix-key: UPDATED"
+container_field status_goal
+
+echo "== restore: drop all overrides =="
+edit_run_json 'del(.status_goal_extra)'
+pvr commit -m "remove overrides" > /dev/null 2>&1
+pvr post --rev "locals/restore" > /dev/null 2>&1
+wait_for_revision_state "locals/restore" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/restore to reach UPDATED" >&2; exit 1; }
+echo "locals/restore: UPDATED"

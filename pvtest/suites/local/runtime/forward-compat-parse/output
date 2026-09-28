@@ -1,0 +1,14 @@
+== unknown status_goal value: falls back to MOUNTED, revision still succeeds ==
+locals/unknown-status-goal: UPDATED
+MOUNTED
+== unknown restart_policy value: falls back to system, revision still succeeds ==
+locals/unknown-restart-policy: DONE
+system
+== unknown extra run.json key: ignored, revision still succeeds ==
+locals/unknown-extra-key: DONE
+STARTED
+== key sharing a known key's prefix must not be mistaken for it ==
+locals/prefix-key: UPDATED
+STARTED
+== restore: drop all overrides ==
+locals/restore: UPDATED

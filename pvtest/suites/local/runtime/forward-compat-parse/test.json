@@ -1,0 +1,19 @@
+{
+	"#spec": "pv-test@1",
+	"description": "state parser forward compatibility: unknown status_goal/restart_policy values, an unknown extra key, and a key sharing a known key's prefix must never reject a revision",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
