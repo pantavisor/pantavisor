@@ -65,7 +65,7 @@ See also:
 
 Containers can be [grouped](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
 
-Groups main function is to define the order in which containers are started. Groups are ordered and will not begin the mount and/or start up of their containers until all [status goals](#status-goal) from all the containers belonging to the previous group are achieved. The status goal of each container can be configured at group level as well as overloaded for each container. If not configured at container level, group also determines the [restart policy](#restart-policy) in a similar way as the status goal.
+Groups main function is to define the order in which containers are started. Groups are ordered and will not begin the mount and/or start up of their containers until all [status goals](#status-goal) from all the containers belonging to the previous group are achieved. The status goal of each container can be configured at group level as well as overloaded for each container, including [`lifecycle_goal`](#status-goal). If not configured at container level, group also determines the [restart policy](#restart-policy) in a similar way as the status goal.
 
 If groups are not [explicitly configured](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson), Pantavisor will create the default ones:
 
@@ -122,7 +122,7 @@ These are the different [status](../reference/pantavisor-commands.md#status-valu
 
 * INSTALLED: the container is installed and ready to go.
 * MOUNTED: the container volumes are mounted, but not yet started.
-* STAGED: the container is mounted and its [drivers](#drivers) are loaded, same as a container that is about to start, but the container process itself is not forked. It waits here to be started on demand, e.g. via the [control socket](#lifecycle-control).
+* STAGED: the container is mounted and its [drivers](#drivers) are loaded, same as a container that is about to start, but the container process itself is not forked. It waits here to be started on demand, e.g. via the [control socket](#lifecycle-control). Reached with a [status goal](#status-goal) of `MOUNTED` plus `lifecycle_goal: STAGED`.
 * BLOCKED: any of the [status goals](#status-goal) from a container belonging to the previous group are not yet achieved.
 * STARTING: container is starting.
 * STARTED: container PID is running.
@@ -142,17 +142,21 @@ Status goal defines the [status](#status) that Pantavisor is going to aim for a 
 These are the status goals currently supported:
 
 * MOUNTED: for containers whose volumes we want to be mounted but not started.
-* STAGED: for containers we want mounted, with drivers loaded, but not started — ready to be started on demand rather than at boot. See [Lifecycle Control](#lifecycle-control) for how to start one.
 * STARTED: rest of containers that we want mounted and started, but we only check if its PID is running.
 * READY: same as STARTED, but a readiness [signal](#signals) coming from the container namespace is required.
 
-If the status goal is not [explicitely configured](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) in a container, it will be set according to its [group](#groups) default one. Set it explicitly in `run.json`, or from a [`pvr`](https://docs.pantavisor.io/development/pvr) `app add --arg-json args.json` template with:
+`status_goal` is understood by every Pantavisor version, so a fourth goal, STAGED (mounted, drivers loaded, not started — ready to be [started on demand](#lifecycle-control)), is instead reached with `status_goal: "MOUNTED"` plus a `lifecycle_goal: "STAGED"` on the same container or [group](#groups):
 
 ```json
 {
-    "PV_STATUS_GOAL": "STAGED"
+    "status_goal": "MOUNTED",
+    "lifecycle_goal": "STAGED"
 }
 ```
+
+`lifecycle_goal`, when set to a value this Pantavisor knows (`MOUNTED`, `STAGED`, `STARTED`, `READY`), always wins over `status_goal`. An unrecognized `lifecycle_goal` value is a no-op — Pantavisor logs a warning and falls back to `status_goal` — so a container or group never fails a revision over it. `status_goal` must still be set to one of its three values alongside `lifecycle_goal`: an older Pantavisor that does not know `lifecycle_goal` skips it and uses `status_goal` as-is, and with `pvr` rendering the pair for you (`"PV_STATUS_GOAL": "STAGED"` in an `app add --arg-json args.json` template), only the key name — never starting with another key's name, since Pantavisor's own parser matches run.json keys by prefix — needs to be right.
+
+If the status goal is not [explicitely configured](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) in a container, it will be set according to its [group](#groups) default one, which itself may resolve to STAGED the same way.
 
 A [timeout](../reference/pantavisor-state-format-v2.md#4-infrastructure-devicejson) can be configured so an [update](updates.md#testing) will [fail](updates.md#error) if the status goal is not achieved withing the defined time value. If the timeout occurs during a regular bootup, the status goal checking will be omited and the following [group](#groups) will be unlocked.
 
@@ -221,7 +225,7 @@ If the container was previously stopped, it clears the `user_stopped` flag and t
 
 If the container was previously [STAGED](#status), its volumes are already mounted, so it skips straight to loading drivers and forking the container process.
 
-Starting a container whose status goal is [MOUNTED](#status) is rejected with HTTP 400.
+Starting a container with a plain [MOUNTED](#status) goal (no `lifecycle_goal: STAGED`) is rejected with HTTP 400.
 
 ### Restart
 
@@ -231,7 +235,7 @@ Restart force-stops the container and resets the auto-recovery retry counter to 
 
 Containers can [reference](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) the BSP [managed drivers](bsp.md#managed-drivers) as required, optional or manual.
 
-* required: these drivers will be loaded on the way to [STARTED](#status) (or [STAGED](#status), for a container with that status goal). The [revision](revisions.md) will fail if the drivers are not enabled through BSP as managed drivers.
+* required: these drivers will be loaded on the way to [STARTED](#status) (or [STAGED](#status), for a container with `lifecycle_goal: STAGED`). The [revision](revisions.md) will fail if the drivers are not enabled through BSP as managed drivers.
 * optional: these drivers will be loaded on the way to [STARTED](#status) (or [STAGED](#status)) too. In this case the revision will not fail if the drivers are not defined in the BSP.
 * manual: drivers can be loaded from within containers trough [local control](local-control.md). The success or failure of loading drivers using the REST API will not determine whether a revision fails or not, but the [calls](../reference/pantavisor-commands.md#drivers) will return an error response if necessary.
 
