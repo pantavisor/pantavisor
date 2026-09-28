@@ -92,7 +92,8 @@ Defines how containers are grouped and started.
 |:---|:---|:---:|:---|
 | `name` | string | **Mandatory** | Unique logical name for the group. |
 | `description` | string | empty | Human-readable description. |
-| `status_goal` | enum | `STARTED` | Goal for all members: `MOUNTED`, `STAGED`, `STARTED`, `READY`. |
+| `status_goal` | enum | `STARTED` | Default goal for all members: `MOUNTED`, `STARTED`, `READY`. |
+| `lifecycle_goal` | enum | none | Preferred default goal, overriding `status_goal` when known: `MOUNTED`, `STAGED`, `STARTED`, `READY`. See [Status Goal](../overview/containers.md#status-goal). |
 | `restart_policy` | enum | `container` | Policy on failure: `system`, `container`. |
 | `timeout` | integer | 30 | Seconds to wait for members to reach `status_goal`. |
 | `auto_recovery` | object | none | Default [auto-recovery](#auto-recovery-object) for containers in this group. Inherited all-or-nothing by containers without their own `auto_recovery`. |
@@ -167,7 +168,8 @@ Configures an individual container runtime.
 | `root-volume` | path string | Yes | Path to the rootfs squashfs artifact. |
 | `volumes` | array | No | Additional artifacts to mount as volumes. |
 | `group` | string | No | Orchestration group name (from `device.json`). |
-| `status_goal` | enum | No | Target state: `MOUNTED`, `STAGED`, `STARTED`, `READY`. |
+| `status_goal` | enum | No | Target state: `MOUNTED`, `STARTED`, `READY`. |
+| `lifecycle_goal` | enum | No | Preferred target state, overriding `status_goal` when known: `MOUNTED`, `STAGED`, `STARTED`, `READY`. An unrecognized value warns and falls back to `status_goal`; `status_goal` must still be set to a value pre-`lifecycle_goal` Pantavisor versions know, as their fallback. New run.json keys must never start with an existing key's name — Pantavisor matches keys by prefix. See [Status Goal](../overview/containers.md#status-goal). |
 | `restart_policy` | enum | No | `system` (reboot on crash) or `container` (restart LXC). |
 | `roles` | array | No | Capability roles: `mgmt` (control API access) or `nobody`. |
 | `storage` | object | Yes | [Persistence settings](#storage-object) for rootfs paths. |
