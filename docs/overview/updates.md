@@ -115,6 +115,8 @@ Reboot transitions are performed based on the location of the changes belonging 
 
 In this case, Pantavisor will stop all the containers and reboot the board.
 
+After the reboot, the new Pantavisor parses the revision again. If it rejects it, the update rolls back.
+
 #### Non-reboot transition 
 
 Non-reboot transitions are performed after an update that does not contain any changes in any of the components described for the [reboot transition](#reboot-transition).
@@ -163,7 +165,7 @@ Internal error | Memory allocation error or code bug |
 State not fully covered by signatures | The revision has some element that is not [signed](storage.md#state-signature) |
 Signature validation failed | Any of the [revision signatures](storage.md#state-signature) is not up to date with its covered content |
 Unknown error | [Signature](storage.md#state-signature) failed without a known cause |
-State JSON has bad format | [State JSON](revisions.md) could not be parsed |
+State JSON has bad format | [State JSON](revisions.md) could not be parsed; see [what is rejected](../reference/pantavisor-state-format-v2.md#compatibility) |
 
 ### ERROR
 
