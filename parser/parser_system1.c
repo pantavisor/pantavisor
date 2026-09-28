@@ -513,7 +513,8 @@ out:
 
 static int parse_disks(struct pv_state *s, char *value)
 {
-	return parse_disks_ex(s, value, false);
+	// lenient like disks_v3: an unknown disk type must not reject the revision
+	return parse_disks_ex(s, value, true);
 }
 
 static int parse_bsp(struct pv_state *s, char *value, int n)
@@ -2478,11 +2479,17 @@ static int parse_network_pools(struct pv_state *s, char *buf)
 		gateway = pv_json_get_value(str, "gateway", poolv, poolc);
 		nat_str = pv_json_get_value(str, "nat", poolv, poolc);
 
-		// Determine pool type
-		if (type_str && strcmp(type_str, "macvlan") == 0)
-			type = POOL_TYPE_MACVLAN;
-		else
+		// Determine pool type; unknown (newer schema?) skips the pool rather than misclassifying it as bridge
+		if (!type_str || strcmp(type_str, "bridge") == 0) {
 			type = POOL_TYPE_BRIDGE;
+		} else if (strcmp(type_str, "macvlan") == 0) {
+			type = POOL_TYPE_MACVLAN;
+		} else {
+			pv_log(WARN,
+			       "network pool '%s' has unknown type '%s' (newer schema?), skipping",
+			       name, type_str);
+			goto free_pool;
+		}
 
 		// Parse NAT flag
 		nat = (nat_str && strcmp(nat_str, "true") == 0);
@@ -2799,11 +2806,15 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 			   !pv_is_sha256_hex_string(value)) {
 			pv_log(DEBUG, "adding json '%s'", key);
 			pv_jsons_add(this, key, value);
-			// everything else is added to the list of objects
-		} else {
+			// a sha256-shaped value is a content-addressed object; anything else is an unknown key (newer schema?), not a download to fail on
+		} else if (pv_is_sha256_hex_string(value)) {
 			pv_log(DEBUG, "adding object '%s'", key);
 			pv_objects_add(this, key, value,
 				       pv_config_get_str(PV_STORAGE_MNTTYPE));
+		} else {
+			pv_log(WARN,
+			       "ignoring unknown key '%s': neither a .json file nor an object hash",
+			       key);
 		}
 
 		// free intermediates
