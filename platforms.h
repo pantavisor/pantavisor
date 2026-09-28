@@ -182,6 +182,8 @@ struct pv_platform {
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
+	// raw lifecycle_goal value from run.json, resolved against status_goal in pv_state_validate()
+	char *lifecycle_goal_raw;
 	bool std_log;
 	int pipefd[2];
 	struct pv_event_socket pipefd_listener;
