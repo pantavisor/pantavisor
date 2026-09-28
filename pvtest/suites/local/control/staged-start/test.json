@@ -1,6 +1,6 @@
 {
 	"#spec": "pv-test@1",
-	"description": "STAGED status goal: stage, API start/stop/start, reject start on MOUNTED goal",
+	"description": "STAGED via MOUNTED + lifecycle_goal: stage, API start/stop/start, reject start on plain MOUNTED, unknown lifecycle_goal falls back",
 	"setup": {
 		"config": {
 			"env": "PV_CONTROL_REMOTE=0"

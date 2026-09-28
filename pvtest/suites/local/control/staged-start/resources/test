@@ -1,7 +1,10 @@
 #!/bin/sh
 #
-# STAGED status goal: a container that is mounted and drivers-loaded but not
-# started, to be started on demand via the control socket.
+# STAGED status: a container that is mounted and drivers-loaded but not
+# started, to be started on demand via the control socket. Expressed in
+# run.json as status_goal: "MOUNTED" + lifecycle_goal: "STAGED", so an older
+# pantavisor (which only understands status_goal) can still install the
+# revision and just treats the container as plain MOUNTED.
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
 
@@ -10,14 +13,14 @@ checkout="$(mktemp -d)/checkout"
 pvr_clone_local_or_die "$checkout"
 cd "$checkout"
 
-# $1: new status_goal value, or "" to drop the key entirely
-set_status_goal() {
+# $1: new status_goal value, or "" to drop the key
+# $2: new lifecycle_goal value, or "" to drop the key (optional)
+set_status() {
 	tmp=$(mktemp)
-	if [ -z "$1" ]; then
-		jq 'del(."status_goal")' pv-example-app/run.json > "$tmp"
-	else
-		jq --arg g "$1" '."status_goal" = $g' pv-example-app/run.json > "$tmp"
-	fi
+	jq --arg g "$1" --arg l "$2" '
+		(if $g == "" then del(."status_goal") else ."status_goal" = $g end) |
+		(if $l == "" then del(."lifecycle_goal") else ."lifecycle_goal" = $l end)
+	' pv-example-app/run.json > "$tmp"
 	mv "$tmp" pv-example-app/run.json
 	pvr add pv-example-app/run.json > /dev/null 2>&1
 }
@@ -35,9 +38,9 @@ echo_mount_counts() {
 	echo "mounts: root.squashfs=$(volume_mount_count root.squashfs) lxc-overlay=$(volume_mount_count lxc-overlay)"
 }
 
-echo "== post revision with status_goal STAGED =="
-set_status_goal "STAGED"
-pvr commit -m "set status_goal to STAGED" > /dev/null 2>&1
+echo "== post revision with status_goal MOUNTED + lifecycle_goal STAGED =="
+set_status "MOUNTED" "STAGED"
+pvr commit -m "set status_goal/lifecycle_goal to MOUNTED/STAGED" > /dev/null 2>&1
 pvr post --rev "locals/staged" > /dev/null 2>&1
 wait_for_revision_state "locals/staged" "UPDATED" > /dev/null 2>&1 \
 	|| { echo "ERROR: timeout waiting for locals/staged to reach UPDATED" >&2; exit 1; }
@@ -70,9 +73,9 @@ wait_for_value 'container_field status' "STARTED" 60 > /dev/null 2>&1 \
 pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
 echo_mount_counts
 
-echo "== negative: cannot start a MOUNTED-goal container via API =="
-set_status_goal "MOUNTED"
-pvr commit -m "set status_goal to MOUNTED" > /dev/null 2>&1
+echo "== negative: cannot start a plain MOUNTED-goal container via API =="
+set_status "MOUNTED" ""
+pvr commit -m "set status_goal to plain MOUNTED" > /dev/null 2>&1
 pvr post --rev "locals/mounted" > /dev/null 2>&1
 wait_for_revision_state "locals/mounted" "UPDATED" > /dev/null 2>&1 \
 	|| { echo "ERROR: timeout waiting for locals/mounted to reach UPDATED" >&2; exit 1; }
@@ -81,9 +84,18 @@ pvcontrol containers start pv-example-app > /dev/null 2>&1
 start_rc=$?
 echo "start on MOUNTED-goal container rejected: $([ "$start_rc" -ne 0 ] && echo yes || echo no)"
 
-echo "== restore: remove status_goal override =="
-set_status_goal ""
-pvr commit -m "remove status_goal override" > /dev/null 2>&1
+echo "== negative: unknown lifecycle_goal falls back to status_goal, revision still succeeds =="
+set_status "MOUNTED" "bogus"
+pvr commit -m "set lifecycle_goal to an unknown value" > /dev/null 2>&1
+pvr post --rev "locals/bogus-lifecycle" > /dev/null 2>&1
+wait_for_revision_state "locals/bogus-lifecycle" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/bogus-lifecycle to reach UPDATED" >&2; exit 1; }
+echo "locals/bogus-lifecycle: UPDATED"
+pvcontrol containers ls | jq -M 'map(select(.name == "pv-example-app")) | .[0] | {status, status_goal}'
+
+echo "== restore: remove status_goal/lifecycle_goal override =="
+set_status "" ""
+pvr commit -m "remove status_goal/lifecycle_goal override" > /dev/null 2>&1
 pvr post --rev "locals/restore" > /dev/null 2>&1
 wait_for_revision_state "locals/restore" "UPDATED" > /dev/null 2>&1 \
 	|| { echo "ERROR: timeout waiting for locals/restore to reach UPDATED" >&2; exit 1; }
