@@ -1427,6 +1427,14 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+// a value the running parser doesn't recognize may just be newer schema; never reject the revision over it
+static void warn_unknown_value(const char *field, const char *value,
+			       const char *fallback)
+{
+	pv_log(WARN, "unknown %s '%s' (newer schema?), using '%s'", field,
+	       value, fallback);
+}
+
 static restart_policy_t parse_restart_policy(char *value, size_t len)
 {
 	if (pv_str_matches(value, len, "system", strlen("system")))
@@ -1434,8 +1442,8 @@ static restart_policy_t parse_restart_policy(char *value, size_t len)
 	else if (pv_str_matches(value, len, "container", strlen("container")))
 		return RESTART_CONTAINER;
 
-	pv_log(ERROR, "invalid restart policy '%s'", value);
-	return RESTART_NONE;
+	warn_unknown_value("restart_policy", value, "system");
+	return RESTART_SYSTEM;
 }
 
 static int do_action_for_restart_policy(struct json_key_action *jka,
@@ -1448,9 +1456,6 @@ static int do_action_for_restart_policy(struct json_key_action *jka,
 		return -1;
 
 	restart = parse_restart_policy(value, strlen(value));
-	if (restart == RESTART_NONE)
-		return -1;
-
 	pv_platform_set_restart_policy(*bundle->platform, restart);
 
 	return 0;
@@ -1466,8 +1471,9 @@ static plat_status_t parse_status_goal(char *value, size_t len)
 	else if (pv_str_matches(value, len, "READY", strlen("READY")))
 		return PLAT_READY;
 
-	pv_log(ERROR, "invalid status goal '%s'", value);
-	return PLAT_NONE;
+	// never run something whose goal we don't understand
+	warn_unknown_value("status_goal", value, "MOUNTED");
+	return PLAT_MOUNTED;
 }
 
 // lifecycle_goal accepts every goal this pantavisor knows, incl. STAGED; an unknown value is handled by the caller, never logged as an error here
@@ -1494,9 +1500,6 @@ static int do_action_for_status_goal(struct json_key_action *jka, char *value)
 		return -1;
 
 	status = parse_status_goal(value, strlen(value));
-	if (status == PLAT_NONE)
-		return -1;
-
 	pv_platform_set_status_goal(*bundle->platform, status);
 
 	return 0;
@@ -2178,8 +2181,6 @@ static int parse_groups(struct pv_state *s, char *value)
 		if (tmp) {
 			has_status_goal = true;
 			status = parse_status_goal(tmp, strlen(tmp));
-			if (status == PLAT_NONE)
-				goto out;
 			free(tmp);
 			tmp = NULL;
 		}
@@ -2226,8 +2227,6 @@ static int parse_groups(struct pv_state *s, char *value)
 						 groupc);
 		if (tmp) {
 			restart = parse_restart_policy(tmp, strlen(tmp));
-			if (restart == RESTART_NONE)
-				goto out;
 			free(tmp);
 			tmp = NULL;
 		}
