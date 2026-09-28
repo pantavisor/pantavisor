@@ -195,6 +195,43 @@ char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
 	return val;
 }
 
+char *pv_json_get_value_toplevel(const char *buf, const char *key,
+				 jsmntok_t *tok, int tokc)
+{
+	jsmntok_t **keys, **k;
+	jsmntok_t *val_tok = NULL;
+	char *ret = NULL;
+	size_t klen = strlen(key);
+
+	(void)tokc;
+
+	keys = jsmnutil_get_object_keys(buf, tok);
+	if (!keys)
+		return NULL;
+
+	for (k = keys; *k; k++) {
+		size_t n = (size_t)((*k)->end - (*k)->start);
+		if (n == klen && !strncmp(buf + (*k)->start, key, n)) {
+			val_tok = (*k) + 1;
+			break;
+		}
+	}
+
+	if (val_tok)
+		ret = pv_json_get_one_str(buf, &val_tok);
+
+	jsmnutil_tokv_free(keys);
+	return ret;
+}
+
+jsmntok_t *pv_json_array_elem_next(jsmntok_t *t, jsmntok_t *tok_end, int el_end)
+{
+	t++;
+	while (t < tok_end && t->start < el_end)
+		t++;
+	return t;
+}
+
 char *pv_json_format(const char *buf, int len)
 {
 	char *json_string = NULL;
