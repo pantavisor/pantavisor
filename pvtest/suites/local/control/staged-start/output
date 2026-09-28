@@ -1,4 +1,4 @@
-== post revision with status_goal STAGED ==
+== post revision with status_goal MOUNTED + lifecycle_goal STAGED ==
 locals/staged: UPDATED
 == container status while STAGED ==
 {
@@ -26,13 +26,19 @@ mounts: root.squashfs=0 lxc-overlay=0
   "status_goal": "STARTED"
 }
 mounts: root.squashfs=1 lxc-overlay=1
-== negative: cannot start a MOUNTED-goal container via API ==
+== negative: cannot start a plain MOUNTED-goal container via API ==
 {
   "status": "MOUNTED",
   "status_goal": "MOUNTED"
 }
 start on MOUNTED-goal container rejected: yes
-== restore: remove status_goal override ==
+== negative: unknown lifecycle_goal falls back to status_goal, revision still succeeds ==
+locals/bogus-lifecycle: UPDATED
+{
+  "status": "MOUNTED",
+  "status_goal": "MOUNTED"
+}
+== restore: remove status_goal/lifecycle_goal override ==
 {
   "status": "STARTED",
   "status_goal": "STARTED"
