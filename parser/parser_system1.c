@@ -594,8 +594,10 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	key_i = key;
 	while (*key_i) {
-		if (strncmp("addons", buf + (*key_i)->start,
-			    strlen("addons"))) {
+		int key_i_len = (*key_i)->end - (*key_i)->start;
+		// exact match: a future key like "addons_extra" must not be fed to this handler
+		if (!pv_str_matches(buf + (*key_i)->start, key_i_len, "addons",
+				    strlen("addons"))) {
 			key_i++;
 			continue;
 		}
@@ -1205,7 +1207,8 @@ static jsmntok_t *do_lookup_json_key(jsmntok_t **keys, char *json_buf,
 		}
 		snprintf(curr_key, length + 1, "%s",
 			 json_buf + (*keys_walker)->start);
-		if (strncmp(curr_key, key, strlen(key)) == 0)
+		// exact match only: a strncmp bounded by strlen(key) would also match a longer key sharing this prefix
+		if (strcmp(curr_key, key) == 0)
 			found = true;
 		free(curr_key);
 		if (found)
@@ -2721,14 +2724,21 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 	while (*k) {
 		n = (*k)->end - (*k)->start;
 
-		// avoid already parsed keys
-		if (!strncmp("bsp/run.json", buf + (*k)->start, n) ||
-		    !strncmp("bsp/drivers.json", buf + (*k)->start, n) ||
-		    !strncmp("disks.json", buf + (*k)->start, n) ||
-		    !strncmp("disks_v3.json", buf + (*k)->start, n) ||
-		    !strncmp("groups.json", buf + (*k)->start, n) ||
-		    !strncmp("device.json", buf + (*k)->start, n) ||
-		    !strncmp("#spec", buf + (*k)->start, n)) {
+		// avoid already parsed keys (exact match, not prefix)
+		if (pv_str_matches(buf + (*k)->start, n, "bsp/run.json",
+				   strlen("bsp/run.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "bsp/drivers.json",
+				   strlen("bsp/drivers.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "disks.json",
+				   strlen("disks.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "disks_v3.json",
+				   strlen("disks_v3.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "groups.json",
+				   strlen("groups.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "device.json",
+				   strlen("device.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "#spec",
+				   strlen("#spec"))) {
 			k++;
 			continue;
 		}
