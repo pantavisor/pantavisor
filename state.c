@@ -44,6 +44,7 @@
 #include "pantavisor.h"
 #include "ipam.h"
 #include "storage.h"
+#include "utils/str.h"
 #include "metadata.h"
 #include "update/update.h"
 #include "utils/tsh.h"
@@ -433,6 +434,12 @@ static void pv_state_set_default_status_goals(struct pv_state *s)
 		if (p->status.goal != PLAT_NONE)
 			continue;
 
+		// lifecycle_goal has no status_goal to fall back to on older pantavisor versions
+		if (p->lifecycle_goal_raw)
+			pv_log(WARN,
+			       "platform '%s' has lifecycle_goal but no status_goal; older pantavisor versions need status_goal as a fallback",
+			       p->name);
+
 		pv_log(INFO,
 		       "platform '%s' in group '%s' has no explicit status goal. "
 		       "It will be set by default to the group's '%s'",
@@ -440,6 +447,48 @@ static void pv_state_set_default_status_goals(struct pv_state *s)
 		       pv_platform_status_string(
 			       p->group->default_status_goal));
 		pv_platform_set_status_goal(p, p->group->default_status_goal);
+	}
+}
+
+// lifecycle_goal accepts every goal this pantavisor knows, incl. STAGED; an unknown value is handled by the caller
+static plat_status_t parse_lifecycle_goal(const char *value, size_t len)
+{
+	if (pv_str_matches(value, len, "MOUNTED", strlen("MOUNTED")))
+		return PLAT_MOUNTED;
+	else if (pv_str_matches(value, len, "STAGED", strlen("STAGED")))
+		return PLAT_STAGED;
+	else if (pv_str_matches(value, len, "STARTED", strlen("STARTED")))
+		return PLAT_STARTED;
+	else if (pv_str_matches(value, len, "READY", strlen("READY")))
+		return PLAT_READY;
+
+	return PLAT_NONE;
+}
+
+// resolved after group defaults so lifecycle_goal precedence never depends on run.json key order
+static void pv_state_apply_lifecycle_goals(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+	struct dl_list *platforms = &s->platforms;
+	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
+	{
+		plat_status_t goal;
+
+		if (!p->lifecycle_goal_raw)
+			continue;
+
+		goal = parse_lifecycle_goal(p->lifecycle_goal_raw,
+					    strlen(p->lifecycle_goal_raw));
+		if (goal != PLAT_NONE)
+			pv_platform_set_status_goal(p, goal);
+		else
+			pv_log(WARN,
+			       "platform '%s' has unknown lifecycle_goal '%s', using status_goal '%s'",
+			       p->name, p->lifecycle_goal_raw,
+			       pv_platform_status_string(p->status.goal));
+
+		free(p->lifecycle_goal_raw);
+		p->lifecycle_goal_raw = NULL;
 	}
 }
 
@@ -474,6 +523,8 @@ int pv_state_validate(struct pv_state *s)
 		return -1;
 	// set default status goal
 	pv_state_set_default_status_goals(s);
+	// resolve lifecycle_goal against status_goal (or its group default)
+	pv_state_apply_lifecycle_goals(s);
 	// set default restart policies
 	pv_state_set_default_restart_policies(s);
 

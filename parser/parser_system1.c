@@ -1447,7 +1447,22 @@ static int do_action_for_restart_policy(struct json_key_action *jka,
 	return 0;
 }
 
+// status_goal is understood by every pantavisor version, so STAGED is deliberately excluded here
 static plat_status_t parse_status_goal(char *value, size_t len)
+{
+	if (pv_str_matches(value, len, "MOUNTED", strlen("MOUNTED")))
+		return PLAT_MOUNTED;
+	else if (pv_str_matches(value, len, "STARTED", strlen("STARTED")))
+		return PLAT_STARTED;
+	else if (pv_str_matches(value, len, "READY", strlen("READY")))
+		return PLAT_READY;
+
+	pv_log(ERROR, "invalid status goal '%s'", value);
+	return PLAT_NONE;
+}
+
+// lifecycle_goal accepts every goal this pantavisor knows, incl. STAGED; an unknown value is handled by the caller, never logged as an error here
+static plat_status_t parse_lifecycle_goal(char *value, size_t len)
 {
 	if (pv_str_matches(value, len, "MOUNTED", strlen("MOUNTED")))
 		return PLAT_MOUNTED;
@@ -1458,7 +1473,6 @@ static plat_status_t parse_status_goal(char *value, size_t len)
 	else if (pv_str_matches(value, len, "READY", strlen("READY")))
 		return PLAT_READY;
 
-	pv_log(ERROR, "invalid status goal '%s'", value);
 	return PLAT_NONE;
 }
 
@@ -1475,6 +1489,21 @@ static int do_action_for_status_goal(struct json_key_action *jka, char *value)
 		return -1;
 
 	pv_platform_set_status_goal(*bundle->platform, status);
+
+	return 0;
+}
+
+// stashes the raw value; resolved against status_goal in pv_state_validate(), after group defaults, so precedence never depends on run.json key order
+static int do_action_for_lifecycle_goal(struct json_key_action *jka,
+					char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	free((*bundle->platform)->lifecycle_goal_raw);
+	(*bundle->platform)->lifecycle_goal_raw = strdup(value);
 
 	return 0;
 }
@@ -1901,6 +1930,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_restart_policy, false),
 		ADD_JKA_ENTRY("status_goal", JSMN_STRING, &bundle,
 			      do_action_for_status_goal, false),
+		ADD_JKA_ENTRY("lifecycle_goal", JSMN_STRING, &bundle,
+			      do_action_for_lifecycle_goal, false),
 		ADD_JKA_ENTRY("roles", JSMN_OBJECT, &bundle,
 			      do_action_for_roles_object, false),
 		ADD_JKA_ENTRY("roles", JSMN_ARRAY, &bundle,
@@ -2111,6 +2142,7 @@ static int parse_groups(struct pv_state *s, char *value)
 		struct pv_group *g;
 		plat_status_t status = PLAT_STARTED;
 		restart_policy_t restart = RESTART_CONTAINER;
+		bool has_status_goal = false;
 		jsmntok_t *groupv;
 		int groupc, sizec, timeout;
 
@@ -2127,9 +2159,28 @@ static int parse_groups(struct pv_state *s, char *value)
 
 		tmp = pv_json_get_value(str, "status_goal", groupv, groupc);
 		if (tmp) {
+			has_status_goal = true;
 			status = parse_status_goal(tmp, strlen(tmp));
 			if (status == PLAT_NONE)
 				goto out;
+			free(tmp);
+			tmp = NULL;
+		}
+
+		// lifecycle_goal wins over status_goal (or the PLAT_STARTED default) when known
+		tmp = pv_json_get_value(str, "lifecycle_goal", groupv, groupc);
+		if (tmp) {
+			plat_status_t lifecycle_status =
+				parse_lifecycle_goal(tmp, strlen(tmp));
+			if (lifecycle_status != PLAT_NONE)
+				status = lifecycle_status;
+			else
+				pv_log(WARN,
+				       "group has unknown lifecycle_goal '%s', using status_goal '%s'",
+				       tmp, pv_platform_status_string(status));
+			if (!has_status_goal)
+				pv_log(WARN,
+				       "group has lifecycle_goal but no status_goal; older pantavisor versions need status_goal as a fallback");
 			free(tmp);
 			tmp = NULL;
 		}

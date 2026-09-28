@@ -335,6 +335,8 @@ void pv_platform_free(struct pv_platform *p)
 		free(p->name);
 	if (p->type)
 		free(p->type);
+	if (p->lifecycle_goal_raw)
+		free(p->lifecycle_goal_raw);
 
 	c = p->configs;
 	if (c) {
