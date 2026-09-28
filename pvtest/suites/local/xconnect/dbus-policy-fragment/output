@@ -1,0 +1,20 @@
+== JSON allow grants avahi-limited unrestricted access: pv-example-system-dbus-limited calls org.freedesktop.Avahi.Server.GetVersionString (also the cold activation call) ==
+limited GetVersionString: OK
+== fragment narrows below the JSON grant: pv-example-system-dbus-limited calls org.freedesktop.Avahi.Server.GetHostName ==
+limited GetHostName: DENIED
+== post revision with a forbidden <includedir> in its policy fragment (pv-example-system-dbus-badpolicy-include) ==
+== locals/dbus-policy-fragment-badinclude: ERROR (rolled back) ==
+{"status":"ERROR","status-msg":"A container could not be started","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"dbus-policy-check\",\"msg\":\"platform 'pv-example-system-dbus-badpolicy-include' policy fragment 'dbus/policy.xml': disallowed element '<includedir>' (only busconfig, policy, allow, deny are permitted)\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"a platform did not work as expected. Tearing down...\"}\n"}
+rolled back off locals/dbus-policy-fragment-badinclude: yes
+== post revision whose fragment denies a foreign destination it does not own (pv-example-system-dbus-badpolicy-foreign) ==
+== locals/dbus-policy-fragment-badforeign: ERROR (rolled back) ==
+{"status":"ERROR","status-msg":"A container could not be started","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"dbus-policy-check\",\"msg\":\"platform 'pv-example-system-dbus-badpolicy-foreign' policy fragment 'dbus/policy.xml': <deny send_destination=\\\"org.freedesktop.Avahi\\\"> does not name one of this platform's own 'owns' names\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"a platform did not work as expected. Tearing down...\"}\n"}
+rolled back off locals/dbus-policy-fragment-badforeign: yes
+== post revision whose fragment references an unresolvable role (pv-example-system-dbus-badpolicy-role) ==
+== locals/dbus-policy-fragment-badrole: ERROR (rolled back) ==
+{"status":"ERROR","status-msg":"A container could not be started","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"dbus-policy-check\",\"msg\":\"platform 'pv-example-system-dbus-badpolicy-role' policy fragment 'dbus/policy.xml': <policy> references unknown role 'nosuchrole'\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"a platform did not work as expected. Tearing down...\"}\n"}
+rolled back off locals/dbus-policy-fragment-badrole: yes
+== post revision pinning a role uid with no owns export (pv-example-system-dbus-badpin) ==
+== locals/dbus-policy-fragment-badpin: ERROR (rolled back) ==
+{"status":"ERROR","status-msg":"A container could not be started","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"dbus-daemon\",\"msg\":\"platform 'pv-example-system-dbus-badpin' declares role pins in 'roles' but owns no D-Bus name; only a provider may pin a role uid\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"a platform did not work as expected. Tearing down...\"}\n"}
+rolled back off locals/dbus-policy-fragment-badpin: yes

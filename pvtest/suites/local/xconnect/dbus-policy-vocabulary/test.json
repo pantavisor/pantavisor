@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Declarative D-Bus policy vocabulary: allow-list narrowing to interface/member and role UID pinning",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-avahi.pvrexport.tgz",
+				"../../common/tarballs/pv-example-system-dbus-reader.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

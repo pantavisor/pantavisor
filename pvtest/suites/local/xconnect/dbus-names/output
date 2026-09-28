@@ -1,0 +1,10 @@
+== names-derived consumes descriptor: pv-avahi-browse -> org.freedesktop.Avahi ==
+{"consumes":"org.freedesktop.Avahi","bus":"system-bus","consumer":"pv-avahi-browse","owner":"pv-avahi","activation":"none"}
+== derived link: name and target for pv-avahi-browse ==
+{"consumer":"pv-avahi-browse","name":"system-bus","target":"/run/dbus/system_bus_socket"}
+== derived socket works: dbus-send roundtrip pv-avahi-browse -> org.freedesktop.Avahi over /run/dbus/system_bus_socket ==
+monitor GetVersionString: OK
+== post revision with a names requirement nobody owns ==
+== locals/dbus-names-orphan: ERROR (rolled back) ==
+{"status":"ERROR","status-msg":"A container could not be started","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"state\",\"msg\":\"platform 'pv-example-system-dbus-names-orphan' requires name 'org.pantavisor.NoSuchService' but no platform owns it\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"a platform did not work as expected. Tearing down...\"}\n"}
+rolled back off locals/dbus-names-orphan: yes

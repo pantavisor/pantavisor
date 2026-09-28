@@ -1,0 +1,22 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Consumer D-Bus on-owner activation: a passive STAGED consumer is started once its required name gains an owner, with no call of its own",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-avahi.pvrexport.tgz",
+				"../../common/tarballs/pv-example-system-dbus-client-onowner.pvrexport.tgz",
+				"../../common/tarballs/pv-example-system-dbus-client.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

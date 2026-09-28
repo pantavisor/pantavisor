@@ -36,6 +36,10 @@ struct pv_state;
 #define PV_DBUS_SYSTEMBUS_CONF PV_DBUS_SYSTEMBUS_DIR "/system.conf"
 #define PV_DBUS_SYSTEMBUS_POLICYDIR PV_DBUS_SYSTEMBUS_DIR "/policy.d"
 
+// Default in-container target for a names-form requirement that omits
+// "target" — the path stock D-Bus clients dial (see XCONNECT.md).
+#define PV_DBUS_SYSTEMBUS_DEFAULT_TARGET "/run/dbus/system_bus_socket"
+
 // Private passwd bind-mounted over /etc/passwd in the daemon's mount jail so it
 // can resolve the per-role masquerade uids that the generated policy keys on,
 // without touching the rootfs /etc/passwd. See pv_dbus_daemon_generate().
@@ -67,6 +71,13 @@ struct pv_platform *pv_dbus_daemon_activatable_owner(struct pv_state *s,
 // to STARTED (normally from STAGED). Returns 0 on activation (or already
 // active), -1 if `name` has no activatable owner.
 int pv_dbus_daemon_activate(struct pv_state *s, const char *name);
+
+// Consumer-activation entry point for POST /xconnect/dbus/activate with
+// {"container":"<name>"}: transition a parked (STAGED, or legacy MOUNTED)
+// `container` to STARTED. Idempotent (already-started or never-passive is a
+// success no-op); -1 if `container` is not a known platform.
+int pv_dbus_daemon_activate_container(struct pv_state *s,
+				      const char *container);
 
 // Lay down the runtime dir, base config and seed passwd before the managed
 // dbus-daemon is spawned. Disables the daemon when the feature is off in config.
