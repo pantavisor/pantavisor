@@ -23,6 +23,8 @@ add_executable(pv-xconnect
     plugins/drm.c
     plugins/wayland.c
     plugins/dbus.c
+    dbus_codec.c
+    dbus_activation.c
     ../utils/json.c
     ../utils/str.c
 )

@@ -1,0 +1,20 @@
+== activatable name is exposed in the xconnect graph ==
+{"activatable":"org.freedesktop.Avahi","owner":"pv-avahi"}
+== passive owner: staged, not started, name unowned ==
+{"status":"STAGED","status_goal":"STAGED"}
+boolean false
+mounts: docker--tmp=1
+mounts: dockerovl--tmp=1
+mounts: lxc-overlay=1
+mounts: root.squashfs=1
+== first call to org.freedesktop.Avahi activates the owner transparently ==
+cold GetVersionString: OK
+== owner promoted STAGED -> STARTED, name owned ==
+{"status":"STARTED","status_goal":"STARTED"}
+boolean true
+mounts: docker--tmp=1
+mounts: dockerovl--tmp=1
+mounts: lxc-overlay=1
+mounts: root.squashfs=1
+== warm path: second call goes straight through ==
+warm GetHostName: OK

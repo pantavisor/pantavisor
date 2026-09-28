@@ -90,6 +90,10 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/xconnect/dbus` | D-Bus (Policy mediation) | |
 | `local/xconnect/drm` | DRM (Graphics node injection) | |
 | `local/xconnect/wayland` | Wayland (Isolated UI rendering) | |
+| `local/xconnect/dbus-systembus` | Hosted system bus (masquerade + generated policy) | ✓ |
+| `local/xconnect/dbus-collision` | Hosted system bus (duplicate owns rejected) | ✓ |
+| `local/xconnect/avahi-systembus` | Hosted system bus (real avahi daemon) | ✓ |
+| `local/xconnect/dbus-activation` | On-demand activation (STAGED owner started on first call, volumes mounted once) | ✓ |
 
 ### security
 
