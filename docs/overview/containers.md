@@ -65,7 +65,7 @@ See also:
 
 Containers can be [grouped](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
 
-Groups main function is to define the order in which containers are started. Groups are ordered and will not begin the mount and/or start up of their containers until all [status goals](#status-goal) from all the containers belonging to the previous group are achieved. The status goal of each container can be configured at group level as well as overloaded for each container, including [`lifecycle_goal`](#status-goal). If not configured at container level, group also determines the [restart policy](#restart-policy) in a similar way as the status goal.
+Groups main function is to define the order in which containers are started. Groups are ordered and will not begin the mount and/or start up of their containers until all [status goals](#status-goal) from all the containers belonging to the previous group are achieved. The status goal of each container can be configured at group level as well as overloaded for each container. If not configured at container level, group also determines the [restart policy](#restart-policy) in a similar way as the status goal.
 
 If groups are not [explicitly configured](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson), Pantavisor will create the default ones:
 
@@ -122,7 +122,7 @@ These are the different [status](../reference/pantavisor-commands.md#status-valu
 
 * INSTALLED: the container is installed and ready to go.
 * MOUNTED: the container volumes are mounted, but not yet started.
-* STAGED: the container is mounted and its [drivers](#drivers) are loaded, same as a container that is about to start, but the container process itself is not forked. It waits here to be started on demand, e.g. via the [control socket](#lifecycle-control). Reached with a [status goal](#status-goal) of `MOUNTED` plus `lifecycle_goal: STAGED`.
+* STAGED: the container is mounted and its [drivers](#drivers) are loaded, same as a container that is about to start, but the container process itself is not forked. It waits here to be started on demand, e.g. via the [control socket](#lifecycle-control).
 * BLOCKED: any of the [status goals](#status-goal) from a container belonging to the previous group are not yet achieved.
 * STARTING: container is starting.
 * STARTED: container PID is running.
@@ -142,10 +142,11 @@ Status goal defines the [status](#status) that Pantavisor is going to aim for a 
 These are the status goals currently supported:
 
 * MOUNTED: for containers whose volumes we want to be mounted but not started.
+* STAGED: for containers we want mounted, with drivers loaded, but not started, ready to be [started on demand](#lifecycle-control).
 * STARTED: rest of containers that we want mounted and started, but we only check if its PID is running.
 * READY: same as STARTED, but a readiness [signal](#signals) coming from the container namespace is required.
 
-`status_goal` is understood by every Pantavisor version, so a fourth goal, STAGED (mounted, drivers loaded, not started — ready to be [started on demand](#lifecycle-control)), is instead reached with `status_goal: "MOUNTED"` plus a `lifecycle_goal: "STAGED"` on the same container or [group](#groups):
+Set the goal in the container's [`run.json`](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson), or for a whole [group](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson). STAGED is set with `lifecycle_goal`, keeping `status_goal: MOUNTED` as the fallback for Pantavisor versions that predate `lifecycle_goal`:
 
 ```json
 {
@@ -154,9 +155,9 @@ These are the status goals currently supported:
 }
 ```
 
-`lifecycle_goal`, when set to a value this Pantavisor knows (`MOUNTED`, `STAGED`, `STARTED`, `READY`), always wins over `status_goal`. An unrecognized `lifecycle_goal` value is a no-op — Pantavisor logs a warning and falls back to `status_goal` — so a container or group never fails a revision over it. `status_goal` must still be set to one of its three values alongside `lifecycle_goal`: an older Pantavisor that does not know `lifecycle_goal` skips it and uses `status_goal` as-is, and with `pvr` rendering the pair for you (`"PV_STATUS_GOAL": "STAGED"` in an `app add --arg-json args.json` template), only the key name — never starting with another key's name, since Pantavisor's own parser matches run.json keys by prefix — needs to be right.
+With [`pvr`](https://docs.pantavisor.io/development/pvr), put `"PV_STATUS_GOAL": "STAGED"` in an `app add --arg-json args.json` template and it writes both keys for you. An unknown `lifecycle_goal` value logs a warning and falls back to `status_goal`.
 
-If the status goal is not [explicitely configured](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) in a container, it will be set according to its [group](#groups) default one, which itself may resolve to STAGED the same way.
+A container without a status goal of its own inherits its [group](#groups)'s.
 
 A [timeout](../reference/pantavisor-state-format-v2.md#4-infrastructure-devicejson) can be configured so an [update](updates.md#testing) will [fail](updates.md#error) if the status goal is not achieved withing the defined time value. If the timeout occurs during a regular bootup, the status goal checking will be omited and the following [group](#groups) will be unlocked.
 

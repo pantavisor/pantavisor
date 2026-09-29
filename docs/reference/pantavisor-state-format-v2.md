@@ -169,7 +169,7 @@ Configures an individual container runtime.
 | `volumes` | array | No | Additional artifacts to mount as volumes. |
 | `group` | string | No | Orchestration group name (from `device.json`). |
 | `status_goal` | enum | No | Target state: `MOUNTED`, `STARTED`, `READY`. |
-| `lifecycle_goal` | enum | No | Preferred target state, overriding `status_goal` when known: `MOUNTED`, `STAGED`, `STARTED`, `READY`. An unrecognized value warns and falls back to `status_goal`; `status_goal` must still be set to a value pre-`lifecycle_goal` Pantavisor versions know, as their fallback. New run.json keys must never start with an existing key's name — Pantavisor matches keys by prefix. See [Status Goal](../overview/containers.md#status-goal). |
+| `lifecycle_goal` | enum | No | Preferred target state, overriding `status_goal` when known: `MOUNTED`, `STAGED`, `STARTED`, `READY`. See [Status Goal](../overview/containers.md#status-goal). |
 | `restart_policy` | enum | No | `system` (reboot on crash) or `container` (restart LXC). |
 | `roles` | array | No | Capability roles: `mgmt` (control API access) or `nobody`. |
 | `storage` | object | Yes | [Persistence settings](#storage-object) for rootfs paths. |
