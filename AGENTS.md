@@ -30,6 +30,11 @@ Reference is authoritative and complete; overview is readable top-to-bottom and 
 If a value is enumerable from the code, it belongs in a reference table — never write `string`
 where the parser accepts a fixed set of tokens.
 
+Write for the reader's task, not the change: lead with what they set or run, keep design rationale
+and implementation constraints in commits and code comments, describe the present (no history),
+rewrite rather than append, and keep table cells to one line. See "Writing for the reader" in
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+
 ### Every change gets a documentation pass
 
 After any change — a new feature, a change to an existing one, a fix that alters behaviour — stop

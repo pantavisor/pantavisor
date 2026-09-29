@@ -94,6 +94,19 @@ Every feature described in `docs/` gives the reader a direct path to *do* someth
 - If a feature genuinely has no user-facing action, say so — a one-line "this is managed
   automatically; no action needed" is enough.
 
+## Writing for the reader
+
+Write for someone using the feature, not for whoever reviews the change that added it.
+
+- **Lead with the task.** What the reader sets or runs comes first, as a code block; explanation follows only if they need it to get it right.
+- **Implementation stays out.** Why the design is shaped this way, parser internals, compatibility tricks and constraints on future changes belong in the commit message, the PR or a code comment. Keep only what changes what the reader must do.
+- **Describe the present.** No "now", "no longer", "unlike before", "as of this change": the page describes the current release, git holds the history.
+- **One claim, one place.** State a fact where it belongs and link to it elsewhere; a reference cell and an overview paragraph never both carry the same caveat.
+- **Short sentences.** One idea each. A sentence with nested asides or several em-dashes is two or three sentences.
+- **Edit, do not append.** When behaviour changes, rewrite the paragraph that describes it rather than adding a new one after it. A change should rarely make a page longer than the feature warrants.
+
+Reread the section you touched top-to-bottom as a newcomer before committing. If a sentence only makes sense to someone who read the diff, rewrite or remove it.
+
 ## Frontmatter
 
 Every page under `docs/` carries:
