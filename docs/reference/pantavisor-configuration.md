@@ -114,6 +114,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_SERVER_OUTPUTS` | comma-separated list of `filetree`, `singlefile`, `stdout`, `stdout.pantavisor`, `stdout.containers`, `stdout_direct`, `nullsink` | `filetree` | set [log server outputs](logserver-sockets.md#log-server-outputs); unknown tokens are dropped with a warning |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for single-file logs |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for stdout logs |
+| `PV_LOG_SYNC` | `smart` or `always` | `smart` | [log persistence](../overview/storage.md#log-persistence-and-flash-wear) for filetree and singlefile logs |
+| `PV_LOG_SYNC_BOOT_WINDOW` | integer seconds | `120` | [log persistence](../overview/storage.md#log-persistence-and-flash-wear) for filetree and singlefile logs; `0` disables the boot window |
 | `PV_LOG_TIMESTAMP` | `relative` or `absolute` | `relative` | clock behind the `tsec` field of every log line: seconds since boot, or Unix epoch |
 | `PV_LOOP_INDEX_BASE` | integer | `-1` | set base index of the [loop device range](../overview/init-mode.md) reserved for this instance; `-1` disables ranging |
 | `PV_LXC_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` TRACE | `2` | log verbosity forwarded to the LXC platform plugin |
@@ -248,6 +250,8 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_LOG_SERVER_OUTPUTS`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT`     | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_LOG_SYNC`                        | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| `PV_LOG_SYNC_BOOT_WINDOW`            | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_TIMESTAMP`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOOP_INDEX_BASE`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LXC_LOG_LEVEL`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
