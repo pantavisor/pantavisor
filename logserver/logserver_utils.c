@@ -42,6 +42,7 @@
 #include <ctype.h>
 #include <linux/limits.h>
 #include <libgen.h>
+#include <time.h>
 
 static int get_data_line(const struct logserver_data *data,
 			 struct logserver_data *line, int sep)
@@ -126,14 +127,56 @@ static char *format_dmesg_log(const char *str, int len)
 	return formatted;
 }
 
-int logserver_utils_open_logfile(const char *path)
+static struct timespec sync_boot_start;
+
+void logserver_utils_sync_start(void)
+{
+	clock_gettime(CLOCK_MONOTONIC, &sync_boot_start);
+}
+
+static bool sync_every_write(const struct logserver_log *log)
+{
+	char *mode = pv_config_get_str(PV_LOG_SYNC);
+	if (mode && !strcmp(mode, "always"))
+		return true;
+
+	if (logserver_in_update_window(log))
+		return true;
+
+	int boot_window = pv_config_get_int(PV_LOG_SYNC_BOOT_WINDOW);
+	if (boot_window <= 0)
+		return false;
+
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+
+	return now.tv_sec - sync_boot_start.tv_sec < boot_window;
+}
+
+int logserver_utils_open_logfile(const char *path, bool sync)
 {
 	if (!path)
 		return -1;
 
-	int fd = open(path, O_CREAT | O_SYNC | O_RDWR | O_APPEND, 0644);
+	int flags = O_CREAT | O_RDWR | O_APPEND;
+	if (sync)
+		flags |= O_SYNC;
 
-	return fd;
+	return open(path, flags, 0644);
+}
+
+int logserver_utils_open_datafile(const char *path,
+				  const struct logserver_log *log)
+{
+	return logserver_utils_open_logfile(path, sync_every_write(log));
+}
+
+void logserver_utils_close_datafile(int fd, const struct logserver_log *log)
+{
+	if (log->lvl <= ERROR && !sync_every_write(log))
+		fdatasync(fd);
+
+	close(fd);
 }
 
 static int print_pvfmt_log(int fd, const struct logserver_log *log,

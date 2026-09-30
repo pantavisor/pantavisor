@@ -64,6 +64,12 @@ struct logserver_log {
 	struct logserver_data data;
 };
 
+// the RFC protocol sets updated_rev to "" when no update is running
+static inline bool logserver_in_update_window(const struct logserver_log *log)
+{
+	return log->updated_rev && *log->updated_rev;
+}
+
 struct logserver_out {
 	int id;
 	char *name;
