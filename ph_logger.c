@@ -387,7 +387,7 @@ static off_t _load_log_file_pos(const char *path)
 		}
 	}
 
-	return 0;
+	return pos;
 }
 
 /*
