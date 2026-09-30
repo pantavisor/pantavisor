@@ -990,7 +990,11 @@ static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 	}
 	pv->issued_transition = PV_SYSTEM_TRANSITION_NONE;
 
-	pv_log(DEBUG, "next state: '%s'", pv_state_string(state));
+	// WAIT re-runs every poll tick; only log when the state differs
+	static pv_state_t last_logged = -1;
+	pv_log(state == last_logged ? TRACE : DEBUG, "next state: '%s'",
+	       pv_state_string(state));
+	last_logged = state;
 	next_state = state_table[state](pv);
 
 	if (next_state == PV_STATE_EXIT) {
