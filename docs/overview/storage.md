@@ -451,6 +451,21 @@ The three keys behind this (`PV_LOG_DIR_MAXSIZE`, `PV_LOG_HYSTERESIS_FACTOR` and
 `PV_LOG_ROTATE_FACTOR`) are documented with their defaults and levels in the
 [configuration reference](../reference/pantavisor-configuration.md#summary).
 
+### Log persistence and flash wear
+
+Syncing every log line to disk turns each line into a full flash page write plus a journal commit, which wears flash storage quickly. With the default `PV_LOG_SYNC=smart`, the `filetree` and `singlefile` outputs use plain buffered writes and the kernel decides when to write them back. Writes are synced immediately only in these cases:
+
+* ERROR and FATAL messages.
+* The first `PV_LOG_SYNC_BOOT_WINDOW` seconds (default `120`) after the log server starts, so boot problems are not lost.
+* While an update is being installed or a new revision is being tested, until it is committed or rolled back.
+
+Buffered logs can be lost on sudden power loss. They are not held back indefinitely: ext4 with the default `data=ordered` mode commits its journal every 5 seconds and flushes appended data with it, so steady-state writes are bounded by the filesystem commit interval, not zero. Pantavisor also calls `sync()` before reboot and shutdown. These keys are read when the log server starts, so set them in `pantavisor.config`, an OEM config or on the kernel command line; user metadata and `pvcontrol conf` changes do not reach it. Set `always` to sync every write:
+
+```
+PV_LOG_SYNC=always                # sync every write (more flash wear)
+PV_LOG_SYNC_BOOT_WINDOW=0         # no synchronous boot window
+```
+
 
 ## Trails and objects
 
