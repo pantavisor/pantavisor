@@ -519,7 +519,8 @@ static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 
 	pv_metadata_parse_usermeta(body);
 
-	pv_log(DEBUG, "usrmeta updated from Hub");
+	// key changes are logged per key by the metadata layer
+	pv_log(TRACE, "usrmeta updated from Hub");
 out:
 	if (body)
 		free(body);
@@ -583,7 +584,7 @@ void pv_pantahub_proto_get_trails_status()
 
 void pv_pantahub_proto_get_usrmeta()
 {
-	pv_log(DEBUG, "requesting usrmeta from Hub");
+	pv_log(TRACE, "requesting usrmeta from Hub");
 
 	if (!session.token) {
 		pv_log(ERROR, "session must be opened first");
@@ -640,7 +641,7 @@ out:
 
 void pv_pantahub_proto_set_devmeta()
 {
-	pv_log(DEBUG, "sending devmeta to Hub");
+	pv_log(TRACE, "sending devmeta to Hub");
 
 	if (!session.token) {
 		pv_log(ERROR, "session must be opened first");
@@ -664,7 +665,7 @@ void pv_pantahub_proto_set_devmeta()
 	}
 
 	if (!_devmeta_gate_pass(json)) {
-		pv_log(DEBUG,
+		pv_log(TRACE,
 		       "devmeta unchanged beyond threshold; not sending");
 		goto out;
 	}
@@ -739,7 +740,7 @@ out:
 
 void pv_pantahub_proto_get_pending_steps()
 {
-	pv_log(DEBUG, "requesting for pending steps from Hub");
+	pv_log(TRACE, "requesting for pending steps from Hub");
 
 	if (!session.token) {
 		pv_log(ERROR, "session must be opened first");
