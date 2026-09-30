@@ -170,7 +170,7 @@ int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
 		 "/proc/%d/root/%s", provider_pid,
 		 source_path[0] == '/' ? source_path + 1 : source_path);
 
-	printf("pvx-helper: Statting provider node %s\n", provider_root_path);
+	xc_debug("pvx-helper: Statting provider node %s\n", provider_root_path);
 	if (stat(provider_root_path, &st) < 0) {
 		perror("stat provider devnode");
 		return -1;
@@ -181,8 +181,8 @@ int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
 			provider_root_path);
 		return -1;
 	}
-	printf("pvx-helper: Found device 0x%lx (mode 0x%x)\n",
-	       (unsigned long)st.st_rdev, st.st_mode);
+	xc_debug("pvx-helper: Found device 0x%lx (mode 0x%x)\n",
+		 (unsigned long)st.st_rdev, st.st_mode);
 
 	// 2. Save current namespace
 	old_ns_fd = open("/proc/self/ns/mnt", O_RDONLY);
@@ -193,7 +193,7 @@ int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
 
 	// 3. Open target namespace
 	snprintf(ns_path, sizeof(ns_path), "/proc/%d/ns/mnt", consumer_pid);
-	printf("pvx-helper: Entering consumer namespace %s\n", ns_path);
+	xc_debug("pvx-helper: Entering consumer namespace %s\n", ns_path);
 	target_ns_fd = open(ns_path, O_RDONLY);
 	if (target_ns_fd < 0) {
 		perror("open target ns");
@@ -212,13 +212,13 @@ int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
 	if (path_copy) {
 		char *dir = dirname(path_copy);
 		if (dir) {
-			printf("pvx-helper: Creating directory %s\n", dir);
+			xc_debug("pvx-helper: Creating directory %s\n", dir);
 			mkdir_p(dir, 0755);
 		}
 		free(path_copy);
 	}
 
-	printf("pvx-helper: Mknod %s\n", target_path);
+	xc_debug("pvx-helper: Mknod %s\n", target_path);
 	unlink(target_path);
 
 	// 6. Create devnode

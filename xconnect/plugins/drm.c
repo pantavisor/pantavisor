@@ -31,10 +31,10 @@ static int drm_on_link_added(struct pvx_link *link)
 	if (!link->consumer || !link->consumer_socket || !link->provider_socket)
 		return -1;
 
-	printf("%s: Adding DRM link for %s (role: %s)\n", MODULE_NAME,
-	       link->consumer, link->role ? link->role : "none");
-	printf("%s: Target: %s, Provider Node: %s\n", MODULE_NAME,
-	       link->consumer_socket, link->provider_socket);
+	xc_debug("%s: Adding DRM link for %s (role: %s)\n", MODULE_NAME,
+		 link->consumer, link->role ? link->role : "none");
+	xc_debug("%s: Target: %s, Provider Node: %s\n", MODULE_NAME,
+		 link->consumer_socket, link->provider_socket);
 	if (link->consumer_pid <= 0) {
 		fprintf(stderr,
 			"%s: Consumer PID required for device injection\n",
@@ -42,12 +42,12 @@ static int drm_on_link_added(struct pvx_link *link)
 		return -1;
 	}
 
-	printf("%s: Calling helper to inject devnode...\n", MODULE_NAME);
+	xc_debug("%s: Calling helper to inject devnode...\n", MODULE_NAME);
 	int ret = pvx_helper_inject_devnode(link->consumer_socket,
 					    link->consumer_pid,
 					    link->provider_socket,
 					    link->provider_pid);
-	printf("%s: Helper returned %d\n", MODULE_NAME, ret);
+	xc_debug("%s: Helper returned %d\n", MODULE_NAME, ret);
 	if (ret < 0) {
 		fprintf(stderr, "%s: Failed to inject device node\n",
 			MODULE_NAME);

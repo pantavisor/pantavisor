@@ -46,9 +46,11 @@ static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 		return;
 	}
 
-	printf("%s: Accepted REST connection for service %s from %s (pid %d)\n",
-	       MODULE_NAME, link->name,
-	       link->consumer ? link->consumer : "unknown", link->consumer_pid);
+	xc_debug(
+		"%s: Accepted REST connection for service %s from %s (pid %d)\n",
+		MODULE_NAME, link->name,
+		link->consumer ? link->consumer : "unknown",
+		link->consumer_pid);
 
 	// Build provider socket path - use /proc/pid/root/ to access container namespace
 	if (link->provider_pid > 0) {
@@ -106,8 +108,9 @@ static int rest_on_link_added(struct pvx_link *link)
 	int fd;
 
 	if (link->consumer_pid > 0) {
-		printf("%s: Injecting REST socket %s into pid %d\n",
-		       MODULE_NAME, link->consumer_socket, link->consumer_pid);
+		xc_debug("%s: Injecting REST socket %s into pid %d\n",
+			 MODULE_NAME, link->consumer_socket,
+			 link->consumer_pid);
 		fd = pvx_helper_inject_unix_socket(link->consumer_socket,
 						   link->consumer_pid);
 	} else {
