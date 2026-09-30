@@ -42,6 +42,7 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 void pv_logserver_transition(const char *rev);
 void pv_logserver_stop(void);
 
+void pv_logserver_ready(void);
 void pv_logserver_start_update(const char *rev);
 void pv_logserver_stop_update(const char *rev);
 

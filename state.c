@@ -46,6 +46,7 @@
 #include "storage.h"
 #include "utils/str.h"
 #include "metadata.h"
+#include "logserver/logserver.h"
 #include "update/update.h"
 #include "utils/tsh.h"
 #include "utils/math.h"
@@ -594,6 +595,7 @@ static void pv_state_set_status(struct pv_state *s, plat_status_t status)
 		return;
 
 	if (status == PLAT_READY) {
+		pv_logserver_ready();
 		pv_hooks_set_default_env("system-done", s->rev, "", NULL, 0);
 		int ret = pv_hooks_run("system.d", true);
 		pv_hooks_unset_default_env(NULL, 0);

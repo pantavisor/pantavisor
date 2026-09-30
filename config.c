@@ -239,6 +239,8 @@ static struct pv_config_entry entries[] = {
 	  .value.s = NULL },
 	{ STR, "PV_LOG_STDOUT_TIMESTAMP_FORMAT", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },
+	{ STR, "PV_LOG_SYNC", PV | OEM, 0, false, .value.s = "smart" },
+	{ INT, "PV_LOG_SYNC_BOOT_WINDOW", PV | OEM, 0, false, .value.i = 120 },
 	{ TIMER_TYPE, "PV_LOG_TIMESTAMP", PV | OEM | RUN, 0, false,
 	  .value.i = RELATIV_TIMER },
 	{ INT, "PV_LOOP_INDEX_BASE", PV, 0, false, .value.i = -1 },

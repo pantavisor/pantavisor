@@ -27,7 +27,12 @@
 
 #include <stdbool.h>
 
-int logserver_utils_open_logfile(const char *path);
+int logserver_utils_open_logfile(const char *path, bool sync);
+int logserver_utils_open_datafile(const char *path,
+				  const struct logserver_log *log);
+void logserver_utils_close_datafile(int fd, const struct logserver_log *log);
+void logserver_utils_sync_start(void);
+void logserver_utils_sync_ready(void);
 int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 				const char *src, bool lf);
 int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log);
