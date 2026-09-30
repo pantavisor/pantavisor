@@ -47,8 +47,8 @@ static void wayland_on_accept(struct evconnlistener *listener,
 		return;
 	}
 
-	printf("%s: Accepted Wayland connection for %s from pid %d\n",
-	       MODULE_NAME, link->name, link->consumer_pid);
+	xc_debug("%s: Accepted Wayland connection for %s from pid %d\n",
+		 MODULE_NAME, link->name, link->consumer_pid);
 
 	// Build provider socket path - use /proc/pid/root/ to access container namespace
 	if (link->provider_pid > 0) {
@@ -108,14 +108,15 @@ static int wayland_on_link_added(struct pvx_link *link)
 	int fd;
 
 	if (link->consumer_pid > 0) {
-		printf("%s: Injecting Wayland socket %s into pid %d\n",
-		       MODULE_NAME, link->consumer_socket, link->consumer_pid);
+		xc_debug("%s: Injecting Wayland socket %s into pid %d\n",
+			 MODULE_NAME, link->consumer_socket,
+			 link->consumer_pid);
 		fd = pvx_helper_inject_unix_socket(link->consumer_socket,
 						   link->consumer_pid);
 	} else {
 		// Host-side listener
-		printf("%s: Creating host-side Wayland socket %s\n",
-		       MODULE_NAME, link->consumer_socket);
+		xc_debug("%s: Creating host-side Wayland socket %s\n",
+			 MODULE_NAME, link->consumer_socket);
 		fd = socket(AF_UNIX, SOCK_STREAM, 0);
 		struct sockaddr_un sun;
 		memset(&sun, 0, sizeof(sun));

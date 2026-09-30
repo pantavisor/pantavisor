@@ -149,8 +149,9 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 						role, sess->link->provider_pid);
 
 			if (uid < 0) {
-				printf("%s: Role '%s' not found in provider, using UID 65534 (nobody)\n",
-				       MODULE_NAME, role);
+				xc_debug(
+					"%s: Role '%s' not found in provider, using UID 65534 (nobody)\n",
+					MODULE_NAME, role);
 				uid = 65534;
 			}
 
@@ -158,8 +159,9 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 			hex_encode(uid_str, hex_identity, sizeof(hex_identity),
 				   strlen(uid_str));
 
-			printf("%s: Masquerading D-Bus identity as role '%s' (UID %d) for service %s\n",
-			       MODULE_NAME, role, uid, sess->link->name);
+			xc_debug(
+				"%s: Masquerading D-Bus identity as role '%s' (UID %d) for service %s\n",
+				MODULE_NAME, role, uid, sess->link->name);
 
 			evbuffer_add_printf(
 				bufferevent_get_output(sess->proxy.be_provider),
@@ -208,8 +210,8 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 		return;
 	}
 
-	printf("%s: Accepted connection for service %s from pid %d\n",
-	       MODULE_NAME, link->name, link->consumer_pid);
+	xc_debug("%s: Accepted connection for service %s from pid %d\n",
+		 MODULE_NAME, link->name, link->consumer_pid);
 
 	if (link->provider_pid > 0) {
 		snprintf(provider_path, sizeof(provider_path),
@@ -299,8 +301,8 @@ static int dbus_on_link_added(struct pvx_link *link)
 	}
 
 	if (link->consumer_pid > 0) {
-		printf("%s: Injecting socket %s into pid %d\n", MODULE_NAME,
-		       link->consumer_socket, link->consumer_pid);
+		xc_debug("%s: Injecting socket %s into pid %d\n", MODULE_NAME,
+			 link->consumer_socket, link->consumer_pid);
 		fd = pvx_helper_inject_unix_socket(link->consumer_socket,
 						   link->consumer_pid);
 	} else {

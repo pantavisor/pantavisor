@@ -104,6 +104,9 @@ void pvx_proxy_event_cb(struct bufferevent *bev, short events, void *ctx)
 	struct pvx_proxy *p = ctx;
 
 	if (events & BEV_EVENT_ERROR) {
+		// A failing provider likely means a stale link: reconcile soon.
+		if (bev == p->be_provider)
+			pvx_reconcile_kick();
 		// A peer errored (e.g. write to a closed consumer): drop the pair.
 		pvx_proxy_free(p);
 		return;
