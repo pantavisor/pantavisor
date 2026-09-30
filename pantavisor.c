@@ -977,6 +977,8 @@ static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_pv_run_state_cb);
 
+	pv_state_t queued_state = state;
+
 	switch (pv->issued_transition) {
 	case PV_SYSTEM_TRANSITION_NONREBOOT:
 		state = PV_STATE_RUN;
@@ -990,7 +992,8 @@ static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 	}
 	pv->issued_transition = PV_SYSTEM_TRANSITION_NONE;
 
-	pv_log(DEBUG, "next state: '%s'", pv_state_string(state));
+	if (state != queued_state)
+		pv_log(DEBUG, "next state: '%s'", pv_state_string(state));
 	next_state = state_table[state](pv);
 
 	if (next_state == PV_STATE_EXIT) {
@@ -1009,6 +1012,10 @@ static void _next_state(pv_state_t next_state)
 
 	pv_state_t prev_state = state;
 	state = next_state;
+
+	// WAIT re-enters every poll tick; only a real transition is DEBUG
+	pv_log(prev_state == next_state ? TRACE : DEBUG, "next state: '%s'",
+	       pv_state_string(next_state));
 
 	// Release the boot lock the first time the top-level FSM reaches
 	// steady state (RUN -> WAIT): _pv_run has resumed any pending update,
