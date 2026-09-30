@@ -63,7 +63,7 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 	if (create_dir(log, out->last_log) != 0)
 		return -1;
 
-	int fd = logserver_utils_open_logfile(out->last_log);
+	int fd = logserver_utils_open_datafile(out->last_log, log);
 	if (fd < 0) {
 		WARN_ONCE("Error opening file %s, errno = %d\n", out->last_log,
 			  errno);
@@ -73,7 +73,7 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 
 	int len = logserver_utils_print_json_fmt(fd, log);
 
-	close(fd);
+	logserver_utils_close_datafile(fd, log);
 
 	return len;
 }

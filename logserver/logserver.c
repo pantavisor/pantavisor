@@ -82,7 +82,8 @@ typedef enum {
 	LOG_CMD_STOP_UPDATE,
 	LOG_CMD_TRANSITION,
 	LOG_CMD_ADD_PLAT_SOCKET,
-	LOG_CMD_RM_PLAT_SOCKET
+	LOG_CMD_RM_PLAT_SOCKET,
+	LOG_CMD_READY
 } log_cmd_code_t;
 
 struct logserver_fd {
@@ -122,6 +123,8 @@ struct logserver {
 	struct dl_list conninfo;
 	struct dl_list psock;
 };
+
+static bool logserver_ready_sent;
 
 static struct logserver logserver = {
 	.pid = -1,
@@ -550,6 +553,10 @@ static int logserver_process_cmd(const struct logserver_log *log)
 			free(logserver.running_rev);
 		logserver.running_rev = strdup(data);
 		pv_logserver_rot_update(&logserver.rot, logserver.running_rev);
+		break;
+	case LOG_CMD_READY:
+		pv_log(DEBUG, "ready command received");
+		logserver_utils_sync_ready();
 		break;
 	case LOG_CMD_NULL:
 		pv_log(WARN, "unknown command received");
@@ -1101,6 +1108,7 @@ static pid_t logserver_start_service(const char *running_revision)
 			free(logserver.running_rev);
 		logserver.running_rev = strdup(running_revision);
 
+		logserver_utils_sync_start();
 		pv_log(DEBUG, "starting logserver loop");
 
 		while (!(logserver.flags & LOGSERVER_FLAG_STOP)) {
@@ -1118,6 +1126,10 @@ static pid_t logserver_start_service(const char *running_revision)
 		pv_log(ERROR, "Unable to reset sigmask in logserver parent: %s",
 		       strerror(errno));
 	}
+
+	// a respawned logserver must not reopen the boot window
+	if (logserver.pid > 0 && logserver_ready_sent)
+		pv_logserver_ready();
 
 	return logserver.pid;
 }
@@ -1535,6 +1547,15 @@ void pv_logserver_stop(void)
 	pv_logserver_free();
 
 	pv_log(DEBUG, "stopped logserver service");
+}
+
+void pv_logserver_ready(void)
+{
+	logserver_ready_sent = true;
+	if (logserver.pid < 1)
+		return;
+
+	pv_logserver_send_cmd(LOG_CMD_READY, NULL);
 }
 
 void pv_logserver_start_update(const char *rev)
