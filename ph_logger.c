@@ -42,6 +42,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <errno.h>
+#include <time.h>
 
 #include "../state.h"
 #include "../trestclient.h"
@@ -126,6 +127,11 @@ struct ph_logger {
 	pid_t range_service;
 	pid_t push_service;
 	struct dl_list files; // ph_logger_file
+	struct {
+		unsigned long count;
+		unsigned long suppressed;
+		time_t last_warn;
+	} push_fail;
 };
 
 // .files self-initialized to an empty list so ph_logger_close() is safe to
@@ -209,6 +215,37 @@ enum ph_logger_push_result {
 	PH_LOGGER_PUSH_REJECTED = -2,
 };
 
+// an unreachable Hub fails every push; warn on the first, then summarise
+#define PH_LOGGER_FAIL_WARN_INTERVAL_S (600)
+static void _note_push_failure(struct ph_logger *ph_logger, int trest_status)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	ph_logger->push_fail.count++;
+	if (ph_logger->push_fail.count > 1 &&
+	    ts.tv_sec - ph_logger->push_fail.last_warn < PH_LOGGER_FAIL_WARN_INTERVAL_S) {
+		ph_logger->push_fail.suppressed++;
+		return;
+	}
+
+	pv_log(WARN,
+	       "POST /logs/ got no HTTP response (transport error/timeout), trest_status=%d, failures=%lu, suppressed=%lu",
+	       trest_status, ph_logger->push_fail.count, ph_logger->push_fail.suppressed);
+	ph_logger->push_fail.suppressed = 0;
+	ph_logger->push_fail.last_warn = ts.tv_sec;
+}
+
+static void _note_push_ok(struct ph_logger *ph_logger)
+{
+	if (!ph_logger->push_fail.count)
+		return;
+
+	pv_log(INFO, "POST /logs/ recovered after %lu failed attempts",
+	       ph_logger->push_fail.count);
+	memset(&ph_logger->push_fail, 0, sizeof(ph_logger->push_fail));
+}
+
 static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger, char *logs)
 {
 	int ret = PH_LOGGER_PUSH_TRANSIENT;
@@ -246,10 +283,9 @@ auth:
 		 * without a libthttp change, so report it as a generic
 		 * transport error and surface the trest status for context.
 		 */
-		pv_log(WARN,
-		       "POST /logs/ got no HTTP response (transport error/timeout), trest_status=%d",
-		       res->status);
+		_note_push_failure(ph_logger, res->status);
 	} else if (res->code == THTTP_STATUS_OK) {
+		_note_push_ok(ph_logger);
 		ret = PH_LOGGER_PUSH_OK;
 	} else if (res->code == 429 /* Too Many Requests */ ||
 		   res->code == 408 /* Request Timeout */ ||
@@ -363,14 +399,14 @@ static off_t _load_log_file_pos(const char *path)
 	if (f)
 		return f->pos;
 
-	pv_log(DEBUG, "unknown file found in '%s'", path);
+	pv_log(TRACE, "unknown file found in '%s'", path);
 
 	// if not in memory, try to get it from xattr if possible
 	char dst[MAX_XATTR_SIZE] = { 0 };
 	off_t pos = 0;
 	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE) ||
 	    !strlen(pv_config_get_str(PV_STORAGE_LOGTEMPSIZE))) {
-		pv_log(DEBUG, "log file is persistent. Trying to get xattr...",
+		pv_log(TRACE, "log file is persistent. Trying to get xattr...",
 		       path);
 		if (getxattr(path, PH_LOGGER_POS_XATTR, dst, MAX_XATTR_SIZE) >
 		    0) {
