@@ -82,6 +82,14 @@ usage() {
 
 
 install_docker() {
+	# docker load writes <name>:latest; hold the lock across load+tag so a concurrent job's load can't slip between them
+	local lockfile=/tmp/pv_appengine.load.lock load_fd rc=0
+	if ! exec {load_fd}>"$lockfile"; then
+		pvtest_log ERROR "cannot open lock file '$lockfile' (owned by another user under /tmp with fs.protected_regular=1, or /tmp not writable)"
+		return 1
+	fi
+	flock "$load_fd"
+
 	NETSIM_PATH=${NETSIM_PATH:-"pantavisor-appengine-netsim-docker.tar"}
 	if [ -f "$NETSIM_PATH" ]; then
 		docker load -i "$NETSIM_PATH"
@@ -100,6 +108,10 @@ install_docker() {
 		[ "$PVTEST_IMAGE_TAG" = "latest" ] \
 			|| docker tag pantavisor-appengine:latest "pantavisor-appengine:$PVTEST_IMAGE_TAG"
 	fi
+	rc=$?
+
+	exec {load_fd}>&-
+	return $rc
 }
 
 clean_docker() {

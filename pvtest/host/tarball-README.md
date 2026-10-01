@@ -12,7 +12,8 @@ containers or a real device.
 ```
 
 Set `PVTEST_IMAGE_TAG` before `install-docker` (and every `run`/`clean-docker` after it) to
-give each concurrent job on a shared docker daemon its own image tag.
+give each concurrent job on a shared docker daemon its own image tag. `install-docker`
+serialises loads on `/tmp/pv_appengine.load.lock` so concurrent jobs each tag their own build.
 
 The runner uses `sudo -n` (non-interactive) for a few commands while tests run,
 so those must be allowed without a password. Add this once with `sudo visudo`:
