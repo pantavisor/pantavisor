@@ -193,6 +193,8 @@ jobs:
     env:
       WORKSPACE: /tmp/workspace-${{ github.run_id }}-${{ matrix.scope }}
       PVTEST_WORKSPACE: /tmp/pvtest-workspace-${{ github.run_id }}-${{ matrix.scope }}
+      # runners share one docker daemon: a per-job tag keeps neighbouring jobs off this job's images
+      PVTEST_IMAGE_TAG: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.scope }}
     steps:
       - name: Download pvtest distro
         uses: actions/download-artifact@v7
@@ -281,24 +283,9 @@ jobs:
       - name: Clean up
         if: always()
         run: |
-          busy=0
-          for f in /tmp/pv_appengine.slot.*.lock; do
-            [ -e "$f" ] || continue
-            flock -n "$f" true || busy=1
-          done
-
-          if [ "$busy" = 0 ]; then
-            docker ps -aq \
-            | xargs -r docker inspect --format '{{.Config.Image}} {{.ID}}' \
-            | grep -E 'pantavisor-appengine(-netsim|-tester)?' \
-            | awk '{print $2}' \
-            | xargs -r docker rm -f
-
-            docker images --format '{{.Repository}}:{{.Tag}}' \
-            | grep -E '^pantavisor-appengine(-netsim|-tester)?:' \
-            | xargs -r docker rmi -f
-          else
-            echo "another pvtest run holds a slot on this runner; skipping the docker sweep"
+          # scoped to this job's PVTEST_IMAGE_TAG; a global sweep would untag images a neighbouring job still needs
+          if [ -x "$WORKSPACE/test.docker.sh" ]; then
+            (cd "$WORKSPACE" && ./test.docker.sh clean-docker)
           fi
 
           rm -rf $WORKSPACE
