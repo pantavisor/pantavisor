@@ -48,11 +48,8 @@ The same values are reported per group by [`/groups`](#groups) and per revision 
 | `STOPPING` | Stopping because of an [update transition](../overview/updates.md) |
 | `STOPPED` | Stopped |
 
-`MOUNTED`, `STARTED` and `READY` are also the three values accepted as a container's or group's
-[`status_goal`](pantavisor-state-format-v2.md#7-container-containerrunjson). `STAGED` is not a
-`status_goal` value: it is reached with `status_goal: "MOUNTED"` plus
-[`lifecycle_goal: "STAGED"`](pantavisor-state-format-v2.md#7-container-containerrunjson), which
-accepts all four values.
+`MOUNTED`, `STAGED`, `STARTED` and `READY` are also the four
+[status goals](../overview/containers.md#status-goal) a container or group can be given.
 
 ### Lifecycle control
 
