@@ -1101,6 +1101,7 @@ static pid_t logserver_start_service(const char *running_revision)
 			free(logserver.running_rev);
 		logserver.running_rev = strdup(running_revision);
 
+		logserver_utils_sync_start();
 		pv_log(DEBUG, "starting logserver loop");
 
 		while (!(logserver.flags & LOGSERVER_FLAG_STOP)) {
