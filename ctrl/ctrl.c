@@ -153,7 +153,7 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 		return -1;
 
 	const char *uri = evhttp_request_get_uri(req);
-	pv_log(DEBUG, "New HTTP request recived: %s", uri);
+	pv_log(TRACE, "New HTTP request received: %s", uri);
 
 	int err = 0;
 

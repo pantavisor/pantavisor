@@ -94,7 +94,7 @@ char *pv_pantahub_msg_parse_next_step(const char *json)
 
 	size = jsmnutil_array_count(json, tokv);
 	if (size <= 0) {
-		pv_log(DEBUG, "no pending revisions in Hub");
+		pv_log(TRACE, "no pending revisions in Hub");
 		goto out;
 	}
 

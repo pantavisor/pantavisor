@@ -187,7 +187,7 @@ static void _count_inc(void)
 
 	if (wl.count == 1) {
 		if (_sysfs_write(wl.lock_fd, WL_NAME) == 0)
-			pv_log(DEBUG, "wakelock: wake_lock/%s", WL_NAME);
+			pv_log(TRACE, "wakelock: wake_lock/%s", WL_NAME);
 	}
 }
 
@@ -200,8 +200,28 @@ static void _count_dec(void)
 
 	if (wl.count == 0) {
 		if (_sysfs_write(wl.unlock_fd, WL_NAME) == 0)
-			pv_log(DEBUG, "wakelock: wake_unlock/%s", WL_NAME);
+			pv_log(TRACE, "wakelock: wake_unlock/%s", WL_NAME);
 	}
+}
+
+// scopes taken on every poll tick would flood the log at DEBUG
+static bool _scope_periodic(enum wl_scope scope)
+{
+	return scope == WL_USRMETA || scope == WL_UPDATE_CHECK;
+}
+
+// one line per transition, noting when the kernel lock itself flipped
+static void _log_transition(const char *what, enum wl_scope scope, bool flipped)
+{
+	const char *note = "";
+
+	if (flipped)
+		note = wl.count ? " (kernel lock taken)" :
+				  " (kernel lock dropped)";
+
+	pv_log(_scope_periodic(scope) ? TRACE : DEBUG,
+	       "wakelock: %s scope=%s count=%d%s", what, _scope_str(scope),
+	       wl.count, note);
 }
 
 void pv_wakelock_acquire(enum wl_scope scope)
@@ -216,8 +236,7 @@ void pv_wakelock_acquire(enum wl_scope scope)
 	wl.held[scope] = true;
 	_count_inc();
 
-	pv_log(DEBUG, "wakelock: ACQUIRE scope=%s count=%d", _scope_str(scope),
-	       wl.count);
+	_log_transition("ACQUIRE", scope, wl.count == 1);
 }
 
 void pv_wakelock_release(enum wl_scope scope)
@@ -232,8 +251,7 @@ void pv_wakelock_release(enum wl_scope scope)
 	wl.held[scope] = false;
 	_count_dec();
 
-	pv_log(DEBUG, "wakelock: RELEASE scope=%s count=%d", _scope_str(scope),
-	       wl.count);
+	_log_transition("RELEASE", scope, wl.count == 0);
 }
 
 // devmeta dirty-gated scope ---------------------------------------------------
