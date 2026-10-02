@@ -101,8 +101,13 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
         run: |
-          aws s3 cp "CHANGELOG/CHANGELOG-${MAJOR}.md" \
-            "s3://${AWS_S3_BUCKET}/changelog/pantavisor/CHANGELOG-${MAJOR}.md"
+          # A misconfigured secret once let `aws s3 cp` exit 0 while the object
+          # never reached the bucket the seed step reads from: log who uploads
+          # and fail unless the object is listed afterwards.
+          aws sts get-caller-identity --query Arn --output text
+          DEST="s3://${AWS_S3_BUCKET}/changelog/pantavisor/CHANGELOG-${MAJOR}.md"
+          aws s3 cp "CHANGELOG/CHANGELOG-${MAJOR}.md" "$DEST"
+          aws s3 ls "$DEST"
 
       - name: Render release-notes section to a file
         run: |
