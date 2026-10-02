@@ -244,7 +244,8 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 static pv_disk_format_t parse_disks_get_format(const char *str,
 					       jsmntok_t *diskv, int diskc)
 {
-	char *format_str = pv_json_get_value(str, "format", diskv, diskc);
+	char *format_str =
+		pv_json_get_value_toplevel(str, "format", diskv, diskc);
 	pv_disk_format_t format = pv_disk_str_to_format(format_str);
 	free(format_str);
 	return format;
@@ -253,7 +254,7 @@ static pv_disk_format_t parse_disks_get_format(const char *str,
 static pv_disk_dm_crypt_mode_t
 parse_disks_dm_crypt_get_mode(const char *str, jsmntok_t *diskv, int diskc)
 {
-	char *mode_str = pv_json_get_value(str, "mode", diskv, diskc);
+	char *mode_str = pv_json_get_value_toplevel(str, "mode", diskv, diskc);
 	pv_disk_dm_crypt_mode_t mode = pv_disk_dm_crypt_str_to_mode(mode_str);
 	free(mode_str);
 	return mode;
@@ -262,7 +263,7 @@ parse_disks_dm_crypt_get_mode(const char *str, jsmntok_t *diskv, int diskc)
 static pv_disk_t parse_disks_get_type(const char *str, jsmntok_t *diskv,
 				      int diskc)
 {
-	char *type_str = pv_json_get_value(str, "type", diskv, diskc);
+	char *type_str = pv_json_get_value_toplevel(str, "type", diskv, diskc);
 	pv_disk_t type = pv_disk_str_to_type(type_str);
 	free(type_str);
 	return type;
@@ -272,7 +273,7 @@ static bool parse_disks_get_default_key(const char *str, const char *key,
 					jsmntok_t *diskv, int diskc)
 {
 	bool ret = false;
-	char *val = pv_json_get_value(str, key, diskv, diskc);
+	char *val = pv_json_get_value_toplevel(str, key, diskv, diskc);
 
 	if (val && !strcmp(val, "yes"))
 		ret = true;
@@ -306,9 +307,16 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 	}
 
 	t = tokv + 1;
-	while ((str = pv_json_array_get_one_str(value, &size, &t))) {
+	jsmntok_t *tok_end = tokv + tokc;
+	int idx = 0;
+	while (idx < size && t < tok_end) {
 		struct pv_disk *d;
 		int diskc;
+		int el_end = t->end;
+
+		idx++;
+		str = pv_json_get_one_str(value, &t);
+		t = pv_json_array_elem_next(t, tok_end, el_end);
 
 		if (jsmnutil_parse_json(str, &diskv, &diskc) <= 0) {
 			pv_log(ERROR, "Invalid disk entry");
@@ -321,19 +329,19 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 			goto out;
 		}
 
-		d->name = pv_json_get_value(str, "name", diskv, diskc);
-		d->path = pv_json_get_value(str, "path", diskv, diskc);
-		d->mount_target =
-			pv_json_get_value(str, "mount_target", diskv, diskc);
-		d->mount_ops =
-			pv_json_get_value(str, "mount_options", diskv, diskc);
-		d->format_ops =
-			pv_json_get_value(str, "format_options", diskv, diskc);
-		d->provision =
-			pv_json_get_value(str, "provision", diskv, diskc);
-		d->provision_ops = pv_json_get_value(str, "provision_options",
-						     diskv, diskc);
-		d->uuid = pv_json_get_value(str, "uuid", diskv, diskc);
+		d->name = pv_json_get_value_toplevel(str, "name", diskv, diskc);
+		d->path = pv_json_get_value_toplevel(str, "path", diskv, diskc);
+		d->mount_target = pv_json_get_value_toplevel(
+			str, "mount_target", diskv, diskc);
+		d->mount_ops = pv_json_get_value_toplevel(str, "mount_options",
+							  diskv, diskc);
+		d->format_ops = pv_json_get_value_toplevel(
+			str, "format_options", diskv, diskc);
+		d->provision = pv_json_get_value_toplevel(str, "provision",
+							  diskv, diskc);
+		d->provision_ops = pv_json_get_value_toplevel(
+			str, "provision_options", diskv, diskc);
+		d->uuid = pv_json_get_value_toplevel(str, "uuid", diskv, diskc);
 		d->type = parse_disks_get_type(str, diskv, diskc);
 		d->mode = parse_disks_dm_crypt_get_mode(str, diskv, diskc);
 
@@ -343,8 +351,6 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 				       "disk '%s' has unknown type, skipping",
 				       d->name ? d->name : "(null)");
 				dl_list_del(&d->list);
-				t = t +
-				    (jsmnutil_object_key_count(str, diskv) * 2);
 				free(d->name);
 				free(d->path);
 				free(d->mount_target);
@@ -384,8 +390,8 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 		/* Optional name aliases — lets volumes refer to this disk
 		 * by a synonym. Collisions are rejected later by
 		 * pv_disk_list_validate(). */
-		char *aliases_str =
-			pv_json_get_value(str, "aliases", diskv, diskc);
+		char *aliases_str = pv_json_get_value_toplevel(str, "aliases",
+							       diskv, diskc);
 		if (aliases_str) {
 			jsmntok_t *atokv = NULL;
 			int atokc;
@@ -420,8 +426,8 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 
 		// parse dual mode arrays
 		if (d->type == DISK_DUAL) {
-			char *disks_str =
-				pv_json_get_value(str, "disks", diskv, diskc);
+			char *disks_str = pv_json_get_value_toplevel(
+				str, "disks", diskv, diskc);
 			if (disks_str) {
 				jsmntok_t *dtokv = NULL;
 				int dtokc;
@@ -450,8 +456,8 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 				free(disks_str);
 			}
 
-			char *order_str = pv_json_get_value(str, "init_order",
-							    diskv, diskc);
+			char *order_str = pv_json_get_value_toplevel(
+				str, "init_order", diskv, diskc);
 			if (order_str) {
 				jsmntok_t *otokv = NULL;
 				int otokc;
@@ -481,10 +487,6 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 			}
 		}
 
-		// you need to jump (in tokens) to the next array, so
-		// this is the number of keys + values
-		t = t + (jsmnutil_object_key_count(str, diskv) * 2);
-
 		if (diskv) {
 			free(diskv);
 			diskv = NULL;
@@ -511,7 +513,8 @@ out:
 
 static int parse_disks(struct pv_state *s, char *value)
 {
-	return parse_disks_ex(s, value, false);
+	// lenient like disks_v3: an unknown disk type must not reject the revision
+	return parse_disks_ex(s, value, true);
 }
 
 static int parse_bsp(struct pv_state *s, char *value, int n)
@@ -533,29 +536,33 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->bsp.config = pv_json_get_value(buf, "initrd_config", tokv, tokc);
-	s->bsp.img.ut.fit = pv_json_get_value(buf, "fit", tokv, tokc);
+	s->bsp.config =
+		pv_json_get_value_toplevel(buf, "initrd_config", tokv, tokc);
+	s->bsp.img.ut.fit = pv_json_get_value_toplevel(buf, "fit", tokv, tokc);
 	if (!s->bsp.img.ut.fit) {
 		s->bsp.img.rpiab.bootimg =
-			pv_json_get_value(buf, "rpiab", tokv, tokc);
+			pv_json_get_value_toplevel(buf, "rpiab", tokv, tokc);
 
 		if (!s->bsp.img.rpiab.bootimg) {
-			s->bsp.img.std.kernel =
-				pv_json_get_value(buf, "linux", tokv, tokc);
-			s->bsp.img.std.fdt =
-				pv_json_get_value(buf, "fdt", tokv, tokc);
-			s->bsp.img.std.initrd =
-				pv_json_get_value(buf, "initrd", tokv, tokc);
+			s->bsp.img.std.kernel = pv_json_get_value_toplevel(
+				buf, "linux", tokv, tokc);
+			s->bsp.img.std.fdt = pv_json_get_value_toplevel(
+				buf, "fdt", tokv, tokc);
+			s->bsp.img.std.initrd = pv_json_get_value_toplevel(
+				buf, "initrd", tokv, tokc);
 		}
 	}
-	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
+	s->bsp.firmware =
+		pv_json_get_value_toplevel(buf, "firmware", tokv, tokc);
 
 	uname(&uts);
 	sprintf(modules_uts, "modules_%s", uts.release);
 
-	s->bsp.modules = pv_json_get_value(buf, modules_uts, tokv, tokc);
+	s->bsp.modules =
+		pv_json_get_value_toplevel(buf, modules_uts, tokv, tokc);
 	if (!s->bsp.modules)
-		s->bsp.modules = pv_json_get_value(buf, "modules", tokv, tokc);
+		s->bsp.modules =
+			pv_json_get_value_toplevel(buf, "modules", tokv, tokc);
 
 	if (s->bsp.firmware) {
 		v = pv_volume_add(s, s->bsp.firmware);
@@ -594,8 +601,10 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	key_i = key;
 	while (*key_i) {
-		if (strncmp("addons", buf + (*key_i)->start,
-			    strlen("addons"))) {
+		int key_i_len = (*key_i)->end - (*key_i)->start;
+		// exact match: a future key like "addons_extra" must not be fed to this handler
+		if (!pv_str_matches(buf + (*key_i)->start, key_i_len, "addons",
+				    strlen("addons"))) {
 			key_i++;
 			continue;
 		}
@@ -1205,7 +1214,8 @@ static jsmntok_t *do_lookup_json_key(jsmntok_t **keys, char *json_buf,
 		}
 		snprintf(curr_key, length + 1, "%s",
 			 json_buf + (*keys_walker)->start);
-		if (strncmp(curr_key, key, strlen(key)) == 0)
+		// exact match only: a strncmp bounded by strlen(key) would also match a longer key sharing this prefix
+		if (strcmp(curr_key, key) == 0)
 			found = true;
 		free(curr_key);
 		if (found)
@@ -1418,6 +1428,14 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+// a value the running parser doesn't recognize may just be newer schema; never reject the revision over it
+static void warn_unknown_value(const char *field, const char *value,
+			       const char *fallback)
+{
+	pv_log(WARN, "unknown %s '%s' (newer schema?), using '%s'", field,
+	       value, fallback);
+}
+
 static restart_policy_t parse_restart_policy(char *value, size_t len)
 {
 	if (pv_str_matches(value, len, "system", strlen("system")))
@@ -1425,8 +1443,8 @@ static restart_policy_t parse_restart_policy(char *value, size_t len)
 	else if (pv_str_matches(value, len, "container", strlen("container")))
 		return RESTART_CONTAINER;
 
-	pv_log(ERROR, "invalid restart policy '%s'", value);
-	return RESTART_NONE;
+	warn_unknown_value("restart_policy", value, "system");
+	return RESTART_SYSTEM;
 }
 
 static int do_action_for_restart_policy(struct json_key_action *jka,
@@ -1439,9 +1457,6 @@ static int do_action_for_restart_policy(struct json_key_action *jka,
 		return -1;
 
 	restart = parse_restart_policy(value, strlen(value));
-	if (restart == RESTART_NONE)
-		return -1;
-
 	pv_platform_set_restart_policy(*bundle->platform, restart);
 
 	return 0;
@@ -1457,8 +1472,9 @@ static plat_status_t parse_status_goal(char *value, size_t len)
 	else if (pv_str_matches(value, len, "READY", strlen("READY")))
 		return PLAT_READY;
 
-	pv_log(ERROR, "invalid status goal '%s'", value);
-	return PLAT_NONE;
+	// never run something whose goal we don't understand
+	warn_unknown_value("status_goal", value, "MOUNTED");
+	return PLAT_MOUNTED;
 }
 
 // lifecycle_goal accepts every goal this pantavisor knows, incl. STAGED; an unknown value is handled by the caller, never logged as an error here
@@ -1485,9 +1501,6 @@ static int do_action_for_status_goal(struct json_key_action *jka, char *value)
 		return -1;
 
 	status = parse_status_goal(value, strlen(value));
-	if (status == PLAT_NONE)
-		return -1;
-
 	pv_platform_set_status_goal(*bundle->platform, status);
 
 	return 0;
@@ -2138,13 +2151,20 @@ static int parse_groups(struct pv_state *s, char *value)
 	}
 
 	t = tokv + 1;
-	while ((str = pv_json_array_get_one_str(value, &size, &t))) {
+	jsmntok_t *tok_end = tokv + tokc;
+	int idx = 0;
+	while (idx < size && t < tok_end) {
 		struct pv_group *g;
 		plat_status_t status = PLAT_STARTED;
 		restart_policy_t restart = RESTART_CONTAINER;
 		bool has_status_goal = false;
 		jsmntok_t *groupv;
 		int groupc, sizec, timeout;
+		int el_end = t->end;
+
+		idx++;
+		str = pv_json_get_one_str(value, &t);
+		t = pv_json_array_elem_next(t, tok_end, el_end);
 
 		if (jsmnutil_parse_json(str, &groupv, &groupc) <= 0) {
 			pv_log(ERROR, "invalid group entry");
@@ -2157,18 +2177,18 @@ static int parse_groups(struct pv_state *s, char *value)
 			goto out;
 		}
 
-		tmp = pv_json_get_value(str, "status_goal", groupv, groupc);
+		tmp = pv_json_get_value_toplevel(str, "status_goal", groupv,
+						 groupc);
 		if (tmp) {
 			has_status_goal = true;
 			status = parse_status_goal(tmp, strlen(tmp));
-			if (status == PLAT_NONE)
-				goto out;
 			free(tmp);
 			tmp = NULL;
 		}
 
 		// lifecycle_goal wins over status_goal (or the PLAT_STARTED default) when known
-		tmp = pv_json_get_value(str, "lifecycle_goal", groupv, groupc);
+		tmp = pv_json_get_value_toplevel(str, "lifecycle_goal", groupv,
+						 groupc);
 		if (tmp) {
 			plat_status_t lifecycle_status =
 				parse_lifecycle_goal(tmp, strlen(tmp));
@@ -2185,7 +2205,8 @@ static int parse_groups(struct pv_state *s, char *value)
 			tmp = NULL;
 		}
 
-		tmp = pv_json_get_value(str, "timeout", groupv, groupc);
+		tmp = pv_json_get_value_toplevel(str, "timeout", groupv,
+						 groupc);
 		if (tmp) {
 			errno = 0;
 			timeout = strtol(tmp, NULL, 10);
@@ -2203,22 +2224,22 @@ static int parse_groups(struct pv_state *s, char *value)
 			       timeout);
 		}
 
-		tmp = pv_json_get_value(str, "restart_policy", groupv, groupc);
+		tmp = pv_json_get_value_toplevel(str, "restart_policy", groupv,
+						 groupc);
 		if (tmp) {
 			restart = parse_restart_policy(tmp, strlen(tmp));
-			if (restart == RESTART_NONE)
-				goto out;
 			free(tmp);
 			tmp = NULL;
 		}
 
-		tmp = pv_json_get_value(str, "name", groupv, groupc);
+		tmp = pv_json_get_value_toplevel(str, "name", groupv, groupc);
 		if (!tmp) {
 			pv_log(ERROR, "group does not have a name", str);
 			goto out;
 		}
 		g = pv_group_new(tmp, timeout, status, restart);
-		tmp2 = pv_json_get_value(str, "auto_recovery", groupv, groupc);
+		tmp2 = pv_json_get_value_toplevel(str, "auto_recovery", groupv,
+						  groupc);
 		if (tmp2) {
 			jsmntok_t *artokv;
 			int artokc;
@@ -2240,9 +2261,6 @@ static int parse_groups(struct pv_state *s, char *value)
 
 		free(str);
 		str = NULL;
-
-		// skip number of keys in group object plus their values
-		t += (sizec * 2);
 	}
 
 	ret = 0;
@@ -2461,11 +2479,17 @@ static int parse_network_pools(struct pv_state *s, char *buf)
 		gateway = pv_json_get_value(str, "gateway", poolv, poolc);
 		nat_str = pv_json_get_value(str, "nat", poolv, poolc);
 
-		// Determine pool type
-		if (type_str && strcmp(type_str, "macvlan") == 0)
-			type = POOL_TYPE_MACVLAN;
-		else
+		// Determine pool type; unknown (newer schema?) skips the pool rather than misclassifying it as bridge
+		if (!type_str || strcmp(type_str, "bridge") == 0) {
 			type = POOL_TYPE_BRIDGE;
+		} else if (strcmp(type_str, "macvlan") == 0) {
+			type = POOL_TYPE_MACVLAN;
+		} else {
+			pv_log(WARN,
+			       "network pool '%s' has unknown type '%s' (newer schema?), skipping",
+			       name, type_str);
+			goto free_pool;
+		}
 
 		// Parse NAT flag
 		nat = (nat_str && strcmp(nat_str, "true") == 0);
@@ -2571,7 +2595,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 		goto out;
 	}
 
-	value = pv_json_get_value(buf, "groups", tokv, tokc);
+	value = pv_json_get_value_toplevel(buf, "groups", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "groups not defined in device.json");
 		goto out;
@@ -2583,7 +2607,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 	}
 	free(value);
 
-	value = pv_json_get_value(buf, "disks", tokv, tokc);
+	value = pv_json_get_value_toplevel(buf, "disks", tokv, tokc);
 	if (value) {
 		if (parse_disks(this, value)) {
 			pv_log(ERROR, "cannot parse disks in device.json");
@@ -2593,7 +2617,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 		free(value);
 		value = NULL;
 	}
-	value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
+	value = pv_json_get_value_toplevel(buf, "disks_v2", tokv, tokc);
 	if (value) {
 		if (parse_disks(this, value)) {
 			pv_log(ERROR, "cannot parse disks_v2 in device.json");
@@ -2603,7 +2627,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 		free(value);
 		value = NULL;
 	}
-	value = pv_json_get_value(buf, "disks_v3", tokv, tokc);
+	value = pv_json_get_value_toplevel(buf, "disks_v3", tokv, tokc);
 	if (value) {
 		if (parse_disks_ex(this, value, true)) {
 			pv_log(ERROR, "cannot parse disks_v3 in device.json");
@@ -2623,7 +2647,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 		goto out;
 	}
 
-	value = pv_json_get_value(buf, "volumes", tokv, tokc);
+	value = pv_json_get_value_toplevel(buf, "volumes", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "volumes not defined in device.json");
 	} else {
@@ -2637,7 +2661,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 	}
 
 	// Parse network pools (optional)
-	value = pv_json_get_value(buf, "network", tokv, tokc);
+	value = pv_json_get_value_toplevel(buf, "network", tokv, tokc);
 	if (value) {
 		if (parse_network(this, value)) {
 			pv_log(WARN, "failed to parse network in device.json");
@@ -2721,14 +2745,21 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 	while (*k) {
 		n = (*k)->end - (*k)->start;
 
-		// avoid already parsed keys
-		if (!strncmp("bsp/run.json", buf + (*k)->start, n) ||
-		    !strncmp("bsp/drivers.json", buf + (*k)->start, n) ||
-		    !strncmp("disks.json", buf + (*k)->start, n) ||
-		    !strncmp("disks_v3.json", buf + (*k)->start, n) ||
-		    !strncmp("groups.json", buf + (*k)->start, n) ||
-		    !strncmp("device.json", buf + (*k)->start, n) ||
-		    !strncmp("#spec", buf + (*k)->start, n)) {
+		// avoid already parsed keys (exact match, not prefix)
+		if (pv_str_matches(buf + (*k)->start, n, "bsp/run.json",
+				   strlen("bsp/run.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "bsp/drivers.json",
+				   strlen("bsp/drivers.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "disks.json",
+				   strlen("disks.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "disks_v3.json",
+				   strlen("disks_v3.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "groups.json",
+				   strlen("groups.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "device.json",
+				   strlen("device.json")) ||
+		    pv_str_matches(buf + (*k)->start, n, "#spec",
+				   strlen("#spec"))) {
 			k++;
 			continue;
 		}
@@ -2775,11 +2806,15 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 			   !pv_is_sha256_hex_string(value)) {
 			pv_log(DEBUG, "adding json '%s'", key);
 			pv_jsons_add(this, key, value);
-			// everything else is added to the list of objects
-		} else {
+			// a sha256-shaped value is a content-addressed object; anything else is an unknown key (newer schema?), not a download to fail on
+		} else if (pv_is_sha256_hex_string(value)) {
 			pv_log(DEBUG, "adding object '%s'", key);
 			pv_objects_add(this, key, value,
 				       pv_config_get_str(PV_STORAGE_MNTTYPE));
+		} else {
+			pv_log(WARN,
+			       "ignoring unknown key '%s': neither a .json file nor an object hash",
+			       key);
 		}
 
 		// free intermediates

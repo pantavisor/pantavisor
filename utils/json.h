@@ -39,6 +39,12 @@ char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
 			int tokc);
 const char *pv_json_get_value_ref(const char *buf, const char *key,
 				  jsmntok_t *tok, int tokc, int *len);
+// like pv_json_get_value, but only matches an immediate member of tok, never a same-named key nested in a member's value
+char *pv_json_get_value_toplevel(const char *buf, const char *key,
+				 jsmntok_t *tok, int tokc);
+// advance past an array element's whole subtree by byte range (tok_end bounds the array); safe for nested object/array values, unlike a flat keycount*2 skip
+jsmntok_t *pv_json_array_elem_next(jsmntok_t *t, jsmntok_t *tok_end,
+				   int el_end);
 
 char *pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
 

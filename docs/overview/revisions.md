@@ -35,6 +35,13 @@ pvcontrol steps ls                 # every revision installed on the device
 pvcontrol steps get current        # the running revision's state.json
 ```
 
+## Compatibility across Pantavisor versions
+
+A revision can upgrade Pantavisor and use a feature of the new version in the same update. Keys the
+installing Pantavisor does not know are ignored, and unknown values fall back to a safe default. See
+[Compatibility](../reference/pantavisor-state-format-v2.md#compatibility) for the fallbacks and for
+what still causes a [WONTGO](updates.md#wontgo).
+
 ## Reference
 
 - [State Format](../reference/pantavisor-state-format-v2.md) — every root key and manifest, with a [complete example](../reference/pantavisor-state-format-v2.md#10-complete-example)

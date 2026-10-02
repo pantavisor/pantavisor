@@ -12,6 +12,35 @@ subsystems the `device.json` and `run.json` manifests configure.
 
 A Pantavisor revision is defined by a single JSON object called `state.json`. It acts as a **virtual filesystem manifest** where every key represents a relative file path within the revision, and every value is either a nested configuration object or a SHA256 identifier for a binary artifact.
 
+## Compatibility
+
+A revision can upgrade Pantavisor and use a feature of the new version in the same update. The
+Pantavisor that installs it ignores keys it does not know and falls back on values it does not know:
+
+| Field | Unknown value | Result |
+|:---|:---|:---|
+| `status_goal` (container or group) | Enum value | `MOUNTED` |
+| `restart_policy` (container or group) | Enum value | `system` |
+| `persistence` (storage object) | Enum value | `boot` |
+| disk `type` (`disks`, `disks_v2`, `disks_v3`) | Enum value | Disk entry skipped |
+| network pool `type` | Enum value | Pool entry skipped |
+| Any object or container key | Key | Ignored |
+
+Each fallback logs a warning in the Pantavisor log:
+
+```
+unknown status_goal 'NEWGOAL' (newer schema?), using 'MOUNTED'
+```
+
+The update is rejected with [WONTGO](../overview/updates.md#wontgo) only when:
+
+- the JSON is malformed or `#spec` is unknown
+- a mandatory identity field is missing, such as a container's `name`
+- the BSP boot image format cannot be installed by the running Pantavisor
+- a signature or checksum fails, or a disk alias is ambiguous
+
+A revision that changes the BSP is parsed again after the [reboot](../overview/updates.md#reboot-transition).
+
 ## 1. Root Level (`state.json`)
 
 These keys represent the files at the root of a revision.
@@ -76,9 +105,9 @@ The unified hardware and orchestration manifest.
 
 | Key | Value Type | Description |
 |:---|:---|:---|
-| `disks` | array | List of [Disk Definitions](#6-storage-disksjson). Strict parsing — unknown types are fatal. |
+| `disks` | array | List of [Disk Definitions](#6-storage-disksjson). |
 | `disks_v2` | array | Same schema as `disks`, additive. Parsed independently. |
-| `disks_v3` | array | Same schema as `disks` with lenient parsing (unknown types are warned and skipped). Required for the `dual` type — old firmware safely ignores this key. |
+| `disks_v3` | array | Same schema as `disks`. Required for the `dual` type — old firmware safely ignores this key. |
 | `groups` | array | List of [Orchestration Groups](#5-orchestration-groupsjson). |
 | `volumes` | object | List of [Persistent Volumes](#storage-object) for Pantavisor itself. |
 
