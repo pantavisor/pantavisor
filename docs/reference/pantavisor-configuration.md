@@ -133,6 +133,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_POWER_WAKE_RUN_WINDOW` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `0` | [managed power mode](pantavisor-power.md#configuration-keys): after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
+| `PV_REVISION_TRY_BOOTS` | integer | `3` | boots of the same [try revision](../overview/updates.md#reboot-transition) before Pantavisor clears `pv_try` itself; `0` disables |
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../overview/storage.md#artifact-checksum) |
 | `PV_SECUREBOOT_HANDLERS` | `0` or `1` | `1` | enable handlers verification |
 | `PV_SECUREBOOT_MODE` | `disabled`, `audit`, `lenient` or `strict` | `lenient` | set secureboot mode |
@@ -267,6 +268,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_POWER_WAKE_RUN_WINDOW`            | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_REMOUNT_POLICY`                   | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `PV_REVISION_RETRIES`                | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_REVISION_TRY_BOOTS`              | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SECUREBOOT_CHECKSUM`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SECUREBOOT_HANDLERS`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SECUREBOOT_MODE`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |

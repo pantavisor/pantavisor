@@ -412,6 +412,10 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 	case PV_UPDATE_PROGRESS_MSG_CANCELLED:
 		ret = strdup("Cancelled as requested by owner");
 		break;
+	case PV_UPDATE_PROGRESS_MSG_TRY_BOOTS:
+		asprintf(&ret, "Revision did not finish booting in %d attempts",
+			 pv_config_get_int(PV_REVISION_TRY_BOOTS));
+		break;
 	default:
 		ret = strdup("Internal error");
 	}

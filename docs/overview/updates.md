@@ -115,6 +115,8 @@ Reboot transitions are performed based on the location of the changes belonging 
 
 In this case, Pantavisor will stop all the containers and reboot the board.
 
+The bootloader boots the new revision once. If that boot fails, the next boot falls back to the latest [DONE](#done) revision. If the bootloader cannot record that it already tried, it keeps booting the new revision. Pantavisor counts these boots, and after [`PV_REVISION_TRY_BOOTS`](../reference/pantavisor-configuration.md#summary) of them (default `3`) it marks the revision [ERROR](#error) and clears the try itself, so the board comes back on the DONE revision. In that case the DONE revision does not report the rollback; the Hub only gets the ERROR when it next sends the revision to the device.
+
 #### Non-reboot transition 
 
 Non-reboot transitions are performed after an update that does not contain any changes in any of the components described for the [reboot transition](#reboot-transition).
@@ -182,6 +184,7 @@ Stale revision | An revision was found in [hub](remote-control.md#pantacor-hub) 
 Status goal not reached | [Status goal](containers.md#status-goal) of a container could not be reached before the end of [TESTING](#testing) |
 A container could not be started | A [container](containers.md) failed during LXC start up |
 Unexpected rollback | Crash or power cycle before having the chance to report any meaningful status |
+Revision did not finish booting in N attempts | The bootloader kept booting the new revision; see [Reboot transition](#reboot-transition) |
 
 ### CANCEL
 
@@ -197,5 +200,5 @@ Cancelled as requested by owner | The device owner cancelled the revision from [
 
 - [Control Socket → /steps](../reference/pantavisor-commands.md#steps) — installing revisions and reading update progress
 - [Control Socket → /commands](../reference/pantavisor-commands.md#commands) — `LOCAL_RUN`, `TRY_ONCE`, `LOCAL_RUN_COMMIT` and friends
-- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_UPDATER_*`, `PH_UPDATER_*` and `PV_REVISION_RETRIES`
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_UPDATER_*`, `PH_UPDATER_*`, `PV_REVISION_RETRIES` and `PV_REVISION_TRY_BOOTS`
 - [Hooks](../reference/pantavisor-hooks.md#hook-points) — the update hook points fired along the way
