@@ -856,6 +856,43 @@ char *pv_storage_get_rev_progress(const char *rev)
 	return pv_fs_file_load(path, UPDATE_PROGRESS_JSON_SIZE);
 }
 
+int pv_storage_add_rev_try_boot(const char *rev)
+{
+	if (!rev)
+		return -1;
+
+	char path[PATH_MAX], boots_str[16];
+	int boots = 0;
+
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, TRYBOOTS_FNAME);
+
+	char *saved = pv_fs_file_load(path, sizeof(boots_str));
+	if (saved) {
+		boots = atoi(saved);
+		free(saved);
+	}
+	boots++;
+
+	SNPRINTF_WTRUNC(boots_str, sizeof(boots_str), "%d", boots);
+	if (pv_fs_file_save(path, boots_str, 0644) < 0) {
+		pv_log(WARN, "could not save file %s: %s", path,
+		       strerror(errno));
+		return -1;
+	}
+
+	return boots;
+}
+
+void pv_storage_rm_rev_try_boots(const char *rev)
+{
+	if (!rev)
+		return;
+
+	char path[PATH_MAX];
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, TRYBOOTS_FNAME);
+	pv_fs_path_remove(path, false);
+}
+
 #define PVR_CONFIGF "{\"ObjectsDir\": \"%s/objects\"}"
 
 void pv_storage_init_trail_pvr()

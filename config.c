@@ -269,6 +269,7 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_POWER_SYSFS_DIR", PV | OEM | RUN, 0, false,
 	  .value.s = POWER_SYSFS_DIR_DEF },
 	{ INT, "PV_REVISION_RETRIES", PV | OEM | RUN, 0, false, .value.i = 10 },
+	{ INT, "PV_REVISION_TRY_BOOTS", PV, 0, false, .value.i = 3 },
 	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV, 0, false, .value.b = true },
 	{ BOOL, "PV_SECUREBOOT_HANDLERS", PV, 0, false, .value.b = true },
 	{ SB_MODE, "PV_SECUREBOOT_MODE", PV, 0, false, .value.i = SB_LENIENT },

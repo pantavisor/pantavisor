@@ -82,6 +82,7 @@ void pv_paths_storage_object_tmp(char *buf, size_t size, const char *id);
 
 #define DONE_FNAME "done"
 #define PROGRESS_FNAME "progress"
+#define TRYBOOTS_FNAME "try-boots"
 #define COMMITMSG_FNAME "commitmsg"
 #define JSON_FNAME "json"
 #define CONFIG_FNAME "config"

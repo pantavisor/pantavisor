@@ -47,6 +47,8 @@ void pv_storage_set_rev_done(const char *rev);
 bool pv_storage_is_rev_done(const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);
 char *pv_storage_get_rev_progress(const char *rev);
+int pv_storage_add_rev_try_boot(const char *rev);
+void pv_storage_rm_rev_try_boots(const char *rev);
 void pv_storage_init_trail_pvr(void);
 void pv_storage_rm_rev(const char *rev);
 void pv_storage_set_active();

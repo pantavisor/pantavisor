@@ -155,6 +155,8 @@ static void _finish_update_installation()
 		return;
 	}
 
+	pv_storage_rm_rev_try_boots(u->rev);
+
 	int bl_rv = pv_bootloader_install_update(u->rev);
 	if (bl_rv < 0) {
 		pv_log(WARN, "could not set bootloader with new update info");
@@ -627,6 +629,29 @@ out:
 		pv_update_finish();
 }
 
+/*
+ * A bootloader with working try-once logic boots a try revision only once,
+ * so counting past the limit means it keeps booting pv_try (e.g. it cannot
+ * persist its trying flag). Each further boot of a revision that crashes
+ * the main loop or has already failed would otherwise loop forever.
+ */
+static bool _try_boots_exhausted(const char *rev)
+{
+	int max_boots = pv_config_get_int(PV_REVISION_TRY_BOOTS);
+	if (max_boots <= 0)
+		return false;
+
+	int boots = pv_storage_add_rev_try_boot(rev);
+	pv_log(DEBUG, "try-boot %d of %d for rev '%s'", boots, max_boots, rev);
+	if (boots <= max_boots)
+		return false;
+
+	pv_log(ERROR,
+	       "rev '%s' try-booted %d times without the bootloader falling back to '%s'",
+	       rev, boots, pv_bootloader_get_done());
+	return true;
+}
+
 static bool _is_factory(const char *rev)
 {
 	if (!rev)
@@ -693,6 +718,19 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 	pv_log(DEBUG, "update_resume: trying=%d failed=%d done=%d factory=%d",
 	       pv_bootloader_trying_update(), pv_update_is_failed(),
 	       pv_update_is_done(), _is_factory(rev));
+
+	if (pv_bootloader_trying_update() && _try_boots_exhausted(rev)) {
+		// keep the original failure reason if the revision recorded one
+		if (!pv_update_is_failed())
+			pv_update_progress_set(
+				&u->progress, PV_UPDATE_PROGRESS_STATUS_ERROR,
+				PV_UPDATE_PROGRESS_MSG_TRY_BOOTS);
+		// clearing pv_try is the only fallback left; the rolled-back
+		// boot will not see it, so it cannot report the rollback itself
+		pv_bootloader_fail_update();
+		pv_update_finish();
+		return -1;
+	}
 
 	// if we are currently trying a revision that already failed
 	if (pv_bootloader_trying_update() && pv_update_is_failed()) {
