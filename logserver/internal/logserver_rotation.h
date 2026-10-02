@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Pantacor Ltd.
+ * Copyright (c) 2026 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,21 +20,28 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_UTILS_H
-#define LOGSERVER_UTILS_H
+#ifndef PV_LOGSERVER_ROTATION_H
+#define PV_LOGSERVER_ROTATION_H
 
-#include "logserver_out.h"
+#include <linux/limits.h>
+#include <sys/types.h>
 
-#include <stdbool.h>
+typedef int (*logfn)(int, char *, ...);
 
-int logserver_utils_open_logfile(const char *path);
-int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
-				const char *src, bool lf);
-int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log);
-int logserver_utils_print_raw(int fd, const struct logserver_log *log);
-char *logserver_utils_jsonify_log(const struct logserver_log *log);
-char *logserver_utils_output_to_str(int out_type);
-int logserver_utils_stdout(const struct logserver_log *log);
-int logserver_utils_printk_devmsg_on(void);
-int logserver_utils_ignore_loglevel(void);
+struct pv_ls_rot {
+	char path[PATH_MAX];
+	off_t total_size;
+	off_t rot_size;
+	off_t high_wm;
+	off_t low_wm;
+	off_t cur_size;
+};
+
+struct pv_ls_rot pv_ls_rotation_init(const char *rev, logfn log);
+void pv_ls_rotation_update(struct pv_ls_rot *rot, const char *rev);
+int pv_ls_rotation_log_rot(struct pv_ls_rot *rot, const char *fname);
+void pv_ls_rotation_add(struct pv_ls_rot *rot, int len);
+off_t pv_ls_rotation_deletion(struct pv_ls_rot *rot);
+
+
 #endif

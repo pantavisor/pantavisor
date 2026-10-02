@@ -23,42 +23,39 @@
 #include "logserver_json.h"
 #include "utils/json.h"
 #include "log.h"
-#include "logserver/logserver_timestamp.h"
+#include "logserver/utils/logserver_timestamp.h"
 
 #include <string.h>
 #include <ctype.h>
 
-#define LOGSERVER_JSON_VER "0"
+#define PV_LS_JSON_VER "0"
+#define PV_LS_JSON_FIELD_VER "version"
+#define PV_LS_JSON_FIELD_LVL "level"
+#define PV_LS_JSON_FIELD_SRC "src"
+#define PV_LS_JSON_FIELD_MSG "message"
 
-#define LOGSERVER_JSON_FLD_VER "version"
-#define LOGSERVER_JSON_FLD_LVL "level"
-#define LOGSERVER_JSON_FLD_SRC "src"
-#define LOGSERVER_JSON_FLD_MSG "message"
-
-log_protocol_code_t logserver_json_check_type(const char *buf)
+pv_ls_proto_code_t pv_ls_json_check_type(const char *buf)
 {
 	if (!pv_json_is_valid(buf))
 		return LOG_PROTOCOL_UNKNOWN;
 	return LOG_PROTOCOL_JSON;
 }
 
-static bool logserver_json_version_ok(const char *buf, jsmntok_t *tokv,
-				      int tokc)
+static bool pv_ls_json_version_ok(const char *buf, jsmntok_t *tokv, int tokc)
 {
-	char *ver = pv_json_get_value(buf, LOGSERVER_JSON_FLD_VER, tokv, tokc);
+	char *ver = pv_json_get_value(buf, PV_LS_JSON_FIELD_VER, tokv, tokc);
 	if (!ver)
 		return false;
 
-	bool ret =
-		!strncmp(ver, LOGSERVER_JSON_VER, strlen(LOGSERVER_JSON_VER));
+	bool ret = !strncmp(ver, PV_LS_JSON_VER, strlen(PV_LS_JSON_VER));
 	free(ver);
 
 	return ret;
 }
 
-static int logserver_json_get_level(const char *buf, jsmntok_t *tokv, int tokc)
+static int pv_ls_json_get_level(const char *buf, jsmntok_t *tokv, int tokc)
 {
-	char *name = pv_json_get_value(buf, LOGSERVER_JSON_FLD_LVL, tokv, tokc);
+	char *name = pv_json_get_value(buf, PV_LS_JSON_FIELD_LVL, tokv, tokc);
 	if (!name)
 		return -1;
 
@@ -71,8 +68,7 @@ static int logserver_json_get_level(const char *buf, jsmntok_t *tokv, int tokc)
 	return lvl;
 }
 
-int logserver_json_to_log(struct logserver_log_data *data,
-			  struct logserver_log *log)
+int pv_ls_json_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log)
 {
 	int ret = -1;
 	int tokc = 0;
@@ -81,24 +77,24 @@ int logserver_json_to_log(struct logserver_log_data *data,
 	if (jsmnutil_parse_json(data->buf, &tokv, &tokc) < 0)
 		goto out;
 
-	if (!logserver_json_version_ok(data->buf, tokv, tokc))
+	if (!pv_ls_json_version_ok(data->buf, tokv, tokc))
 		goto out;
 
-	log->lvl = logserver_json_get_level(data->buf, tokv, tokc);
+	log->lvl = pv_ls_json_get_level(data->buf, tokv, tokc);
 	if (log->lvl == -1)
 		goto out;
 
-	if (logserver_proto_set_platform_name(data->cgroup, log->plat) != 0)
+	if (pv_ls_proto_set_platform_name(data->cgroup, log->plat) != 0)
 		goto out;
 
 	int src_len = 0;
 	log->src = (char *)pv_json_get_value_ref(
-		data->buf, LOGSERVER_JSON_FLD_SRC, tokv, tokc, &src_len);
+		data->buf, PV_LS_JSON_FIELD_SRC, tokv, tokc, &src_len);
 	if (!log->src)
 		goto out;
 
 	log->data.buf = (char *)pv_json_get_value_ref(
-		data->buf, LOGSERVER_JSON_FLD_MSG, tokv, tokc, &log->data.len);
+		data->buf, PV_LS_JSON_FIELD_MSG, tokv, tokc, &log->data.len);
 
 	if (!log->data.buf)
 		goto out;
@@ -106,7 +102,7 @@ int logserver_json_to_log(struct logserver_log_data *data,
 	log->code = LOG_PROTOCOL_JSON;
 	log->tnano = 0;
 	log->time = time(NULL);
-	log->tsec = logserver_timestamp_get_tsec(log->time);
+	log->tsec = pv_ls_timestamp_get_tsec(log->time);
 	log->running_rev = data->rev;
 	log->updated_rev = data->upd;
 

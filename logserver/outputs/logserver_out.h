@@ -30,8 +30,7 @@
 #include <time.h>
 #include <linux/limits.h>
 
-#define LOGSERVER_LOG_PROTOCOL_V1 0
-#define LOGSERVER_PLAT_MAX_LEN 64
+#define PV_LS_PLATFORM_MAX (64)
 
 #ifdef DEBUG
 #define WARN_ONCE(msg, args...)                                                \
@@ -46,39 +45,39 @@
 #define WARN_ONCE(msg, args...)
 #endif
 
-struct logserver_data {
+struct pv_ls_data {
 	char *buf;
 	int len;
 };
 
-struct logserver_log {
+struct pv_ls_log {
 	int code;
 	int lvl;
 	uint64_t tsec;
 	uint32_t tnano;
 	time_t time;
-	char plat[LOGSERVER_PLAT_MAX_LEN];
+	char plat[PV_LS_PLATFORM_MAX];
 	char *src;
 	char *running_rev;
 	char *updated_rev;
-	struct logserver_data data;
+	struct pv_ls_data data;
 };
 
-struct logserver_out {
+struct pv_ls_out {
 	int id;
 	char *name;
 	char last_log[PATH_MAX];
-	int (*add)(struct logserver_out *out, const struct logserver_log *log);
-	void (*free)(struct logserver_out *out);
+	int (*add)(struct pv_ls_out *out, const struct pv_ls_log *log);
+	void (*free)(struct pv_ls_out *out);
 	void *opaque;
 	struct dl_list list;
 };
 
-struct logserver_out *logserver_out_new(
-	int id, const char *name,
-	int (*add)(struct logserver_out *out, const struct logserver_log *log),
-	void (*free)(struct logserver_out *out), void *opaque);
+struct pv_ls_out *
+pv_ls_out_new(int id, const char *name,
+	      int (*add)(struct pv_ls_out *out, const struct pv_ls_log *log),
+	      void (*free)(struct pv_ls_out *out), void *opaque);
 
-void logserver_out_free(struct logserver_out *out);
+void pv_ls_out_free(struct pv_ls_out *out);
 
 #endif

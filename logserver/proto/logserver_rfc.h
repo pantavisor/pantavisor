@@ -28,24 +28,21 @@
 #include <time.h>
 #include <stdbool.h>
 
-struct logserver_rfc {
-	log_protocol_code_t code;
+struct pv_ls_rfc {
+	pv_ls_proto_code_t code;
 	int prival;
 	time_t time;
 	char *app;
 	char *msg;
 };
 
-int logserver_rfc_level_to_pv(int prival);
-char *logserver_rfc_get_facility(int prival);
-int logserver_rfc_get_prival(const char *buf);
-log_protocol_code_t logserver_rfc_check_type(const char *buf);
-int logserver_rfc_to_log(struct logserver_rfc *rfc, const char *cgroup,
-			 const char *rev, const char *upd_rev,
-			 struct logserver_log *log);
-int logserver_rfc5424_to_log(struct logserver_log_data *data,
-			     struct logserver_log *log);
-int logserver_rfc3164_to_log(struct logserver_log_data *data,
-			     struct logserver_log *log);
+int pv_ls_rfc_level_to_pv(int prival);
+char *pv_ls_rfc_get_facility(int prival);
+int pv_ls_rfc_get_prival(const char *buf);
+pv_ls_proto_code_t pv_ls_rfc_check_type(const char *buf);
+int pv_ls_rfc_to_log(struct pv_ls_rfc *rfc, const char *cgroup, const char *rev,
+		     const char *upd_rev, struct pv_ls_log *log);
+int pv_ls_rfc5424_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log);
+int pv_ls_rfc3164_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log);
 
 #endif

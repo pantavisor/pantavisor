@@ -21,14 +21,13 @@
  */
 
 #include "logserver_binary.h"
-#include "logserver/logserver_timestamp.h"
+#include "logserver/utils/logserver_timestamp.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
 
-static int logserver_bin_parse_msg(struct logserver_msg *msg,
-				   struct logserver_log *log)
+static int pv_ls_bin_parse_msg(struct pv_ls_msg *msg, struct pv_ls_log *log)
 {
 	const char *end = msg->buf + msg->len;
 	int bytes_read = 0;
@@ -44,8 +43,8 @@ static int logserver_bin_parse_msg(struct logserver_msg *msg,
 	if (plat_pos >= end)
 		return -1;
 
-	memccpy(log->plat, plat_pos, 0, LOGSERVER_PLAT_MAX_LEN);
-	log->plat[LOGSERVER_PLAT_MAX_LEN - 1] = '\0';
+	memccpy(log->plat, plat_pos, 0, PV_LS_PLATFORM_MAX);
+	log->plat[PV_LS_PLATFORM_MAX - 1] = '\0';
 
 	size_t plat_len = strnlen(plat_pos, end - plat_pos);
 	if (plat_pos + plat_len >= end)
@@ -70,14 +69,14 @@ static int logserver_bin_parse_msg(struct logserver_msg *msg,
 
 	log->tnano = 0;
 	log->time = time(NULL);
-	log->tsec = logserver_timestamp_get_tsec(log->time);
+	log->tsec = pv_ls_timestamp_get_tsec(log->time);
 
 	return 0;
 }
 
-log_protocol_code_t logserver_bin_check_type(const char *buf)
+pv_ls_proto_code_t pv_ls_bin_check_type(const char *buf)
 {
-	struct logserver_msg *msg = (struct logserver_msg *)buf;
+	struct pv_ls_msg *msg = (struct pv_ls_msg *)buf;
 
 	if (msg->code == LOG_PROTOCOL_LEGACY || msg->code == LOG_PROTOCOL_CMD)
 		return msg->code;
@@ -85,10 +84,9 @@ log_protocol_code_t logserver_bin_check_type(const char *buf)
 	return LOG_PROTOCOL_UNKNOWN;
 }
 
-int logserver_bin_to_log(struct logserver_log_data *data,
-			 struct logserver_log *log)
+int pv_ls_bin_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log)
 {
-	struct logserver_msg *msg = (struct logserver_msg *)data->buf;
+	struct pv_ls_msg *msg = (struct pv_ls_msg *)data->buf;
 
 	log->code = msg->code;
 	log->running_rev = data->rev;
@@ -97,7 +95,7 @@ int logserver_bin_to_log(struct logserver_log_data *data,
 	int ret = 0;
 
 	if (log->code == LOG_PROTOCOL_LEGACY) {
-		ret = logserver_bin_parse_msg(msg, log);
+		ret = pv_ls_bin_parse_msg(msg, log);
 	} else if (log->code == LOG_PROTOCOL_CMD) {
 		log->data.buf = msg->buf;
 		log->data.len = msg->len;

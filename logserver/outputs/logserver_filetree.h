@@ -20,16 +20,11 @@
  * SOFTWARE.
  */
 
-#include "logserver_null.h"
-#include "config.h"
+#ifndef LOGSERVER_FILETREE_H
+#define LOGSERVER_FILETREE_H
 
-static int add_log(struct logserver_out *out, const struct logserver_log *log)
-{
-	return 0;
-}
+#include "logserver_out.h"
 
-struct logserver_out *logserver_null_new()
-{
-	return logserver_out_new(LOG_SERVER_OUTPUT_NULL_SINK, "nullsink",
-				 add_log, NULL, NULL);
-}
+struct pv_ls_out *pv_ls_filetree_new(void);
+
+#endif
