@@ -18,11 +18,24 @@
 #include "include/xconnect.h"
 
 #define PV_CTRL_SOCKET "/run/pantavisor/pv/pv-ctrl"
-#define RECONCILE_INTERVAL_SEC 5
+// Reconcile interval backs off from MIN to MAX while the graph is steady
+#define RECONCILE_MIN_SEC 5
+#define RECONCILE_MAX_SEC 15
+// Repeat a failing link's error only every Nth retry
+#define LINK_FAIL_LOG_EVERY 20
 
 static struct event_base *g_base;
 static struct dl_list g_links;
 static struct event *g_reconcile_timer;
+static bool g_empty; // graph has no links
+static int g_interval = RECONCILE_MIN_SEC;
+static bool g_unsettled; // a link was added/retried/failed this tick
+static bool g_kicked; // reconcile requested by a plugin or signal
+static char *g_last_graph;
+static char g_last_fail[256];
+static unsigned g_fail_repeat;
+
+int pvx_debug;
 
 extern struct pvx_plugin pvx_plugin_unix;
 extern struct pvx_plugin pvx_plugin_rest;
@@ -210,6 +223,7 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 			pvx_link_free(link);
 			return;
 		}
+		g_unsettled = true;
 		printf("Re-establishing link %s/%s (target %s) after restart (consumer pid %d->%d, provider pid %d->%d)\n",
 		       link->consumer, link->name, link->consumer_socket,
 		       existing->consumer_pid, link->consumer_pid,
@@ -217,7 +231,8 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 		dl_list_del(&existing->list);
 		pvx_link_free(existing);
 	} else if (existing) {
-		printf("Retrying link: %s/%s\n", link->consumer, link->name);
+		g_unsettled = true;
+		xc_debug("Retrying link: %s/%s\n", link->consumer, link->name);
 		dl_list_del(&existing->list);
 		pvx_link_free(existing);
 	}
@@ -225,21 +240,41 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 	dl_list_init(&link->list);
 	dl_list_add_tail(&g_links, &link->list);
 
-	printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
-	       link->consumer ? link->consumer : "unknown", link->consumer_pid,
-	       link->type, link->provider_socket, link->consumer_socket);
+	char key[sizeof(g_last_fail)];
+	snprintf(key, sizeof(key), "%s/%s/%s", link->consumer, link->name,
+		 link->consumer_socket);
+	bool is_retry = !strcmp(key, g_last_fail);
+
+	if (is_retry)
+		xc_debug("Adding link: %s\n", key);
+	else
+		printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
+		       link->consumer ? link->consumer : "unknown",
+		       link->consumer_pid, link->type, link->provider_socket,
+		       link->consumer_socket);
 
 	if (plugin->on_link_added(link) < 0) {
-		fprintf(stderr, "Failed to add link for %s\n", link->name);
+		g_unsettled = true;
+		// Log the first failure of a link, then only every Nth retry
+		if (!is_retry)
+			g_fail_repeat = 0;
+		if (g_fail_repeat++ % LINK_FAIL_LOG_EVERY == 0)
+			fprintf(stderr,
+				"Failed to add link for %s (attempt %u)\n",
+				link->name, g_fail_repeat);
+		snprintf(g_last_fail, sizeof(g_last_fail), "%s", key);
 		dl_list_del(&link->list);
 		pvx_link_free(link);
 	} else {
+		g_unsettled = true;
+		if (is_retry)
+			g_last_fail[0] = '\0';
 		link->established = true;
 		printf("Link established: %s/%s\n", link->consumer, link->name);
 	}
 }
 
-static void reconcile_graph(const char *json)
+static void reconcile_graph(const char *json, bool changed)
 {
 	jsmntok_t *tokv;
 	int tokc;
@@ -256,7 +291,12 @@ static void reconcile_graph(const char *json)
 	}
 
 	int count = jsmnutil_array_count(json, tokv);
-	printf("Reconciling graph with %d links\n", count);
+	if (changed)
+		printf("Reconciling graph with %d links\n", count);
+	else
+		xc_debug("Reconciling graph with %d links\n", count);
+	if (count == 0)
+		g_empty = true;
 
 	jsmntok_t **items = jsmnutil_get_array_toks(json, tokv);
 	if (!items) {
@@ -274,6 +314,38 @@ static void reconcile_graph(const char *json)
 	jsmnutil_tokv_free(items);
 	free(tokv);
 }
+static void schedule_next(bool reset)
+{
+	if (reset || g_kicked)
+		g_interval = RECONCILE_MIN_SEC;
+	else if (g_empty)
+		g_interval = RECONCILE_MAX_SEC;
+	else
+		g_interval = g_interval * 2 > RECONCILE_MAX_SEC ?
+				     RECONCILE_MAX_SEC :
+				     g_interval * 2;
+	g_kicked = false;
+
+	struct timeval tv = { g_interval, 0 };
+	evtimer_add(g_reconcile_timer, &tv);
+	xc_debug("Next reconcile in %ds\n", g_interval);
+}
+
+void pvx_reconcile_kick(void)
+{
+	// A timer already armed at the minimum must not be pushed out again
+	bool backed_off = g_interval > RECONCILE_MIN_SEC;
+
+	g_kicked = true;
+	g_interval = RECONCILE_MIN_SEC;
+
+	if (backed_off && g_reconcile_timer &&
+	    evtimer_pending(g_reconcile_timer, NULL)) {
+		struct timeval tv = { RECONCILE_MIN_SEC, 0 };
+		evtimer_add(g_reconcile_timer, &tv);
+	}
+}
+
 static void ctrl_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct evbuffer *input = bufferevent_get_input(bev);
@@ -289,8 +361,20 @@ static void ctrl_read_cb(struct bufferevent *bev, void *ctx)
 	int pret = phr_parse_response(data, len, &minor_version, &status, &msg,
 				      &msg_len, headers, &num_headers, 0);
 
+	bool reset = true;
 	if (pret > 0 && status == 200) {
-		reconcile_graph(data + pret);
+		const char *body = data + pret;
+		bool changed = !g_last_graph || strcmp(g_last_graph, body);
+
+		g_unsettled = false;
+		g_empty = false;
+		reconcile_graph(body, changed);
+		if (changed) {
+			free(g_last_graph);
+			g_last_graph = strdup(body);
+		}
+		// A link that settled this tick changes the graph's meaning
+		reset = (changed && !g_empty) || g_unsettled;
 	} else {
 		fprintf(stderr, "Failed to fetch graph: pret=%d, status=%d\n",
 			pret, status);
@@ -298,12 +382,13 @@ static void ctrl_read_cb(struct bufferevent *bev, void *ctx)
 
 	free(data);
 	bufferevent_free(bev);
+	schedule_next(reset);
 }
 
 static void ctrl_event_cb(struct bufferevent *bev, short events, void *ctx)
 {
 	if (events & BEV_EVENT_CONNECTED) {
-		printf("Connected to pv-ctrl\n");
+		xc_debug("Connected to pv-ctrl\n");
 		evbuffer_add_printf(
 			bufferevent_get_output(bev),
 			"GET /xconnect-graph HTTP/1.0\r\nHost: localhost\r\n\r\n");
@@ -313,6 +398,7 @@ static void ctrl_event_cb(struct bufferevent *bev, short events, void *ctx)
 				strerror(errno));
 		}
 		bufferevent_free(bev);
+		schedule_next(true);
 	}
 }
 
@@ -333,6 +419,7 @@ static void fetch_graph(void)
 				       sizeof(sun)) < 0) {
 		fprintf(stderr, "Failed to initiate connection to pv-ctrl\n");
 		bufferevent_free(bev);
+		schedule_next(true);
 	}
 }
 
@@ -345,18 +432,34 @@ static void signal_cb(evutil_socket_t fd, short event, void *arg)
 
 static void reconcile_timer_cb(evutil_socket_t fd, short event, void *arg)
 {
-	printf("Periodic reconciliation check...\n");
+	// The timer is re-armed once the fetch completes, with the new backoff
+	xc_debug("Periodic reconciliation check...\n");
 	fetch_graph();
+}
 
-	// Re-arm the timer
-	struct timeval tv = { RECONCILE_INTERVAL_SEC, 0 };
-	evtimer_add(g_reconcile_timer, &tv);
+static void usr1_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pvx_reconcile_kick();
+}
+
+static void usr2_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pvx_debug = !pvx_debug;
+	printf("Debug logging %s\n", pvx_debug ? "enabled" : "disabled");
 }
 
 int main(int argc, char **argv)
 {
 	struct event *signal_event;
 	struct event *term_event;
+	struct event *usr1_event;
+	struct event *usr2_event;
+	const char *dbg = getenv("PV_XCONNECT_DEBUG");
+
+	// Daemon stdout is a pipe: line-buffer so log lines are not split
+	setvbuf(stdout, NULL, _IOLBF, 0);
+	setvbuf(stderr, NULL, _IONBF, 0);
+	pvx_debug = dbg && strcmp(dbg, "0") && dbg[0];
 
 	g_base = event_base_new();
 	if (!g_base) {
@@ -377,6 +480,13 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not create/add a term event!\n");
 		return 1;
 	}
+	usr1_event = evsignal_new(g_base, SIGUSR1, usr1_cb, NULL);
+	usr2_event = evsignal_new(g_base, SIGUSR2, usr2_cb, NULL);
+	if (!usr1_event || !usr2_event || event_add(usr1_event, NULL) < 0 ||
+	    event_add(usr2_event, NULL) < 0) {
+		fprintf(stderr, "Could not create/add usr signal events!\n");
+		return 1;
+	}
 	printf("pv-xconnect starting...\n");
 
 	// Set up periodic reconciliation timer
@@ -385,10 +495,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Could not create reconcile timer!\n");
 		return 1;
 	}
-	struct timeval tv = { RECONCILE_INTERVAL_SEC, 0 };
-	evtimer_add(g_reconcile_timer, &tv);
-
-	// Initial graph fetch
+	// Initial graph fetch; its completion arms the timer
 	fetch_graph();
 
 	event_base_dispatch(g_base);
@@ -396,6 +503,9 @@ int main(int argc, char **argv)
 	event_free(g_reconcile_timer);
 	event_free(signal_event);
 	event_free(term_event);
+	event_free(usr1_event);
+	event_free(usr2_event);
+	free(g_last_graph);
 	event_base_free(g_base);
 
 	return 0;

@@ -63,8 +63,18 @@ struct pvx_plugin {
 			  struct sockaddr *address, int socklen, void *arg);
 };
 
+// Verbose per-connection logging, off by default (PV_XCONNECT_DEBUG=1 or SIGUSR2)
+extern int pvx_debug;
+#define xc_debug(...)                                                          \
+	do {                                                                   \
+		if (pvx_debug)                                                 \
+			printf(__VA_ARGS__);                                   \
+	} while (0)
+
 // Core Helpers
 struct event_base *pvx_get_base(void);
+// Reconcile soon and reset the backoff (e.g. a provider went away)
+void pvx_reconcile_kick(void);
 int pvx_helper_inject_unix_socket(const char *path, int pid);
 int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
 			      const char *source_path, int provider_pid);

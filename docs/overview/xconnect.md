@@ -19,7 +19,7 @@ The service mesh operates through a graph of connections maintained by `pv-xconn
 
 1. **Providers** declare services in a `services.json` file in their container manifest.
 2. **Consumers** declare requirements in their `run.json`, including service name, type, and where the resource should be injected inside the container.
-3. `pv-xconnect` periodically reads the xconnect-graph from the [control socket](../reference/pantavisor-commands.md#xconnect-graph), resolves provider/consumer pairs, and injects resources into consumer namespaces.
+3. `pv-xconnect` periodically (every 5 s, backing off to 15 s while the graph is unchanged) reads the xconnect-graph from the [control socket](../reference/pantavisor-commands.md#xconnect-graph), resolves provider/consumer pairs, and injects resources into consumer namespaces.
 
 This is entirely declarative: no code changes are needed in containers to expose or consume services.
 
@@ -46,6 +46,17 @@ Pantavisor acts as the security broker. Containers use logical service names rat
 ## Configuration and Control
 
 The xconnect service mesh can be inspected at runtime through the [/xconnect-graph](../reference/pantavisor-commands.md#xconnect-graph) endpoint of the [Pantavisor control socket](local-control.md). The `pv-xconnect` daemon can be started and stopped via the [/daemons](../reference/pantavisor-commands.md#daemons) endpoint.
+
+### Logging and troubleshooting
+
+`pv-xconnect` logs only state changes by default (`Adding link`, `Link established`, `Re-establishing link`, graph changes). Per-connection lines and every reconcile tick are debug output. Toggle them at runtime, or force an immediate reconcile:
+
+```sh
+kill -USR2 $(pidof pv-xconnect)   # toggle debug logging
+kill -USR1 $(pidof pv-xconnect)   # reconcile now, reset the backoff
+```
+
+To start with debug on, set `PV_XCONNECT_DEBUG=1` in pantavisor's environment (e.g. as a kernel command line parameter, or `docker run -e` for appengine).
 
 ## Reference
 
