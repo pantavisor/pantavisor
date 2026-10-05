@@ -9,9 +9,6 @@ message body present: yes
 == attribution comes from the socket, not a cgroup guess ==
 misfiled under unknown-platform: no
 misfiled under pantavisor: no
-== path-shaped src keeps its shape ==
-lxc/lxc.log present: yes
-wrongly nested under syslog/: no
 == traversing src collapses to unknown-src ==
 collapsed to syslog/unknown-src: yes
 escaped the log tree: no
@@ -24,3 +21,6 @@ container log.sock is a socket: yes
 == capture still works on the new socket ==
 captured at <container>/syslog/<tag>: yes
 message body present: yes
+== path-shaped src keeps its shape ==
+lxc/lxc.log present: yes
+wrongly nested under syslog/: no
