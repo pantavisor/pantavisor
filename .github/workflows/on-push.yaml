@@ -46,6 +46,8 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: pantavisor/meta-pantavisor
+          # a persisted GITHUB_TOKEN header would shadow the private-repo .netrc
+          persist-credentials: false
 
       - name: debug
         run: echo "Pantavisor ref - ${{ github.event.pull_request.head.sha || github.sha }}"
@@ -57,10 +59,27 @@ jobs:
       - name: shared
         run: mkdir -p /shared/sstate && chown builder:builder /shared/sstate && mkdir -p /shared/dldir && chown builder:builder /shared/dldir
 
+      # Private source repositories (pv-mqtt-sdk) are fetched over HTTPS with
+      # a read-only token; kas copies NETRC_FILE into the build's HOME.
+      - name: git credentials
+        env:
+          PRIVATE_REPOS_TOKEN: ${{ secrets.PRIVATE_REPOS_TOKEN }}
+        run: |
+          umask 077
+          : > ~builder/.netrc
+          if [ -n "$PRIVATE_REPOS_TOKEN" ]; then
+            printf 'machine github.com login x-access-token password %s\n' "$PRIVATE_REPOS_TOKEN" > ~builder/.netrc
+          fi
+          chown builder:builder ~builder/.netrc
+
       - name: Build Kas
         run:
-          su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ env.configs }}  -c 'devtool modify pantavisor &&
+          su - builder -c "cd $GITHUB_WORKSPACE && NETRC_FILE=\$HOME/.netrc kas shell ${{ env.configs }}  -c 'devtool modify pantavisor &&
           cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.event.pull_request.head.sha || github.sha }} && bitbake -c compile pantavisor' "
+
+      - name: remove git credentials
+        if: always()
+        run: rm -f ~builder/.netrc
 
   summary:
     needs: build
