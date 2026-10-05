@@ -1,11 +1,17 @@
 # Build the appengine distro from this pantavisor revision and run the pvtest
 # suite against it.
 #
-# Scope is picked from what changed: `local` normally, and `local` + `remote`
-# when the push touches the Hub client the remote suite exercises (pantahub/,
-# updater, trestclient, ph_logger, event/event_rest) or
-# pvtest/{suites/remote,tester,shared,host}/ (the remote suite and the
-# framework running it).
+# Jobs are picked per changed file, and the run is their union:
+#   pvtest/suites/local/                      local  (volatile + persistent)
+#   pvtest/suites/remote/                     remote (volatile + persistent)
+#   pvtest/{tester,shared,host}/              local + remote (volatile + persistent)
+#   pantahub/, ph_logger, trestclient,
+#   updater, event/event_rest                 remote (volatile)
+#   anything else but docs/                   local  (volatile)
+# Persistent shares one device across tests, so it runs when tests or the
+# framework change: it catches a test leaking state into the next one, which
+# volatile never sees. The nightly in meta-pantavisor covers both models
+# regardless. See docs/testing/pvtest-harness.md "CI coverage".
 # Remote tests register real devices on a Hub, so they need the PH_USER/PH_TOKEN
 # (Pantahub personal token) repository secrets; the run fails fast with a clear
 # message if they are unset..
@@ -40,6 +46,12 @@ on:
         type: choice
         default: auto
         options: [auto, local, remote, all]
+      test_model:
+        description: 'Assignment model for every selected scope (auto = from changed paths)'
+        required: false
+        type: choice
+        default: auto
+        options: [auto, volatile, persistent, all]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -63,66 +75,93 @@ jobs:
     if: needs.check-draft.outputs.is_draft != 'true'
     runs-on: ubuntu-latest
     outputs:
-      paths: ${{ steps.pick.outputs.paths }}
+      matrix: ${{ steps.pick.outputs.matrix }}
     steps:
       - id: pick
         env:
           GH_TOKEN: ${{ github.token }}
           SCOPE_INPUT: ${{ inputs.test_scope }}
+          MODEL_INPUT: ${{ inputs.test_model }}
           PH_USER: ${{ secrets.PH_USER }}
           PH_TOKEN: ${{ secrets.PH_TOKEN }}
           PH_PASS: ${{ secrets.PH_PASS }} # deprecated, PH_TOKEN fallback
         run: |
           set -euo pipefail
 
+          # lv/lp = local volatile/persistent, rv/rp = remote volatile/persistent
+          lv= lp= rv= rp=
+
           case "${SCOPE_INPUT:-auto}" in
-            local)  paths='["local"]' ;;
-            remote) paths='["remote"]' ;;
-            all)    paths='["local","remote"]' ;;
-            *)      paths= ;;
-          esac
+            local)  lv=1 ;;
+            remote) rv=1 ;;
+            all)    lv=1 rv=1 ;;
+            *)
+              pr='${{ github.event.pull_request.number }}'
+              if [ -n "$pr" ]; then
+                files=$(gh api --paginate \
+                  "repos/${{ github.repository }}/pulls/$pr/files" --jq '.[].filename')
+              else
+                base='${{ github.event.before }}'
+                case "$base" in
+                  ''|0000000000000000000000000000000000000000)
+                    # new branch, or a force-push whose base is gone: no diff to
+                    # trust, so run everything rather than silently skip any of it
+                    files=everything ;;
+                  *)
+                    files=$(gh api "repos/${{ github.repository }}/compare/$base...${{ github.sha }}" \
+                      --jq '.files[].filename')
+                    if [ "$(printf '%s\n' "$files" | grep -c .)" -ge 300 ]; then
+                      files=everything
+                    fi ;;
+                esac
+              fi
 
-          if [ -z "$paths" ]; then
-            pr='${{ github.event.pull_request.number }}'
-            if [ -n "$pr" ]; then
-              files=$(gh api --paginate \
-                "repos/${{ github.repository }}/pulls/$pr/files" --jq '.[].filename')
-            else
-              base='${{ github.event.before }}'
-              case "$base" in
-                ''|0000000000000000000000000000000000000000)
-                  # new branch, or a force-push whose base is gone: no diff to
-                  # trust, so run everything rather than silently skip remote
-                  files='pantahub/' ;;
-                *)
-                  files=$(gh api "repos/${{ github.repository }}/compare/$base...${{ github.sha }}" \
-                    --jq '.files[].filename')
-                  if [ "$(printf '%s\n' "$files" | grep -c .)" -ge 300 ]; then
-                    files='pantahub/'
-                  fi ;;
-              esac
-            fi
-
-            # Hub client (pantahub/ plus the Hub code outside it), the remote
-            # suite and the framework running it
-            remote_re='^(pantahub/|pvtest/(suites/remote|tester|shared|host)/|(updater|trestclient|ph_logger)\.[ch]$|event/event_rest\.[ch]$)'
-            if printf '%s\n' "$files" | grep -qE "$remote_re"; then
-              paths='["local","remote"]'
-            else
-              paths='["local"]'
-            fi
-          fi
-
-          case "$paths" in
-            *'"remote"'*)
-              if [ -z "${PH_USER:-}" ] || { [ -z "${PH_TOKEN:-}" ] && [ -z "${PH_PASS:-}" ]; }; then
-                echo "::error::scope includes the remote suite, which registers devices on a Hub, but the PH_USER and PH_TOKEN repository secrets are not set on ${{ github.repository }}"
-                exit 1
+              if [ "$files" = everything ]; then
+                lv=1 lp=1 rv=1 rp=1
+              else
+                while IFS= read -r f; do
+                  case "$f" in
+                    ''|docs/*) ;;
+                    pvtest/suites/local/*) lv=1 lp=1 ;;
+                    pvtest/suites/remote/*) rv=1 rp=1 ;;
+                    pvtest/*) lv=1 lp=1 rv=1 rp=1 ;;
+                    pantahub/*|ph_logger.[ch]|trestclient.[ch]|updater.[ch]|event/event_rest.[ch]) rv=1 ;;
+                    *) lv=1 ;;
+                  esac
+                done <<< "$files"
               fi ;;
           esac
 
-          echo "paths=$paths" >> "$GITHUB_OUTPUT"
-          echo "### pvtest scope: \`$paths\`" >> "$GITHUB_STEP_SUMMARY"
+          # never hand the pvtest job an empty matrix
+          if [ -z "$lv$lp$rv$rp" ]; then
+            lv=1
+          fi
+
+          # an explicit model replaces the models of every selected scope
+          if [ "${MODEL_INPUT:-auto}" != auto ]; then
+            v= p=
+            case "$MODEL_INPUT" in
+              volatile)   v=1 ;;
+              persistent) p=1 ;;
+              all)        v=1 p=1 ;;
+            esac
+            if [ -n "$lv$lp" ]; then lv=$v lp=$p; fi
+            if [ -n "$rv$rp" ]; then rv=$v rp=$p; fi
+          fi
+
+          if [ -n "$rv$rp" ]; then
+            if [ -z "${PH_USER:-}" ] || { [ -z "${PH_TOKEN:-}" ] && [ -z "${PH_PASS:-}" ]; }; then
+              echo "::error::scope includes the remote suite, which registers devices on a Hub, but the PH_USER and PH_TOKEN repository secrets are not set on ${{ github.repository }}"
+              exit 1
+            fi
+          fi
+
+          matrix=$(printf '%s\n' ${lv:+local/volatile} ${lp:+local/persistent} \
+            ${rv:+remote/volatile} ${rp:+remote/persistent} \
+            | jq -Rnc '[inputs | split("/") | {scope: .[0], model: .[1]}]')
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "### pvtest matrix: \`$matrix\`" >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: [check-draft, scope]
@@ -202,18 +241,17 @@ jobs:
 
   pvtest:
     needs: [build, scope]
-    name: "pvtest (${{ matrix.scope }})"
+    name: "pvtest (${{ matrix.scope }}, ${{ matrix.model }})"
     runs-on: ["pvtest-runner"]
     strategy:
       fail-fast: false
       matrix:
-        scope: ${{ fromJSON(needs.scope.outputs.paths) }}
-    # scope-keyed so two legs on the same runner never share a workspace
+        include: ${{ fromJSON(needs.scope.outputs.matrix) }}
     env:
-      WORKSPACE: /tmp/workspace-${{ github.run_id }}-${{ matrix.scope }}
-      PVTEST_WORKSPACE: /tmp/pvtest-workspace-${{ github.run_id }}-${{ matrix.scope }}
+      WORKSPACE: /tmp/workspace-${{ github.run_id }}-${{ matrix.scope }}-${{ matrix.model }}
+      PVTEST_WORKSPACE: /tmp/pvtest-workspace-${{ github.run_id }}-${{ matrix.scope }}-${{ matrix.model }}
       # runners share one docker daemon: a per-job tag keeps neighbouring jobs off this job's images
-      PVTEST_IMAGE_TAG: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.scope }}
+      PVTEST_IMAGE_TAG: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.scope }}-${{ matrix.model }}
     steps:
       - name: Download pvtest distro
         uses: actions/download-artifact@v7
@@ -234,20 +272,21 @@ jobs:
           PH_TOKEN: ${{ secrets.PH_TOKEN }}
           PH_PASS: ${{ secrets.PH_PASS }} # deprecated, PH_TOKEN fallback
           SCOPE: ${{ matrix.scope }}
+          MODEL: ${{ matrix.model }}
         run: |
           echo "=== AppEngine Test Run started at $(date) ==="
           # remote tests share one Hub trail, so they run serial -- no -p
           if [ "$SCOPE" = remote ]; then
-            ./test.docker.sh run remote -V --model volatile --fail-on-skip -w $PVTEST_WORKSPACE
+            ./test.docker.sh run remote -V --model "$MODEL" --fail-on-skip -w $PVTEST_WORKSPACE
           else
-            ./test.docker.sh run "$SCOPE" -V -p 6 --model volatile --fail-on-skip -w $PVTEST_WORKSPACE
+            ./test.docker.sh run "$SCOPE" -V -p 6 --model "$MODEL" --fail-on-skip -w $PVTEST_WORKSPACE
           fi
 
       - name: Show Tests Summary
         working-directory: ${{ env.WORKSPACE }}
         if: always()
         run: |
-          echo "## ${{ matrix.scope }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "## ${{ matrix.scope }} (${{ matrix.model }})" >> "$GITHUB_STEP_SUMMARY"
           if [ -f run.log ] && grep -q 'SUMMARY' run.log; then
             {
               echo '```'
@@ -283,7 +322,7 @@ jobs:
         if: always()
         run: |
           sha="${{ github.event.pull_request.head.sha || github.sha }}"
-          echo "PVTEST_ARTIFACT_NAME=pvtest-workspace-${sha:0:7}-${{ matrix.scope }}" >> $GITHUB_ENV
+          echo "PVTEST_ARTIFACT_NAME=pvtest-workspace-${sha:0:7}-${{ matrix.scope }}-${{ matrix.model }}" >> $GITHUB_ENV
           sudo chown -R $(id -u):$(id -g) $PVTEST_WORKSPACE || true
 
       - name: Upload pvtest workspace
