@@ -1,7 +1,7 @@
 ---
 title: "The pvtest Harness"
 sidebar_position: 1
-description: "Test architecture, execution models, flow and where the code lives."
+description: "Test architecture, execution models, flow, where the code lives and CI coverage."
 ---
 # The pvtest Framework
 
@@ -282,3 +282,16 @@ tarball `README.md` has ready-made examples for the appengine pool and for real 
 
 Every run creates a workspace that contains a `README.md` inside that documents the full
 layout, the log format and its four sources, the useful greps, and how to read valgrind output.
+
+## CI coverage
+
+In order to limit the time usage of the CI runners, we run the smallest set of tests
+(by scope) possible that ensures the right coverage based on the changes to be verified.
+
+| Changed files | local volatile | local persistent | remote volatile | remote persistent |
+|---|:-:|:-:|:-:|:-:|
+| `pvtest/suites/local/` | ✓ | ✓ | | |
+| `pvtest/suites/remote/` | | | ✓ | ✓ |
+| `pvtest/tester`, `pvtest/shared`, `pvtest/host` | ✓ | ✓ | ✓ | ✓ |
+| `pantahub/`, `ph_logger`, `trestclient`, `updater`, `event/event_rest` | | | ✓ | |
+| any other file outside `docs/` | ✓ | | | |

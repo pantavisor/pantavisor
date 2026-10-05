@@ -9,8 +9,8 @@ description: "The pvtest integration suite: architecture, running it against con
 pvtest is Pantavisor's integration test framework. One suite that runs against two kinds of
 targets, a pool of **appengine** containers on the host, or a **real device** over the network.
 
-1. [The pvtest Harness](pvtest-harness.md): test architecture, execution models, flow and where
-   the code lives.
+1. [The pvtest Harness](pvtest-harness.md): test architecture, execution models, flow, where
+   the code lives and [what CI runs for each change](pvtest-harness.md#ci-coverage).
 2. [Running Against Appengine and Authoring pvtests](appengine.md): running tests against a
    pool of appengine instances, debugging tests that fail, adding new tests and containers
    along authoring rules.
