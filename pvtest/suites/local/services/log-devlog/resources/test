@@ -63,10 +63,6 @@ echo "== attribution comes from the socket, not a cgroup guess =="
 echo "misfiled under unknown-platform: $(yesno pv_exec test -e "$L/unknown-platform/syslog/$TAG")"
 echo "misfiled under pantavisor: $(yesno pv_exec test -e "$L/pantavisor/syslog/$TAG")"
 
-echo "== path-shaped src keeps its shape =="
-echo "lxc/lxc.log present: $(yesno pv_exec test -e "$L/$CONT/lxc/lxc.log")"
-echo "wrongly nested under syslog/: $(yesno pv_exec test -e "$L/$CONT/syslog/lxc")"
-
 echo "== traversing src collapses to unknown-src =="
 pventer -c "$CONT" logger -t "$EVIL" "$MSG" > /dev/null 2>&1
 wait_for_path "$L/$CONT/syslog/unknown-src" -a > /dev/null 2>&1
@@ -92,3 +88,8 @@ pventer -c "$CONT" logger -t "$TAG2" "$MSG2" > /dev/null 2>&1
 wait_for_path "$L/$CONT/syslog/$TAG2" -a > /dev/null 2>&1
 echo "captured at <container>/syslog/<tag>: $(yesno pv_exec test -e "$L/$CONT/syslog/$TAG2")"
 echo "message body present: $(yesno pv_exec grep -q "$MSG2" "$L/$CONT/syslog/$TAG2")"
+
+echo "== path-shaped src keeps its shape =="
+wait_for_path "$L/$CONT/lxc/lxc.log" -a > /dev/null 2>&1
+echo "lxc/lxc.log present: $(yesno pv_exec test -e "$L/$CONT/lxc/lxc.log")"
+echo "wrongly nested under syslog/: $(yesno pv_exec test -e "$L/$CONT/syslog/lxc")"
