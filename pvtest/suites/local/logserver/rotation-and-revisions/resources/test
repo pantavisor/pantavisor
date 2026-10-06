@@ -1,0 +1,116 @@
+#!/bin/sh
+#
+# Per-revision log directories and log rotation:
+# docs/overview/storage.md#log-directory-size-management
+#
+# The log server writes under <PV_LOG_DIR>/<revision>/, with "current" pointing at
+# the running revision. Update and rollback each move it, and the directory of a
+# revision that failed is kept. While an update is in progress the update output
+# also keeps that revision's ERROR and FATAL lines in its trail, which is what
+# `pvcontrol steps show-progress` returns as "logs".
+#
+# Rotation and cleanup work inside the running revision's directory only: a file
+# that reaches rotation_size is gzipped to <name>.<n>.gz, and once the directory
+# passes the high watermark the oldest .gz files are deleted until it is back
+# under the low watermark. Live files and other revisions are never touched.
+# test.json sets a 2MB budget, so a few MB of container output exercises both;
+# the payload is random text so the .gz files keep a real size. Every size is
+# derived from the target's config, not hard-coded.
+#
+#  1. a reboot update, which becomes the rollback point
+#  2. a broken update (its container cannot start), which rolls back to 1
+#  3. a flood from pv-example-norole over pv-ctrl-log in the running revision
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+SENDER=pv-example-norole
+GOOD=locals/rotation-good
+BROKEN=locals/rotation-broken
+RUN="$$$(date +%s)"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+LOGROOT=$(conf_val PV_LOG_DIR); LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+
+# PV_LOG_DIR_MAXSIZE in bytes, for the suffixes this test uses
+bytes() {
+	case "$1" in
+	*MB) echo $(( ${1%MB} * 1000 * 1000 )) ;;
+	*M)  echo $(( ${1%M} * 1024 * 1024 )) ;;
+	*KB) echo $(( ${1%KB} * 1000 )) ;;
+	*K)  echo $(( ${1%K} * 1024 )) ;;
+	*)   echo "${1%B}" ;;
+	esac
+}
+TOTAL=$(bytes "$(conf_val PV_LOG_DIR_MAXSIZE)")
+GAP=$((TOTAL / $(conf_val PV_LOG_HYSTERESIS_FACTOR)))
+ROT=$((GAP / $(conf_val PV_LOG_ROTATE_FACTOR)))
+echo "budget=$TOTAL rotation_size=$ROT high=$((TOTAL * 9 / 10)) low=$((TOTAL - GAP))" >&2
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+revision() { pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]'; }
+# du -k rounds up to blocks, so a directory reads a little large: fine for an upper bound
+dir_bytes() { echo $(( $(pv_exec du -sk "$1" | tr -d '\r' | cut -f1) * 1024 )); }
+# A file just rotated away does not exist until the next line: that is size 0
+file_bytes() { pv_exec sh -c "wc -c < '$1' 2>/dev/null || echo 0" | tr -d ' \r'; }
+kv() { pventer -c "$SENDER" "printf '%s' 'level=INFO src=pvtest-rev message=$1' | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1; }
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+INITIAL=$(revision)
+
+echo "== reboot update =="
+sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' "$SENDER/lxc.container.conf"
+pvr add . > /dev/null 2>&1
+pvr commit > /dev/null 2>&1
+pvr post --rev "$GOOD" > /dev/null 2>&1
+wait_for_revision_state "$GOOD" "DONE" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for $GOOD to reach DONE" >&2; exit 1; }
+echo "current is the new revision: $(yesno pv_exec test "$LOGROOT/current" -ef "$LOGROOT/$GOOD")"
+kv "good-$RUN"
+wait_for_status "pv_exec grep -qF -- 'good-$RUN' '$LOGROOT/$GOOD/$SENDER/syslog/pvtest-rev'" 0 15 > /dev/null 2>&1
+echo "container line in the new revision: $(yesno pv_exec grep -qF -- "good-$RUN" "$LOGROOT/$GOOD/$SENDER/syslog/pvtest-rev")"
+echo "container line in the initial revision: $(yesno pv_exec grep -rqF -- "good-$RUN" "$LOGROOT/$INITIAL")"
+
+echo "== broken update rolls back =="
+sed -i 's|lxc\.init\.cmd = /usr/bin/pv-app|lxc.init.cmd = /nonexistingbin|g' "$SENDER/lxc.container.conf"
+pvr add . > /dev/null 2>&1
+pvr commit > /dev/null 2>&1
+pvr post --rev "$BROKEN" > /dev/null 2>&1
+wait_for_value "pvcontrol steps show-progress $BROKEN | jq -r .status" ERROR 300 > /dev/null 2>&1
+wait_for_target_ready "after rollback" "$GOOD" DONE >&2 \
+	|| { echo "ERROR: did not roll back to $GOOD" >&2; exit 1; }
+echo "running: $([ "$(revision)" = "$GOOD" ] && echo rollback point || echo other)"
+echo "current is the rollback point: $(yesno pv_exec test "$LOGROOT/current" -ef "$LOGROOT/$GOOD")"
+echo "failed revision log directory kept: $(yesno pv_exec test -s "$LOGROOT/$BROKEN/pantavisor/pantavisor.log")"
+logs=$(pvcontrol steps show-progress "$BROKEN" | jq -r '.logs // empty')
+echo "failed revision update logs present: $([ -n "$logs" ] && echo yes || echo no)"
+echo "update logs only ERROR or FATAL: $(printf '%s\n' "$logs" | jq -R -s -r 'split("\n") | map(select(length > 0) | fromjson | .lvl) | if length > 0 and all(. == "ERROR" or . == "FATAL") then "yes" else "no" end')"
+
+echo "== rotation in the running revision =="
+R="$LOGROOT/$GOOD"
+FLOOD="$R/$SENDER/syslog/pvtest-flood"
+others_before="$(dir_bytes "$LOGROOT/$INITIAL") $(dir_bytes "$LOGROOT/$BROKEN")"
+# ~3.5MB of random text, well past the high watermark once gzipped. pv-ctrl-log
+# takes a message as whatever one read gets, so each line is staged in a file and
+# kept under a page, which nc sends in a single write.
+PVTEST_EXEC_TIMEOUT=600 pventer -c "$SENDER" \
+	"i=0; while [ \$i -lt 1000 ]; do { printf 'level=INFO src=pvtest-flood message='; tr -dc a-z0-9 < /dev/urandom | head -c 3500; } > /tmp/pvtest-flood; nc -N -U -w1 /pantavisor/pv-ctrl-log < /tmp/pvtest-flood; i=\$((i + 1)); done; rm -f /tmp/pvtest-flood" \
+	> /dev/null 2>&1
+kv "flood-done-$RUN"
+wait_for_status "pv_exec grep -qF -- 'flood-done-$RUN' '$R/$SENDER/syslog/pvtest-rev'" 0 30 > /dev/null 2>&1
+
+gz=$(pv_exec sh -c "ls '$R/$SENDER/syslog/' | sed -n 's/^pvtest-flood\.\([0-9]*\)\.gz\$/\1/p' | sort -n" | tr -d '\r')
+first=$(printf '%s\n' "$gz" | head -n1)
+echo "rotated to pvtest-flood.<n>.gz: $([ -n "$gz" ] && echo yes || echo no)"
+echo "live pvtest-flood below rotation size: $([ "$(file_bytes "$FLOOD")" -lt "$ROT" ] && echo yes || echo no)"
+echo "oldest rotated files deleted: $([ -n "$first" ] && [ "$first" -gt 1 ] && echo yes || echo no)"
+echo "running revision within PV_LOG_DIR_MAXSIZE: $([ "$(dir_bytes "$R")" -le "$TOTAL" ] && echo yes || echo no)"
+echo "live pantavisor.log kept: $(yesno pv_exec test -s "$R/pantavisor/pantavisor.log")"
+echo "other revisions untouched: $([ "$(dir_bytes "$LOGROOT/$INITIAL") $(dir_bytes "$LOGROOT/$BROKEN")" = "$others_before" ] && echo yes || echo no)"

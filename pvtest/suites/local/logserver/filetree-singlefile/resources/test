@@ -1,0 +1,95 @@
+#!/bin/sh
+#
+# File outputs under a boot-time log config:
+# docs/reference/logserver-sockets.md#log-server-outputs and #timestamp-formats
+#
+# The log server is forked before user metadata is applied and never re-reads
+# its config, so every key here comes from test.json's env, not usrmeta:
+#
+#   PV_LOG_LEVEL=2                     FATAL/ERROR/WARN are kept, WALL and below
+#                                      dropped, for container and pantavisor lines
+#   PV_LOG_SERVER_OUTPUTS=filetree,singlefile
+#                                      both file outputs write
+#   PV_LOG_FILETREE_TIMESTAMP_FORMAT   golang:RFC822Z prefixes filetree lines
+#   PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT strftime:... fills the "ts" field of pv.log
+#   PV_LOG_TIMESTAMP=absolute          "tsec" is the Unix epoch
+#   PV_LOG_CAPTURE_DMESG=1             the log server holds /dev/kmsg open
+#   PV_LOG_LOGGERS=1                   pv-logger processes run for the containers
+#
+# The last two are the enabled side of logserver/capture-off.
+#
+# Container lines are sent as key-value over pv-ctrl-log from pv-example-norole,
+# one per level; pantavisor lines go to pantavisor's /dev/log. Each carries a
+# per-run nonce that never reaches stdout.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+SENDER=pv-example-norole
+RUN="$$$(date +%s)"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+LOGROOT=$(conf_val PV_LOG_DIR); LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+L="$LOGROOT/current"
+SINGLE="$L/pv.log"
+TREE="$L/$SENDER/syslog/pvtest-level"
+PVLOG="$L/pantavisor/pantavisor.log"
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+kv() { pventer -c "$SENDER" "printf '%s' 'level=$1 src=pvtest-level message=$2' | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1; }
+
+LEVELS="FATAL ERROR WARN WALL INFO DEBUG TRACE"
+
+for lvl in $LEVELS; do kv "$lvl" "$lvl-$RUN"; done
+pv_exec logger -t pvtest-level -p user.err "pv-$RUN" > /dev/null 2>&1
+# Sent last: once it is in, every message before it has been handled
+kv FATAL "done-$RUN"
+wait_for_status "pv_exec grep -qF -- 'done-$RUN' '$SINGLE'" 0 15 > /dev/null 2>&1
+
+pv_fetch_file "$SINGLE" "$TMP/pv.log"
+pv_fetch_file "$TREE" "$TMP/tree"
+pv_fetch_file "$PVLOG" "$TMP/pantavisor.log"
+single_line() { jq -R -c --arg m "$1" 'fromjson? | select(.msg == $m)' "$TMP/pv.log" | head -n1; }
+
+echo "== PV_LOG_LEVEL=2 =="
+for lvl in $LEVELS; do
+	s=$(grep -qF -- "\"msg\":\"$lvl-$RUN\"" "$TMP/pv.log" && echo kept || echo dropped)
+	t=$(grep -qF -- "$lvl-$RUN" "$TMP/tree" && echo kept || echo dropped)
+	if [ "$s" = "$t" ]; then echo "$lvl: $s"; else echo "$lvl: singlefile $s, filetree $t"; fi
+done
+echo "pantavisor ERROR line: $(grep -qF -- "pv-$RUN" "$TMP/pantavisor.log" && echo kept || echo dropped)"
+
+echo "== outputs =="
+mask=$(conf_val PV_LOG_SERVER_OUTPUTS)
+names=
+bit=1
+for n in nullsink singlefile filetree stdout stdout.containers stdout.pantavisor stdout_direct update; do
+	[ $((mask & bit)) -ne 0 ] && names="$names $n"
+	bit=$((bit * 2))
+done
+echo "in effect:$names"
+echo "filetree written: $(grep -qF -- "FATAL-$RUN" "$TMP/tree" && echo yes || echo no)"
+echo "singlefile written: $(grep -qF -- "FATAL-$RUN" "$TMP/pv.log" && echo yes || echo no)"
+
+echo "== timestamps =="
+RFC822Z='[0-9]{2} [A-Z][a-z]{2} [0-9]{2} [0-9]{2}:[0-9]{2} [+-][0-9]{4}'
+echo "filetree container line is [golang:RFC822Z] msg: $(yesno grep -qE "^\[$RFC822Z\] FATAL-$RUN\$" "$TMP/tree")"
+echo "filetree pantavisor line carries [golang:RFC822Z]: $(yesno grep -qE "^\[pantavisor\] \[$RFC822Z\] [0-9]+ ERROR.*pv-$RUN\$" "$TMP/pantavisor.log")"
+ts=$(single_line "FATAL-$RUN" | jq -r '.ts // empty')
+echo "singlefile ts is strftime:%Y-%m-%dT%H:%M:%S: $(printf '%s' "$ts" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$' && echo yes || echo no)"
+tsec=$(single_line "FATAL-$RUN" | jq -r '.tsec')
+now=$(pv_exec date +%s | tr -d '\r')
+echo "singlefile tsec is the epoch: $([ $((now - ${tsec:-0})) -ge 0 ] && [ $((now - ${tsec:-0})) -lt 600 ] && echo yes || echo no)"
+
+echo "== dmesg and loggers =="
+PID=$(pv_exec sh -c 'for p in /proc/[0-9]*; do [ "$(cat $p/comm 2>/dev/null)" = pv-log-server ] && echo ${p##*/}; done' | tr -d '\r' | head -n1)
+echo "pv-log-server holds /dev/kmsg: $(yesno pv_exec sh -c "ls -l /proc/$PID/fd | grep -q /dev/kmsg")"
+echo "pv-logger processes: $(yesno pv_exec sh -c 'for p in /proc/[0-9]*; do case "$(cat $p/comm 2>/dev/null)" in pv-logger-*) exit 0;; esac; done; exit 1')"

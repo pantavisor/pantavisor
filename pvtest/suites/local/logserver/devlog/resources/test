@@ -1,0 +1,182 @@
+#!/bin/sh
+#
+# Per-container /dev/log with PV_LOG_AUTO_DEVLOG=1:
+# docs/reference/logserver-sockets.md#per-container-control
+#
+# Each running container owns a SOCK_DGRAM socket at
+# <PV_SYSTEM_RUNDIR>/pv-plat-log/<container>/log.sock, bind-mounted at /dev/log
+# inside it. Messages are attributed to the container that owns the socket they
+# arrived on, not to a cgroup lookup, and the syslog tag becomes the file name
+# under the container's log directory.
+#
+# Covers the filetree src rules from get_src() (logserver/logserver_filetree.c):
+# a tag with no '/' is filed under syslog/, a path-shaped source keeps its shape,
+# and a traversing source collapses to unknown-src instead of escaping the tree.
+#
+# Also covers the socket lifecycle: it is created when the container starts
+# (pv_start_container) and removed when it stops (pv_platform_set_status on
+# PLAT_STOPPED), so /dev/log exists for exactly as long as the container runs.
+# pv-example-app is used because only a container whose restart policy is
+# "container" can be driven through the pv-ctrl lifecycle endpoints.
+#
+# Then the per-container table: the global flag is on, so a container without a
+# "dev-log" key in run.json gets a socket, "dev-log": false opts it out and
+# "dev-log": true keeps it. The PV_LOG_AUTO_DEVLOG=0 half of the table is
+# devlog-override.
+#
+# A container whose log socket path would overflow sun_path still starts, without
+# /dev/log, and Pantavisor logs a WARN instead (pv_logserver_create_platform_socket).
+# The name is sized from PV_SYSTEM_RUNDIR so it overflows on any target; the
+# container is a copy of pv-example-norole. Names with '"' or '\' take the same
+# WARN path, but such a container cannot start at all, so they are not covered.
+#
+# The last revision drops the copy and the dev-log key again, so the device
+# ends where it started for tests sharing it.
+#
+# Every assertion prints "<label>: yes|no" so the golden stays stable and a diff
+# names the exact property that regressed.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+APP=pv-example-app
+OTHER=pv-example-norole
+TAG=pvtest-devlog
+MSG="hello from pvtest devlog"
+TAG2=pvtest-devlog-restart
+MSG2="hello after restart"
+EVIL='../../etc/passwd'
+
+# One round trip for config; paths are never hardcoded (they differ per target).
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+RUNDIR=$(conf_val PV_SYSTEM_RUNDIR); RUNDIR=${RUNDIR%/}
+LOGROOT=$(conf_val PV_LOG_DIR);      LOGROOT=${LOGROOT%/}
+if [ -z "$RUNDIR" ] || [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_SYSTEM_RUNDIR/PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+PLATDIR="$RUNDIR/pv-plat-log"
+SOCK="$PLATDIR/$APP/log.sock"
+L="$LOGROOT/current"
+PVLOG="$L/pantavisor/pantavisor.log"
+
+# The socket path is "/<RUNDIR>/pv-plat-log/<name>/log.sock"; sun_path holds 108
+# bytes including the NUL, so pad the name until the path reaches 108
+fixed=$(printf '/%s/pv-plat-log//log.sock' "$RUNDIR" | wc -c)
+LONG=pvtest-devlog-
+while [ $((fixed + ${#LONG})) -lt 108 ]; do LONG="${LONG}x"; done
+
+# Run a command on the target (or in the container) and report it as yes/no.
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+sock() { yesno pv_exec test -S "$PLATDIR/$1/log.sock"; }
+cont_status() { pvcontrol containers ls | jq -r --arg n "$1" '.[] | select(.name == $n) | .status'; }
+
+# Post revision $1 and wait for state $2: UPDATED for a run.json change, DONE
+# for adding or removing a container, which is a reboot update and never shows
+# UPDATED
+post() {
+	pvr add . > /dev/null 2>&1
+	pvr commit > /dev/null 2>&1
+	pvr post --rev "$1" > /dev/null 2>&1
+	wait_for_revision_state "$1" "$2" > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $1 to reach $2" >&2; exit 1; }
+}
+
+set_devlog() {
+	jq -M "$1" "$APP/run.json" > "$APP/run.json.new" && mv "$APP/run.json.new" "$APP/run.json" \
+		|| { echo "ERROR: failed to edit $APP/run.json" >&2; exit 1; }
+}
+
+# Copy pv-example-norole under another name: directory, run.json and rootfs path
+add_copy() {
+	cp -r "$OTHER" "$1"
+	jq -M --arg n "$1" '.name = $n' "$OTHER/run.json" > "$1/run.json"
+	sed -i "s#/volumes/$OTHER/#/volumes/$1/#g" "$1/lxc.container.conf"
+}
+
+report() {
+	echo "$APP log.sock: $(sock "$APP")"
+	echo "$APP /dev/log in container: $(yesno pventer -c "$APP" test -S /dev/log)"
+	echo "$OTHER log.sock: $(sock "$OTHER")"
+}
+
+echo "== sockets =="
+echo "container log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+echo "container /dev/log is a socket: $(yesno pventer -c "$APP" test -S /dev/log)"
+echo "pantavisor /dev/log is a socket: $(yesno pv_exec test -S /dev/log)"
+echo "$OTHER log.sock (no dev-log key): $(sock "$OTHER")"
+
+echo "== capture from inside the container =="
+echo "logger available in container: $(yesno pventer -c "$APP" which logger)"
+pventer -c "$APP" logger -t "$TAG" "$MSG" > /dev/null 2>&1
+wait_for_path "$L/$APP/syslog/$TAG" -a > /dev/null 2>&1
+echo "captured at <container>/syslog/<tag>: $(yesno pv_exec test -e "$L/$APP/syslog/$TAG")"
+echo "message body present: $(yesno pv_exec grep -q "$MSG" "$L/$APP/syslog/$TAG")"
+
+echo "== attribution comes from the socket, not a cgroup guess =="
+echo "misfiled under unknown-platform: $(yesno pv_exec test -e "$L/unknown-platform/syslog/$TAG")"
+echo "misfiled under pantavisor: $(yesno pv_exec test -e "$L/pantavisor/syslog/$TAG")"
+
+echo "== traversing src collapses to unknown-src =="
+pventer -c "$APP" logger -t "$EVIL" "$MSG" > /dev/null 2>&1
+wait_for_path "$L/$APP/syslog/unknown-src" -a > /dev/null 2>&1
+echo "collapsed to syslog/unknown-src: $(yesno pv_exec test -e "$L/$APP/syslog/unknown-src")"
+echo "escaped the log tree: $(yesno pv_exec test -e "$LOGROOT/etc/passwd")"
+
+echo "== stopping the container removes the socket =="
+pvcontrol containers stop "$APP" > /dev/null 2>&1
+wait_for_value "cont_status $APP" "STOPPED" 30 > /dev/null 2>&1
+wait_for_path "$SOCK" -d > /dev/null 2>&1
+echo "container stopped: $(cont_status "$APP")"
+echo "container log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+
+echo "== starting it again recreates it =="
+pvcontrol containers start "$APP" > /dev/null 2>&1
+wait_for_value "cont_status $APP" "STARTED" 60 > /dev/null 2>&1
+wait_for_path "$SOCK" -a > /dev/null 2>&1
+echo "container started: $(cont_status "$APP")"
+echo "container log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+
+echo "== capture still works on the new socket =="
+pventer -c "$APP" logger -t "$TAG2" "$MSG2" > /dev/null 2>&1
+wait_for_path "$L/$APP/syslog/$TAG2" -a > /dev/null 2>&1
+echo "captured at <container>/syslog/<tag>: $(yesno pv_exec test -e "$L/$APP/syslog/$TAG2")"
+echo "message body present: $(yesno pv_exec grep -q "$MSG2" "$L/$APP/syslog/$TAG2")"
+
+echo "== path-shaped src keeps its shape =="
+wait_for_path "$L/$APP/lxc/lxc.log" -a > /dev/null 2>&1
+echo "lxc/lxc.log present: $(yesno pv_exec test -e "$L/$APP/lxc/lxc.log")"
+echo "wrongly nested under syslog/: $(yesno pv_exec test -e "$L/$APP/syslog/lxc")"
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+echo "== \"dev-log\": false =="
+set_devlog '. + {"dev-log": false}'
+post "locals/devlog-false" UPDATED
+wait_for_path "$SOCK" -d > /dev/null 2>&1
+report
+
+echo "== \"dev-log\": true =="
+set_devlog '. + {"dev-log": true}'
+post "locals/devlog-true" UPDATED
+wait_for_path "$SOCK" -a > /dev/null 2>&1
+report
+
+echo "== name too long for a socket path =="
+add_copy "$LONG"
+post "locals/devlog-long" DONE
+wait_for_value "cont_status '$LONG'" STARTED 60 > /dev/null 2>&1
+echo "status: $(cont_status "$LONG")"
+echo "log.sock: $(sock "$LONG")"
+echo "/dev/log in container: $(yesno pventer -c "$LONG" test -S /dev/log)"
+echo "WARN logged: $(yesno pv_exec grep -q -- "log socket path .*/$LONG/log.sock too long" "$PVLOG")"
+echo "$OTHER log.sock: $(sock "$OTHER")"
+
+echo "== back to the initial revision =="
+rm -rf "$LONG"
+set_devlog 'del(."dev-log")'
+post "locals/devlog-restore" DONE
+report

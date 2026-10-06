@@ -1,0 +1,12 @@
+== PV_LOG_CAPTURE=0 ==
+pv-log-server running: yes
+pv-ctrl-log accepts a connection: yes
+container console stored: no
+container /dev/log stored: no
+container pv-ctrl-log stored: no
+pantavisor /dev/log stored: no
+pv-ctrl-log from the target stored: no
+== PV_LOG_LOGGERS=0 ==
+pv-logger processes: no
+== PV_LOG_CAPTURE_DMESG=0 ==
+pv-log-server holds /dev/kmsg: no

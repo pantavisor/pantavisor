@@ -1,0 +1,17 @@
+== reboot update ==
+current is the new revision: yes
+container line in the new revision: yes
+container line in the initial revision: no
+== broken update rolls back ==
+running: rollback point
+current is the rollback point: yes
+failed revision log directory kept: yes
+failed revision update logs present: yes
+update logs only ERROR or FATAL: yes
+== rotation in the running revision ==
+rotated to pvtest-flood.<n>.gz: yes
+live pvtest-flood below rotation size: yes
+oldest rotated files deleted: yes
+running revision within PV_LOG_DIR_MAXSIZE: yes
+live pantavisor.log kept: yes
+other revisions untouched: yes

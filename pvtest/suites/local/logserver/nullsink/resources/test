@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# PV_LOG_SERVER_OUTPUTS=nullsink: docs/reference/logserver-sockets.md#log-server-outputs
+#
+# The log server runs and reads every source as usual, but its only output
+# discards what it gets: nothing reaches the log directory, from containers or
+# from Pantavisor. Unlike PV_LOG_CAPTURE=0 (logserver/capture-off) the outputs
+# are loaded, so this is the null sink doing the dropping. A boot-time key: the
+# log server never re-reads its config.
+#
+# Every message carries a per-run nonce, and "stored" greps the whole log
+# directory for it, so lines from earlier boots cannot interfere.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+APP=pv-example-app
+SENDER=pv-example-norole
+RUN="$$$(date +%s)"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+RUNDIR=$(conf_val PV_SYSTEM_RUNDIR); RUNDIR=${RUNDIR%/}
+LOGROOT=$(conf_val PV_LOG_DIR);      LOGROOT=${LOGROOT%/}
+if [ -z "$RUNDIR" ] || [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_SYSTEM_RUNDIR/PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+stored() { yesno pv_exec grep -rqF -- "$1" "$LOGROOT"; }
+
+echo "== log server =="
+echo "pv-log-server running: $(yesno pv_exec sh -c 'for p in /proc/[0-9]*; do [ "$(cat $p/comm 2>/dev/null)" = pv-log-server ] && exit 0; done; exit 1')"
+echo "container /dev/log is a socket: $(yesno pv_exec test -S "$RUNDIR/pv-plat-log/$APP/log.sock")"
+
+echo "== nothing is stored =="
+pventer -c "$APP" "echo console-$RUN > /dev/console" > /dev/null 2>&1
+pventer -c "$APP" logger -t pvtest-null "devlog-$RUN" > /dev/null 2>&1
+pventer -c "$SENDER" "printf '%s' 'level=FATAL src=pvtest-null message=ctrl-$RUN' | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1
+pv_exec logger -t pvtest-null -p user.err "pvdevlog-$RUN" > /dev/null 2>&1
+pv_exec sh -c "printf '%s' 'level=FATAL src=pvtest-null message=pvctrl-$RUN' | nc -N -U -w1 '$RUNDIR/pv-ctrl-log'" > /dev/null 2>&1
+# the log server would have written these within a second; give it a few
+sleep 5
+echo "container console: $(stored "console-$RUN")"
+echo "container /dev/log: $(stored "devlog-$RUN")"
+echo "container pv-ctrl-log: $(stored "ctrl-$RUN")"
+echo "pantavisor /dev/log: $(stored "pvdevlog-$RUN")"
+echo "pv-ctrl-log from the target: $(stored "pvctrl-$RUN")"

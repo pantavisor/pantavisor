@@ -1,0 +1,17 @@
+== PV_LOG_LEVEL=6 ==
+FATAL: kept
+ERROR: kept
+WARN: kept
+WALL: kept
+INFO: kept
+DEBUG: kept
+TRACE: kept
+== outputs ==
+filetree written: yes
+singlefile written: no
+== timestamps ==
+filetree container line is [--] msg: yes
+filetree pantavisor line carries [--]: yes
+tsec counts seconds since boot: yes
+== dmesg ==
+pv-log-server holds /dev/kmsg: no

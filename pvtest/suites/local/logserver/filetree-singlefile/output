@@ -1,0 +1,21 @@
+== PV_LOG_LEVEL=2 ==
+FATAL: kept
+ERROR: kept
+WARN: kept
+WALL: dropped
+INFO: dropped
+DEBUG: dropped
+TRACE: dropped
+pantavisor ERROR line: kept
+== outputs ==
+in effect: singlefile filetree update
+filetree written: yes
+singlefile written: yes
+== timestamps ==
+filetree container line is [golang:RFC822Z] msg: yes
+filetree pantavisor line carries [golang:RFC822Z]: yes
+singlefile ts is strftime:%Y-%m-%dT%H:%M:%S: yes
+singlefile tsec is the epoch: yes
+== dmesg and loggers ==
+pv-log-server holds /dev/kmsg: yes
+pv-logger processes: yes

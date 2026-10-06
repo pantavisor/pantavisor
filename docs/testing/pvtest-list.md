@@ -108,13 +108,10 @@ Local experience tests exercise Pantavisor features that operate without any clo
 
 ### services
 
-*On-device services: garbage collection, logging, SSH, metadata manipulation, tsh daemon, IPAM, and other auxiliary features.*
+*On-device services: garbage collection, SSH, metadata manipulation, tsh daemon, IPAM, and other auxiliary features.*
 
 | Test | Description | Done |
 |------|-------------|------|
-| `local/services/log-devlog` | Per-container /dev/log capture, attribution, src sanitization and socket create/remove on container stop/start | ✓ |
-| `local/services/log-devlog-override` | Per-container `dev-log: true` in run.json enables /dev/log with `PV_LOG_AUTO_DEVLOG=0` | ✓ |
-| `local/services/log-output-formats` | Log Output Formats (filetree/singlefile) | |
 | `local/services/console-alerts` | WALL console alerts reach `/dev/console`; `PV_LOG_CONSOLE_ALERTS=0` set at runtime silences them | |
 | `local/services/console-alerts-dedup` | Console alert skipped when a stdout output shows it | |
 | `local/services/on-demand-gc` | On-Demand Garbage Collection | ✓ |
@@ -122,7 +119,6 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/services/daemons` | Daemon list/stop/start (pv-ctrl) | ✓ |
 | `local/services/metadata-crud` | Device/user metadata CRUD (pv-ctrl) | ✓ |
 | `local/services/tsh-daemon` | tsh daemon management & log capture | |
-| `local/services/log-rotation` | Log rotation functionality | |
 | `local/services/ssh-override` | SSH Override | |
 | `local/services/metadata-manipulation` | Metadata Manipulation | |
 | `local/services/ipam-single-pool` | Single IPAM pool — container gets IP from pool | |
@@ -130,6 +126,22 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/services/ipam-collision` | Conflicting pool addresses detected and rejected | |
 | `local/services/ipam-invalid` | Invalid IPAM config rejected gracefully | |
 | `local/services/ipam-lxcbr` | IPAM with lxcbr bridge networking | |
+
+### logserver
+
+*The log server: protocols and sockets, platform attribution, fd subscriptions, outputs, timestamps, capture switches, per-revision directories and rotation. Its config is read once at boot, so every test sets it in `setup.config.env`.*
+
+| Test | Description | Done |
+|------|-------------|------|
+| `local/logserver/devlog` | Per-container /dev/log with `PV_LOG_AUTO_DEVLOG=1`: capture, attribution, src sanitization, socket create/remove on stop/start, `dev-log` unset/true/false, a name too long for its log socket | ✓ |
+| `local/logserver/devlog-override` | Per-container `dev-log: true`/`false` in run.json with `PV_LOG_AUTO_DEVLOG=0` | ✓ |
+| `local/logserver/ingest` | Every protocol on a container's /dev/log and pv-ctrl-log, platform attribution, malformed input dropped without killing the log server | ✓ |
+| `local/logserver/fd-lifecycle` | pv-fd-log console capture across restart/stop/start: no leaked fds, no spin on a closed fd | ✓ |
+| `local/logserver/capture-off` | `PV_LOG_CAPTURE=0`, `PV_LOG_LOGGERS=0`, `PV_LOG_CAPTURE_DMESG=0` | ✓ |
+| `local/logserver/filetree-singlefile` | `PV_LOG_LEVEL=2`, filetree+singlefile, golang/strftime timestamps, absolute tsec, dmesg and loggers on | ✓ |
+| `local/logserver/stdout` | `PV_LOG_LEVEL=6`, filetree with `stdout.pantavisor`, invalid timestamp format, relative tsec, dmesg skipped | ✓ |
+| `local/logserver/nullsink` | `PV_LOG_SERVER_OUTPUTS=nullsink`: every source accepted, nothing written | ✓ |
+| `local/logserver/rotation-and-revisions` | Log directories across update and rollback, update output, rotation and cleanup under a small `PV_LOG_DIR_MAXSIZE` | ✓ |
 
 ---
 

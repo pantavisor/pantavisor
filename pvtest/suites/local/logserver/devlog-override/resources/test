@@ -7,6 +7,10 @@
 # pv-example-norole, which carries no dev-log key, keeps inheriting the global
 # setting.
 #
+# "dev-log": false is then checked to keep the socket off, completing the
+# PV_LOG_AUTO_DEVLOG=0 half of the per-container table (the =1 half is
+# devlog).
+#
 # The test removes the key again at the end, so the container goes back to the
 # inherited default and no socket is left behind for tests sharing this device.
 
@@ -65,6 +69,12 @@ pventer -c "$CONT" logger -t "$TAG" "$MSG" > /dev/null 2>&1
 wait_for_path "$L/$CONT/syslog/$TAG" -a > /dev/null 2>&1
 echo "captured at <container>/syslog/<tag>: $(yesno pv_exec test -e "$L/$CONT/syslog/$TAG")"
 echo "message body present: $(yesno pv_exec grep -q "$MSG" "$L/$CONT/syslog/$TAG")"
+
+echo "== \"dev-log\": false in $CONT/run.json =="
+post_run_json "locals/devlog-off" '. + {"dev-log": false}'
+wait_for_path "$SOCK" -d > /dev/null 2>&1
+echo "$CONT log.sock is a socket: $(yesno pv_exec test -S "$SOCK")"
+echo "$CONT /dev/log is a socket: $(yesno pventer -c "$CONT" test -S /dev/log)"
 
 echo "== removing the key restores the inherited default =="
 post_run_json "locals/devlog-default" 'del(."dev-log")'

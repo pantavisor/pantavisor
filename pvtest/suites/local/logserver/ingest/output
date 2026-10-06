@@ -1,0 +1,39 @@
+== container /dev/log ==
+rfc5424: platform=pv-example-norole lvl=ERROR src=pvtest-rfc5424
+rfc5424: filetree pv-example-norole/syslog/pvtest-rfc5424: yes
+rfc3164: platform=pv-example-norole lvl=WARN src=pvtest-rfc3164
+rfc3164: filetree pv-example-norole/syslog/pvtest-rfc3164: yes
+json: platform=pv-example-norole lvl=DEBUG src=pvtest-json
+json: filetree pv-example-norole/syslog/pvtest-json: yes
+key-value: platform=pv-example-norole lvl=INFO src=pvtest-kv
+key-value: filetree pv-example-norole/syslog/pvtest-kv: yes
+== container pv-ctrl-log ==
+rfc5424: platform=pv-example-norole lvl=ERROR src=pvtest-rfc5424
+rfc5424: filetree pv-example-norole/syslog/pvtest-rfc5424: yes
+rfc3164: platform=pv-example-norole lvl=WARN src=pvtest-rfc3164
+rfc3164: filetree pv-example-norole/syslog/pvtest-rfc3164: yes
+json: platform=pv-example-norole lvl=DEBUG src=pvtest-json
+json: filetree pv-example-norole/syslog/pvtest-json: yes
+key-value: platform=pv-example-norole lvl=INFO src=pvtest-kv
+key-value: filetree pv-example-norole/syslog/pvtest-kv: yes
+== legacy binary names its own platform ==
+legacy over dgram: platform=pv-example-app lvl=INFO src=pvtest-legacy
+legacy over dgram: filetree pv-example-app/syslog/pvtest-legacy: yes
+legacy over stream: platform=pv-example-app lvl=INFO src=pvtest-legacy
+legacy over stream: filetree pv-example-app/syslog/pvtest-legacy: yes
+== pantavisor's own sockets ==
+/dev/log: platform=pantavisor lvl=INFO src=pvtest-pvdevlog
+pv-ctrl-log: platform=pantavisor lvl=INFO src=pvtest-pvctrl
+/dev/log in pantavisor.log: yes
+== malformed input ==
+garbage: stored=no warned=no alive=yes
+truncated rfc5424: stored=no warned=no alive=yes
+json version 1: stored=no warned=no alive=yes
+json without message: stored=no warned=no alive=yes
+json level ALL: stored=no warned=no alive=yes
+key-value unknown level: stored=no warned=no alive=yes
+truncated legacy: stored=no warned=no alive=yes
+legacy CMD exit: stored=no warned=no alive=yes
+legacy len beyond payload: stored=no warned=no alive=yes
+legacy negative len: stored=no warned=no alive=yes
+oversized: stored=yes truncated=yes

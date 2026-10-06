@@ -1,0 +1,9 @@
+== log server ==
+pv-log-server running: yes
+container /dev/log is a socket: yes
+== nothing is stored ==
+container console: no
+container /dev/log: no
+container pv-ctrl-log: no
+pantavisor /dev/log: no
+pv-ctrl-log from the target: no

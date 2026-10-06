@@ -9,6 +9,9 @@ pv-example-norole log.sock is a socket: no
 == capture from inside pv-example-app ==
 captured at <container>/syslog/<tag>: yes
 message body present: yes
+== "dev-log": false in pv-example-app/run.json ==
+pv-example-app log.sock is a socket: no
+pv-example-app /dev/log is a socket: no
 == removing the key restores the inherited default ==
 pv-example-app log.sock is a socket: no
 pv-example-app /dev/log is a socket: no

@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "per-container /dev/log with PV_LOG_AUTO_DEVLOG=1: capture, attribution, filetree layout, stop/start lifecycle, dev-log unset/false/true, and a container name too long for its log socket",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled PV_LOG_LEVEL=4 PV_LOG_AUTO_DEVLOG=1 PV_LOG_SERVER_OUTPUTS=filetree",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz",
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
