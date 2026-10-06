@@ -2,6 +2,7 @@
 container log.sock is a socket: yes
 container /dev/log is a socket: yes
 pantavisor /dev/log is a socket: yes
+pv-example-norole log.sock (no dev-log key): yes
 == capture from inside the container ==
 logger available in container: yes
 captured at <container>/syslog/<tag>: yes
@@ -24,3 +25,21 @@ message body present: yes
 == path-shaped src keeps its shape ==
 lxc/lxc.log present: yes
 wrongly nested under syslog/: no
+== "dev-log": false ==
+pv-example-app log.sock: no
+pv-example-app /dev/log in container: no
+pv-example-norole log.sock: yes
+== "dev-log": true ==
+pv-example-app log.sock: yes
+pv-example-app /dev/log in container: yes
+pv-example-norole log.sock: yes
+== name too long for a socket path ==
+status: STARTED
+log.sock: no
+/dev/log in container: no
+WARN logged: yes
+pv-example-norole log.sock: yes
+== back to the initial revision ==
+pv-example-app log.sock: yes
+pv-example-app /dev/log in container: yes
+pv-example-norole log.sock: yes

@@ -1,0 +1,66 @@
+#!/bin/sh
+#
+# The three capture switches off at once: PV_LOG_CAPTURE, PV_LOG_LOGGERS and
+# PV_LOG_CAPTURE_DMESG (docs/reference/pantavisor-configuration.md#summary).
+# They are boot-time keys for the log server, so they share one boot; each turns
+# off a different thing, so each has its own assertion:
+#
+#   PV_LOG_CAPTURE=0        the log server still runs and accepts messages, but
+#                           loads no output: nothing from any socket or console
+#                           reaches the log directory (pv_logserver_init).
+#   PV_LOG_LOGGERS=0        no pv-logger-<container> process is started
+#                           (platforms.c, start_pvlogger_for_platform).
+#   PV_LOG_CAPTURE_DMESG=0  the log server does not hold /dev/kmsg open.
+#
+# The enabled side of each is asserted by logserver/filetree-singlefile.
+#
+# Every message carries a per-run nonce, and "stored" greps the whole log
+# directory for it, so lines from earlier boots cannot interfere.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+APP=pv-example-app
+SENDER=pv-example-norole
+RUN="$$$(date +%s)"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+RUNDIR=$(conf_val PV_SYSTEM_RUNDIR); RUNDIR=${RUNDIR%/}
+LOGROOT=$(conf_val PV_LOG_DIR);      LOGROOT=${LOGROOT%/}
+if [ -z "$RUNDIR" ] || [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_SYSTEM_RUNDIR/PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+# PIDs of processes whose comm starts with $1
+procs() {
+	pv_exec sh -c "for p in /proc/[0-9]*; do case \"\$(cat \$p/comm 2>/dev/null)\" in $1*) echo \${p##*/};; esac; done" \
+		| tr -d '\r'
+}
+stored() { yesno pv_exec grep -rqF -- "$1" "$LOGROOT"; }
+
+PID=$(procs pv-log-server | head -n1)
+
+echo "== PV_LOG_CAPTURE=0 =="
+echo "pv-log-server running: $([ -n "$PID" ] && echo yes || echo no)"
+echo "pv-ctrl-log accepts a connection: $(yesno pv_exec sh -c "printf 'level=INFO src=pvtest-off message=probe-$RUN' | nc -N -U -w1 '$RUNDIR/pv-ctrl-log'")"
+pventer -c "$APP" "echo console-$RUN > /dev/console" > /dev/null 2>&1
+pventer -c "$APP" logger -t pvtest-off "devlog-$RUN" > /dev/null 2>&1
+pventer -c "$SENDER" "printf 'level=INFO src=pvtest-off message=ctrl-$RUN' | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1
+pv_exec logger -t pvtest-off "pvdevlog-$RUN" > /dev/null 2>&1
+# the log server would have written these within a second; give it a few
+sleep 5
+echo "container console stored: $(stored "console-$RUN")"
+echo "container /dev/log stored: $(stored "devlog-$RUN")"
+echo "container pv-ctrl-log stored: $(stored "ctrl-$RUN")"
+echo "pantavisor /dev/log stored: $(stored "pvdevlog-$RUN")"
+echo "pv-ctrl-log from the target stored: $(stored "probe-$RUN")"
+
+echo "== PV_LOG_LOGGERS=0 =="
+echo "pv-logger processes: $([ -n "$(procs pv-logger-)" ] && echo yes || echo no)"
+
+echo "== PV_LOG_CAPTURE_DMESG=0 =="
+echo "pv-log-server holds /dev/kmsg: $(yesno pv_exec sh -c "ls -l /proc/$PID/fd | grep -q /dev/kmsg")"

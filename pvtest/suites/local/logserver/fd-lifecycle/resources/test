@@ -1,0 +1,136 @@
+#!/bin/sh
+#
+# pv-fd-log subscriptions across the container lifecycle:
+# docs/reference/logserver-sockets.md#pv-fd-log
+#
+# Pantavisor hands the log server the master side of each container's console
+# pty over pv-fd-log (SCM_RIGHTS) when the container starts (platforms.c), and
+# unsubscribes it when the container stops. The log server's copy is polled into
+# <rev>/<container>/lxc/console.log. A test cannot open pv-fd-log itself (the
+# target has no SCM_RIGHTS-capable tool), so this drives the real producer: the
+# container's console, through restart, stop and start.
+#
+# pv-example-app prints one "starting" line per start (pv-app.sh), so the number
+# of those lines in console.log counts the subscriptions that delivered. What is
+# left behind is counted on the target, per process:
+#
+#   console ptys   /dev/pts/ptmx fds held by pv-log-server: one per running
+#                  container console, so the same after restarts, one fewer
+#                  while pv-example-app is stopped
+#   pv-fd-log      connected sockets on pv-fd-log held by pv-log-server: every
+#                  subscribe/unsubscribe is a one-shot connection, so none stay
+#   fd counts      of pv-log-server and of pantavisor itself, which opens the
+#                  client side of each of those connections
+#
+# A busy loop on a hung-up fd would show as CPU burnt by pv-log-server while
+# nothing logs.
+#
+# The container is left STARTED, so no state is left behind for tests sharing
+# this device.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+CONT=pv-example-app
+RESTARTS=5
+RUN="$$$(date +%s)"
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+CONSOLE="$LOGROOT/current/$CONT/lxc/console.log"
+
+cont_status() { pvcontrol containers ls | jq -r --arg n "$CONT" '.[] | select(.name == $n) | .status'; }
+
+# Lowest PID whose comm is $1
+pid_of() {
+	pv_exec sh -c "for p in /proc/[0-9]*; do [ \"\$(cat \$p/comm 2>/dev/null)\" = $1 ] && echo \${p##*/}; done" \
+		| tr -d '\r' | sort -n | head -n1
+}
+fds() { pv_exec sh -c "ls /proc/$1/fd | wc -l" | tr -d ' \r'; }
+ptys() { pv_exec sh -c "ls -l /proc/$LS/fd | grep -c /dev/pts/ptmx" | tr -d ' \r'; }
+# Connected (state 03) unix sockets bound to pv-fd-log among pv-log-server's fds
+fdlog_conns() {
+	pv_exec sh -c "n=0; for i in \$(ls -l /proc/$LS/fd | sed -n 's/.*socket:\[\([0-9]*\)\]/\1/p'); do grep -q \" 03 \$i .*/pv-fd-log\$\" /proc/net/unix && n=\$((n + 1)); done; echo \$n" \
+		| tr -d ' \r'
+}
+ticks() { pv_exec cat "/proc/$LS/stat" | tr -d '\r' | awk '{ print $14 + $15 }'; }
+starts() { pv_exec sh -c "grep -c '$CONT starting' '$CONSOLE'" | tr -d ' \r'; }
+
+console_write() { pventer -c "$CONT" "echo $1 > /dev/console" > /dev/null 2>&1; }
+captured() { wait_for_status "pv_exec grep -qF -- '$1' '$CONSOLE'" 0 15; }
+
+# Wait until "$1" prints a value for which test "$2" holds
+settles() { wait_for_status "[ \"\$($1)\" $2 ]" 0 15; }
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+# Print "<label>: yes", or "<label>: no (<now> vs <expected>)" so a diff shows the numbers
+expect() {
+	label="$1" cmd="$2" op="$3" want="$4"
+	if settles "$cmd" "$op $want"; then
+		echo "$label: yes"
+	else
+		echo "$label: no ($($cmd) vs $want)"
+	fi
+}
+
+LS=$(pid_of pv-log-server)
+PV=$(pid_of pantavisor)
+if [ -z "$LS" ] || [ -z "$PV" ]; then
+	echo "ERROR: pv-log-server or pantavisor not found on the target" >&2
+	exit 1
+fi
+
+echo "== running =="
+console_write "console-0-$RUN"
+echo "console write captured: $(yesno captured "console-0-$RUN")"
+expect "no pv-fd-log connection held" fdlog_conns -eq 0
+PTYS=$(ptys)
+LS_FDS=$(fds "$LS")
+PV_FDS=$(fds "$PV")
+S0=$(starts)
+echo "baseline: ptys=$PTYS pv-log-server fds=$LS_FDS pantavisor fds=$PV_FDS" >&2
+
+echo "== $RESTARTS restarts =="
+all=yes
+i=1
+while [ $i -le $RESTARTS ]; do
+	pvcontrol containers restart "$CONT" > /dev/null 2>&1
+	wait_for_value "cont_status" STARTED 60 > /dev/null 2>&1 || all=no
+	wait_for_value "starts" "$((S0 + i))" 30 > /dev/null 2>&1 || all=no
+	i=$((i + 1))
+done
+echo "every restart captured: $all"
+console_write "console-1-$RUN"
+echo "console write after restarts captured: $(yesno captured "console-1-$RUN")"
+echo "same pv-log-server: $([ "$(pid_of pv-log-server)" = "$LS" ] && echo yes || echo no)"
+expect "console ptys back to baseline" ptys -eq "$PTYS"
+expect "no pv-fd-log connection held" fdlog_conns -eq 0
+expect "pv-log-server fds back to baseline" "fds $LS" -eq "$LS_FDS"
+expect "pantavisor fds back to baseline" "fds $PV" -eq "$PV_FDS"
+
+echo "== stopped =="
+pvcontrol containers stop "$CONT" > /dev/null 2>&1
+wait_for_value "cont_status" STOPPED 30 > /dev/null 2>&1
+echo "container: $(cont_status)"
+expect "console pty released" ptys -eq "$((PTYS - 1))"
+expect "no pv-fd-log connection held" fdlog_conns -eq 0
+t0=$(ticks); sleep 5; t1=$(ticks)
+# 5s of a busy loop is ~500 ticks at USER_HZ=100; an idle poll is a handful
+echo "pv-log-server idle: $([ $((t1 - t0)) -lt 50 ] && echo yes || echo no)"
+echo "pv-log-server cpu ticks over 5s: $((t1 - t0))" >&2
+
+echo "== started again =="
+pvcontrol containers start "$CONT" > /dev/null 2>&1
+wait_for_value "cont_status" STARTED 60 > /dev/null 2>&1
+echo "container: $(cont_status)"
+console_write "console-2-$RUN"
+echo "console write captured: $(yesno captured "console-2-$RUN")"
+expect "console ptys back to baseline" ptys -eq "$PTYS"
+expect "no pv-fd-log connection held" fdlog_conns -eq 0
+expect "pv-log-server fds back to baseline" "fds $LS" -eq "$LS_FDS"
+expect "pantavisor fds back to baseline" "fds $PV" -eq "$PV_FDS"
+echo "same pv-log-server: $([ "$(pid_of pv-log-server)" = "$LS" ] && echo yes || echo no)"

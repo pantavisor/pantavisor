@@ -1,0 +1,24 @@
+== running ==
+console write captured: yes
+no pv-fd-log connection held: yes
+== 5 restarts ==
+every restart captured: yes
+console write after restarts captured: yes
+same pv-log-server: yes
+console ptys back to baseline: yes
+no pv-fd-log connection held: yes
+pv-log-server fds back to baseline: yes
+pantavisor fds back to baseline: yes
+== stopped ==
+container: STOPPED
+console pty released: yes
+no pv-fd-log connection held: yes
+pv-log-server idle: yes
+== started again ==
+container: STARTED
+console write captured: yes
+console ptys back to baseline: yes
+no pv-fd-log connection held: yes
+pv-log-server fds back to baseline: yes
+pantavisor fds back to baseline: yes
+same pv-log-server: yes

@@ -1,0 +1,80 @@
+#!/bin/sh
+#
+# Log server with a pantavisor stdout output, under a boot-time log config:
+# docs/reference/logserver-sockets.md#log-server-outputs and #timestamp-formats
+#
+# What a stdout output prints goes to pv-log-server's own stdout, which the tester
+# cannot read (on appengine it is the container's log stream). This test checks
+# what the configuration does to everything else:
+#
+#   PV_LOG_LEVEL=6                    every level down to TRACE is kept
+#   PV_LOG_SERVER_OUTPUTS=filetree,stdout.pantavisor
+#                                     filetree still writes; singlefile is not on
+#   PV_LOG_FILETREE_TIMESTAMP_FORMAT=golang:Nope
+#                                     an unknown format prints "--" in its place
+#   PV_LOG_TIMESTAMP=relative         "tsec" counts seconds since boot, not
+#                                     counting suspend
+#   PV_LOG_CAPTURE_DMESG=1            ignored while stdout.pantavisor is on, so
+#                                     the kernel log is not printed twice: the log
+#                                     server does not open /dev/kmsg
+#
+# Container lines are sent as key-value over pv-ctrl-log from pv-example-norole,
+# one per level; the pantavisor line goes to pantavisor's /dev/log. Each carries a
+# per-run nonce that never reaches stdout.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+SENDER=pv-example-norole
+RUN="$$$(date +%s)"
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+L="$LOGROOT/current"
+TREE="$L/$SENDER/syslog/pvtest-level"
+PVLOG="$L/pantavisor/pantavisor.log"
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+kv() { pventer -c "$SENDER" "printf '%s' 'level=$1 src=pvtest-level message=$2' | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1; }
+
+LEVELS="FATAL ERROR WARN WALL INFO DEBUG TRACE"
+
+for lvl in $LEVELS; do kv "$lvl" "$lvl-$RUN"; done
+pv_exec logger -t pvtest-level "pv-$RUN" > /dev/null 2>&1
+# Sent last: once it is in, every message before it has been handled
+kv FATAL "done-$RUN"
+wait_for_status "pv_exec grep -qF -- 'done-$RUN' '$TREE'" 0 15 > /dev/null 2>&1
+wait_for_status "pv_exec grep -qF -- 'pv-$RUN' '$PVLOG'" 0 15 > /dev/null 2>&1
+
+pv_fetch_file "$TREE" "$TMP/tree"
+pv_fetch_file "$PVLOG" "$TMP/pantavisor.log"
+
+echo "== PV_LOG_LEVEL=6 =="
+for lvl in $LEVELS; do
+	echo "$lvl: $(grep -qF -- "$lvl-$RUN" "$TMP/tree" && echo kept || echo dropped)"
+done
+
+echo "== outputs =="
+echo "filetree written: $(grep -qF -- "FATAL-$RUN" "$TMP/tree" && echo yes || echo no)"
+echo "singlefile written: $(yesno pv_exec grep -qF -- "FATAL-$RUN" "$L/pv.log")"
+
+echo "== timestamps =="
+echo "filetree container line is [--] msg: $(yesno grep -qxF -- "[--] FATAL-$RUN" "$TMP/tree")"
+line=$(grep -F -- "pv-$RUN" "$TMP/pantavisor.log" | head -n1)
+echo "filetree pantavisor line carries [--]: $(printf '%s' "$line" | grep -qE '^\[pantavisor\] \[--\] [0-9]+ ' && echo yes || echo no)"
+tsec=$(printf '%s' "$line" | sed -n 's/^\[pantavisor\] \[--\] \([0-9]*\) .*/\1/p')
+# tsec is CLOCK_MONOTONIC, which stops during suspend while /proc/uptime does
+# not, so it is bounded by uptime rather than equal to it; an epoch value would
+# be far above both
+up=$(pv_exec cut -d. -f1 /proc/uptime | tr -d '\r')
+echo "tsec counts seconds since boot: $([ -n "$tsec" ] && [ "$tsec" -le "$up" ] && echo yes || echo no)"
+
+echo "== dmesg =="
+PID=$(pv_exec sh -c 'for p in /proc/[0-9]*; do [ "$(cat $p/comm 2>/dev/null)" = pv-log-server ] && echo ${p##*/}; done' | tr -d '\r' | head -n1)
+echo "pv-log-server holds /dev/kmsg: $(yesno pv_exec sh -c "ls -l /proc/$PID/fd | grep -q /dev/kmsg")"

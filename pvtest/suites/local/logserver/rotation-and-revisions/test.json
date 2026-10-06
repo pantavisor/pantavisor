@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "logserver per-revision log directories across update and rollback, the update output, and rotation/cleanup under a small PV_LOG_DIR_MAXSIZE",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled PV_LOG_LEVEL=5 PV_LOG_SERVER_OUTPUTS=filetree PV_LOG_DIR_MAXSIZE=2MB PV_LOG_ROTATE_FACTOR=4 PV_LOG_HYSTERESIS_FACTOR=4",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

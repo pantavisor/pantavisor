@@ -1,0 +1,182 @@
+#!/bin/sh
+#
+# Log server ingest: docs/reference/logserver-sockets.md#protocol-detection
+#
+# pv-example-norole is the sender. It is not a mgmt container, so pv-ctrl-log is
+# bind-mounted into it at /pantavisor/pv-ctrl-log (plugins/pv_lxc.c), it owns a
+# per-container /dev/log, and it ships OpenBSD nc, which speaks both the stream
+# and the datagram unix sockets. pventer runs the command inside the container's
+# cgroup, so pv-ctrl-log sees a container sender exactly as a real app would.
+# Payloads travel base64-encoded so pventer's word joining cannot mangle quotes,
+# braces or the NUL bytes of the legacy protocol.
+#
+# Results are read back from the singlefile output (pv.log), which records the
+# platform, level and source of every line; filetree is checked for the path.
+# test.json pins both outputs and PV_LOG_LEVEL=5 so a DEBUG line is kept.
+#
+# Every message carries a per-run nonce: the log tree outlives a test on a
+# persistent target, so a marker from an earlier run must never count. The nonce
+# never reaches stdout.
+#
+#  1. container /dev/log: RFC 5424, RFC 3164, JSON and key-value. The platform is
+#     the socket's owner, even when the payload names another container.
+#  2. pv-ctrl-log from inside the container: the same four, platform from cgroup.
+#  3. legacy binary: the platform is the message's own field, on either socket.
+#  4. pantavisor's own /dev/log and pv-ctrl-log, from the target itself.
+#  5. malformed input: each message is dropped, with a WARN when it matched a
+#     protocol and failed to parse, and a canary sent right after still lands,
+#     so the log server survived it. A legacy CMD (code 256) asking the log
+#     server to exit is refused because it does not come from Pantavisor, and a
+#     legacy message whose len field is negative or larger than the payload it
+#     came with is rejected instead of being trusted.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+SENDER=pv-example-norole
+OTHER=pv-example-app
+RUN="$$$(date +%s)"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+RUNDIR=$(conf_val PV_SYSTEM_RUNDIR); RUNDIR=${RUNDIR%/}
+LOGROOT=$(conf_val PV_LOG_DIR);      LOGROOT=${LOGROOT%/}
+if [ -z "$RUNDIR" ] || [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_SYSTEM_RUNDIR/PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+L="$LOGROOT/current"
+SINGLE="$L/pv.log"
+PVLOG="$L/pantavisor/pantavisor.log"
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+# Little-endian int32, as raw bytes
+le32() {
+	for shift in 0 8 16 24; do
+		printf "\\$(printf '%03o' $(( ($1 >> shift) & 255 )))"
+	done
+}
+
+# struct logserver_msg { int code; int len; char buf[]; } with buf read from stdin
+legacy() {
+	cat > "$TMP/buf"
+	le32 "$1"
+	le32 "$(wc -c < "$TMP/buf")"
+	cat "$TMP/buf"
+}
+
+# Same header with a forced len ($1), whatever the payload on stdin really is
+legacy_forged() {
+	le32 0
+	le32 "$1"
+	cat
+}
+
+# Send stdin from inside $SENDER: dgram goes to its /dev/log, stream to pv-ctrl-log
+send() {
+	b64=$(base64 -w0)
+	case "$1" in
+	dgram)  dest="nc -uU -w1 /dev/log" ;;
+	stream) dest="nc -N -U -w1 /pantavisor/pv-ctrl-log" ;;
+	esac
+	pventer -c "$SENDER" "echo $b64 | base64 -d | $dest" > /dev/null 2>&1
+}
+
+# Wait until the singlefile output holds marker $1
+landed() { wait_for_status "pv_exec grep -qF -- '$1' '$SINGLE'" 0 "${2:-15}"; }
+
+# platform, level and source of the pv.log line carrying marker $1
+attrs() {
+	pv_fetch_file "$SINGLE" "$TMP/pv.log"
+	jq -R -r --arg m "$1" \
+		'fromjson? | select((.msg | tostring) | contains($m)) | "platform=\(.platform) lvl=\(.lvl) src=\(.src)"' \
+		"$TMP/pv.log" | head -n1
+}
+
+# One line per message: where it was filed and what it was filed as
+report() {
+	label="$1" marker="$2" plat="$3" src="$4"
+	if landed "$marker"; then
+		echo "$label: $(attrs "$marker")"
+	else
+		echo "$label: not logged"
+	fi
+	[ -n "$plat" ] && echo "$label: filetree $plat/syslog/$src: $(yesno pv_exec grep -qF -- "$marker" "$L/$plat/syslog/$src")"
+}
+
+# The four text protocols. Each payload also names $OTHER, where the protocol has
+# a field for it, to show it is ignored.
+send_text() {
+	t="$1"
+	printf '<11>1 - %s pvtest-rfc5424 - - - %s' "$OTHER" "rfc5424-$t-$RUN" | send "$t"
+	report "rfc5424" "rfc5424-$t-$RUN" "$SENDER" pvtest-rfc5424
+	printf '<12>Oct 12 10:00:00 %s pvtest-rfc3164[42]: %s' "$OTHER" "rfc3164-$t-$RUN" | send "$t"
+	report "rfc3164" "rfc3164-$t-$RUN" "$SENDER" pvtest-rfc3164
+	printf '{"version":"0","level":"debug","src":"pvtest-json","message":"%s","platform":"%s"}' "json-$t-$RUN" "$OTHER" | send "$t"
+	report "json" "json-$t-$RUN" "$SENDER" pvtest-json
+	printf 'level=Info src=pvtest-kv message="%s with spaces"' "kv-$t-$RUN" | send "$t"
+	report "key-value" "kv-$t-$RUN" "$SENDER" pvtest-kv
+}
+
+echo "== container /dev/log =="
+send_text dgram
+
+echo "== container pv-ctrl-log =="
+send_text stream
+
+echo "== legacy binary names its own platform =="
+for t in dgram stream; do
+	printf '4\000%s\000pvtest-legacy\000%s' "$OTHER" "legacy-$t-$RUN" | legacy 0 | send "$t"
+	report "legacy over $t" "legacy-$t-$RUN" "$OTHER" pvtest-legacy
+done
+
+echo "== pantavisor's own sockets =="
+pv_exec logger -t pvtest-pvdevlog "pvdevlog-$RUN" > /dev/null 2>&1
+report "/dev/log" "pvdevlog-$RUN"
+pv_exec sh -c "printf '%s' 'level=INFO src=pvtest-pvctrl message=pvctrl-$RUN' | nc -N -U -w1 '$RUNDIR/pv-ctrl-log'" > /dev/null 2>&1
+report "pv-ctrl-log" "pvctrl-$RUN"
+echo "/dev/log in pantavisor.log: $(yesno pv_exec grep -qF -- "pvdevlog-$RUN" "$PVLOG")"
+
+echo "== malformed input =="
+warns() { pv_exec grep -c -e 'logserver message could not be handled' -e 'logserver command received from pid' "$PVLOG" | tr -d ' \r'; }
+
+n=0
+# Send stdin over pv-ctrl-log, then a canary; print what became of both
+malformed() {
+	label="$1" marker="$2"
+	n=$((n + 1))
+	before=$(warns)
+	send stream
+	printf 'level=INFO src=pvtest-canary message=canary-%s-%s' "$n" "$RUN" | send stream
+	alive=$(landed "canary-$n-$RUN" && echo yes || echo no)
+	if wait_for_status "[ \"\$(warns)\" -gt \"$before\" ]" 0 5; then warned=yes; else warned=no; fi
+	stored=$(yesno pv_exec grep -qF -- "$marker" "$SINGLE")
+	echo "$label: stored=$stored warned=$warned alive=$alive"
+}
+
+printf 'not a log line %s' "garbage-$RUN" | malformed "garbage" "garbage-$RUN"
+printf '<11>1 - %s' "rfc5424trunc-$RUN" | malformed "truncated rfc5424" "rfc5424trunc-$RUN"
+printf '{"version":"1","level":"INFO","src":"pvtest-bad","message":"%s"}' "jsonver-$RUN" | malformed "json version 1" "jsonver-$RUN"
+printf '{"version":"0","level":"INFO","src":"%s"}' "jsonnomsg-$RUN" | malformed "json without message" "jsonnomsg-$RUN"
+printf '{"version":"0","level":"ALL","src":"pvtest-bad","message":"%s"}' "jsonall-$RUN" | malformed "json level ALL" "jsonall-$RUN"
+printf 'level=LOUD src=pvtest-bad message=%s' "kvlevel-$RUN" | malformed "key-value unknown level" "kvlevel-$RUN"
+printf '4\000%s' "legacytrunc-$RUN" | legacy 0 | malformed "truncated legacy" "legacytrunc-$RUN"
+printf '{"code":1,"data":"%s"}' "cmdexit-$RUN" | legacy 256 | malformed "legacy CMD exit" "cmdexit-$RUN"
+# The header's len is the sender's word: it must fit in what was received
+printf '4\000%s\000pvtest-len\000%s' "$OTHER" "lenhuge-$RUN" | legacy_forged 2147483647 | malformed "legacy len beyond payload" "lenhuge-$RUN"
+printf '4\000%s\000pvtest-len\000%s' "$OTHER" "lenneg-$RUN" | legacy_forged -1 | malformed "legacy negative len" "lenneg-$RUN"
+
+# A stream message is whatever one non-blocking read pass gets, at most the log
+# buffer: the rest of a 200KB line is dropped, and the start is still logged
+pventer -c "$SENDER" "{ printf 'level=INFO src=pvtest-big message=%s' big-$RUN; head -c 200000 /dev/zero | tr '\\000' a; } | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1
+if landed "big-$RUN"; then
+	pv_fetch_file "$SINGLE" "$TMP/pv.log"
+	len=$(jq -R -r --arg m "big-$RUN" 'fromjson? | select((.msg | tostring) | startswith($m)) | .msg | length' "$TMP/pv.log" | head -n1)
+	echo "oversized: stored=yes truncated=$([ "${len:-0}" -lt 200000 ] && echo yes || echo no)"
+else
+	echo "oversized: stored=no"
+fi

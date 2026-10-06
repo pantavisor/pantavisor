@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "logserver file outputs at boot config: PV_LOG_LEVEL=2 filtering, filetree+singlefile, golang/strftime timestamps, absolute tsec, dmesg and loggers on",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_LOG_LEVEL=2 PV_LOG_SERVER_OUTPUTS=filetree,singlefile PV_LOG_FILETREE_TIMESTAMP_FORMAT=golang:RFC822Z PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT=strftime:%Y-%m-%dT%H:%M:%S PV_LOG_TIMESTAMP=absolute PV_LOG_CAPTURE_DMESG=1 PV_LOG_LOGGERS=1",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

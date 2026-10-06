@@ -1,10 +1,10 @@
 {
 	"#spec": "pv-test@1",
-	"description": "per-container dev-log in run.json enables /dev/log with PV_LOG_AUTO_DEVLOG off",
+	"description": "PV_LOG_SERVER_OUTPUTS=nullsink at boot config: the log server runs and accepts every source, and nothing is written",
 	"setup": {
 		"config": {
-			"env": "PV_CONTROL_REMOTE=0 PV_LOG_AUTO_DEVLOG=0",
-			"usrmeta": "PV_LOG_LEVEL=4 PV_LOG_SERVER_OUTPUTS=filetree"
+			"env": "PV_CONTROL_REMOTE=0 PV_LOG_LEVEL=5 PV_LOG_SERVER_OUTPUTS=nullsink",
+			"usrmeta": ""
 		},
 		"containers": {
 			"tarballs": [
