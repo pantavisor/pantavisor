@@ -275,12 +275,7 @@ jobs:
           MODEL: ${{ matrix.model }}
         run: |
           echo "=== AppEngine Test Run started at $(date) ==="
-          # remote tests share one Hub trail, so they run serial -- no -p
-          if [ "$SCOPE" = remote ]; then
-            ./test.docker.sh run remote -V --model "$MODEL" --fail-on-skip -w $PVTEST_WORKSPACE
-          else
-            ./test.docker.sh run "$SCOPE" -V -p 6 --model "$MODEL" --fail-on-skip -w $PVTEST_WORKSPACE
-          fi
+          ./test.docker.sh run "$SCOPE" -V -p 6 --model "$MODEL" --fail-on-skip -w $PVTEST_WORKSPACE
 
       - name: Show Tests Summary
         working-directory: ${{ env.WORKSPACE }}
