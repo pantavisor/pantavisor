@@ -612,7 +612,7 @@ static bool logserver_list_exists(struct dl_list *lst, int fd)
 	return false;
 }
 
-static struct buffer *logserver_get_log_data(int fd)
+static struct buffer *logserver_get_log_data(int fd, size_t *received)
 {
 	struct buffer *buffer = pv_buffer_get(true);
 	if (!buffer) {
@@ -641,6 +641,7 @@ static struct buffer *logserver_get_log_data(int fd)
 		if (total >= buffer->size - 1)
 			end = buffer->size - 1;
 		buffer->buf[end] = '\0';
+		*received = end;
 		return buffer;
 	}
 
@@ -657,8 +658,9 @@ static struct buffer *logserver_get_log_data(int fd)
 static int logserver_handle_msg(int fd, int pid, const char *cgroup)
 {
 	int ret = -1;
+	size_t received = 0;
 
-	struct buffer *buffer = logserver_get_log_data(fd);
+	struct buffer *buffer = logserver_get_log_data(fd, &received);
 	if (!buffer)
 		goto out;
 
@@ -667,6 +669,7 @@ static int logserver_handle_msg(int fd, int pid, const char *cgroup)
 		.upd = logserver.updated_rev,
 		.cgroup = (char *)cgroup,
 		.buf = buffer->buf,
+		.len = received,
 	};
 
 	struct logserver_log log = { 0 };

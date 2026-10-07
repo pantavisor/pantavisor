@@ -25,6 +25,8 @@
 
 #include "logserver/logserver_out.h"
 
+#include <stddef.h>
+
 typedef enum {
 	LOG_PROTOCOL_LEGACY = 0,
 	LOG_PROTOCOL_UNKNOWN,
@@ -40,6 +42,7 @@ struct logserver_log_data {
 	char *upd;
 	char *cgroup;
 	char *buf;
+	size_t len;
 };
 
 log_protocol_code_t logserver_proto_get(const char *buf);
