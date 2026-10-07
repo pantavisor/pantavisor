@@ -90,6 +90,11 @@ int logserver_bin_to_log(struct logserver_log_data *data,
 {
 	struct logserver_msg *msg = (struct logserver_msg *)data->buf;
 
+	if (data->len < sizeof(*msg) || msg->len < 0 ||
+	    (size_t)msg->len > data->len - sizeof(*msg)) {
+		return -1;
+	}
+
 	log->code = msg->code;
 	log->running_rev = data->rev;
 	log->updated_rev = data->upd;
