@@ -273,6 +273,8 @@ teardown_network() {
 _AE_DOCKER_ARGS=(
 	--net=test-appengine-net
 	--cap-add NET_ADMIN --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add MKNOD
+	# SYSLOG: reading /dev/kmsg needs it on hosts with kernel.dmesg_restrict=1
+	--cap-add SYSLOG
 	--device /dev/kmsg --device /dev/hwrng --device /dev/loop-control
 	--device-cgroup-rule 'b 7:* rmw'
 	--security-opt apparmor=unconfined --security-opt seccomp=unconfined
