@@ -183,7 +183,11 @@ int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname)
 	pv_fs_file_gzip(fname, comp);
 	pv_fs_path_remove(fname, false);
 
-	rot->cur_size += pv_fs_path_get_size(comp) - file_size;
+	// gzip replaces comp with comp.gz
+	char gz[PATH_MAX] = { 0 };
+	snprintf(gz, PATH_MAX, "%s.gz", comp);
+	off_t gz_size = pv_fs_path_get_size(gz);
+	rot->cur_size += (gz_size > 0 ? gz_size : 0) - file_size;
 
 	char comp_bname[NAME_MAX] = { 0 };
 	pv_fs_basename(comp, comp_bname);
