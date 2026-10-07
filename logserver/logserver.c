@@ -751,6 +751,19 @@ static int logserver_list_add(struct dl_list *tmplst, struct logserver_fd *lfd)
 	return 0;
 }
 
+static struct logserver_fd *
+logserver_fd_find(struct dl_list *lst, const char *platform, const char *src)
+{
+	struct logserver_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, lst, struct logserver_fd, list)
+	{
+		if (it->platform && it->src &&
+		    !strcmp(it->platform, platform) && !strcmp(it->src, src))
+			return it;
+	}
+	return NULL;
+}
+
 static struct logserver_fd *logserver_get_fd(int sockfd)
 {
 	union {
@@ -787,16 +800,26 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 		return NULL;
 	}
 
-	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-	if (!cmsg) {
-		pv_log(ERROR, "error receiving fd, NULL structure");
-		return NULL;
-	}
-
 	int fd = -1;
+	platform[LOGSERVER_MAX_HEADER_LEN - 1] = '\0';
+	src[LOGSERVER_MAX_HEADER_LEN - 1] = '\0';
 
-	if (add)
+	if (add) {
+		struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+		if (!cmsg || cmsg->cmsg_level != SOL_SOCKET ||
+		    cmsg->cmsg_type != SCM_RIGHTS ||
+		    cmsg->cmsg_len < CMSG_LEN(sizeof(int))) {
+			pv_log(ERROR,
+			       "subscribe request for %s:%s carries no valid fd",
+			       platform, src);
+			return NULL;
+		}
 		memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
+		struct logserver_fd *old =
+			logserver_fd_find(&logserver.fdlst, platform, src);
+		if (old)
+			logserver_remove_fd(old->fd);
+	}
 
 	return logserver_fd_new(platform, src, fd, loglevel);
 }
@@ -889,7 +912,10 @@ static int logserver_process_fd(int curfd)
 
 	// unsubscribe the platform
 	if (lfd->fd < 0) {
-		logserver_remove_fd(curfd);
+		struct logserver_fd *old = logserver_fd_find(
+			&logserver.fdlst, lfd->platform, lfd->src);
+		if (old)
+			logserver_remove_fd(old->fd);
 		goto clean_all;
 	}
 
@@ -1643,25 +1669,27 @@ static int logserver_send_subs_msg(int type, int fd, const char *platform,
 	memset(&ctrl, 0, sizeof(ctrl));
 
 	struct msghdr msg = {
-		.msg_name = NULL,
-		.msg_namelen = 0,
 		.msg_iov = iov,
 		.msg_iovlen = 4,
-		.msg_control = ctrl.buf,
-		.msg_controllen = sizeof(ctrl.buf),
 	};
 
-	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
-	cmsg->cmsg_level = SOL_SOCKET;
-	cmsg->cmsg_type = SCM_RIGHTS;
-	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
-	memcpy(CMSG_DATA(cmsg), &fd, sizeof(int));
+	if (type == 1) {
+		msg.msg_control = ctrl.buf;
+		msg.msg_controllen = sizeof(ctrl.buf);
+
+		struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+		cmsg->cmsg_level = SOL_SOCKET;
+		cmsg->cmsg_type = SCM_RIGHTS;
+		cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+		memcpy(CMSG_DATA(cmsg), &fd, sizeof(int));
+	}
 
 	int sockfd = logserver_open_client_socket(LOGFD_FNAME);
 	if (sockfd < 0)
 		return -1;
 
 	int r = sendmsg(sockfd, &msg, 0);
+	close(sockfd);
 
 	return r;
 }
