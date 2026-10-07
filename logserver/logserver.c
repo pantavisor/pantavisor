@@ -1179,6 +1179,28 @@ static void logserver_start(const char *running_revision)
 	}
 }
 
+static void pv_logserver_delete_outputs()
+{
+	struct logserver_out *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct logserver_out,
+			      list)
+	{
+		dl_list_del(&it->list);
+		logserver_out_free(it);
+	}
+}
+
+static void logserver_disable_log_capture()
+{
+	if (dl_list_len(&logserver.outputs) > 0)
+		pv_logserver_delete_outputs();
+
+	struct logserver_out *null_out = logserver_null_new();
+	if (!null_out)
+		return;
+	dl_list_add(&logserver.outputs, &null_out->list);
+}
+
 // XXX: this is bad code now. stop must never happen here; we
 // should kill this function and do the starting directly in the main
 // lifecycle code that currently calls this; disabling log capture
@@ -1215,20 +1237,11 @@ static void logserver_capture_dmesg()
 	pv_log(DEBUG, "subscribing dmesg to logserver");
 }
 
-static void pv_logserver_delete_outputs()
-{
-	struct logserver_out *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct logserver_out,
-			      list)
-	{
-		dl_list_del(&it->list);
-		logserver_out_free(it);
-	}
-}
-
 static void logserver_load_outputs()
 {
-	dl_list_init(&logserver.outputs);
+	if (dl_list_len(&logserver.outputs) > 0)
+		pv_logserver_delete_outputs();
+
 	for (int i = 0; i < LOGSERVER_MAX_OUTPUTS; i++) {
 		struct logserver_out *out = logserver_outputs_new[i]();
 		if (!out) {
@@ -1245,9 +1258,13 @@ int pv_logserver_init(const char *rev)
 	if (!rev)
 		return -1;
 
+	dl_list_init(&logserver.outputs);
+
 	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
 		logserver.active_out = pv_config_get_log_server_outputs();
 		logserver_load_outputs();
+	} else {
+		logserver_disable_log_capture();
 	}
 
 	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
