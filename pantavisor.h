@@ -49,6 +49,7 @@ struct pantavisor {
 	struct pv_metadata *metadata;
 	char *cmdline;
 	bool remote_mode;
+	bool unclaimed;
 	bool loading_objects;
 	pv_system_transition_t issued_transition;
 	cgroup_version_t cgroupv;

@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <string.h>
@@ -36,7 +37,9 @@
 #include "config.h"
 #include "metadata.h"
 #include "objects.h"
+#include "pantavisor.h"
 #include "paths.h"
+#include "state.h"
 #include "storage.h"
 
 #include "update/update.h"
@@ -86,9 +89,11 @@ struct pv_object_transfer {
 };
 
 typedef enum {
+	PV_OBJECT_SYNC_NEED_HASH,
 	PV_OBJECT_SYNC_PENDING,
 	PV_OBJECT_SYNC_NEED_PUT,
-	PV_OBJECT_SYNC_DONE
+	PV_OBJECT_SYNC_DONE,
+	PV_OBJECT_SYNC_SKIPPED
 } pv_object_sync_state_t;
 
 struct pv_object_sync {
@@ -97,8 +102,9 @@ struct pv_object_sync {
 	char *puturl;
 	off_t size;
 	bool active;
+	struct evhttp_request *req; // set once active, to allow cancelling
 	pv_object_sync_state_t state;
-	struct dl_list list;
+	struct dl_list list; // struct pv_object_sync
 };
 
 typedef enum {
@@ -109,7 +115,6 @@ typedef enum {
 
 struct pv_pantahub_session {
 	char *token;
-	bool owned;
 	bool online;
 	short failed_requests;
 	bool any_failed_request;
@@ -132,7 +137,7 @@ struct pv_pantahub_session {
 
 	bool sync_initialized;
 	bool post_trail_active;
-	bool synced;
+	struct evhttp_request *post_trail_req;
 	struct dl_list object_sync_list; // struct pv_object_sync
 };
 
@@ -182,7 +187,6 @@ static bool _devmeta_gate_pass(const char *json)
 void pv_pantahub_proto_init()
 {
 	session.token = NULL;
-	session.owned = false;
 	session.online = false;
 	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
 	session.any_failed_request = false;
@@ -207,7 +211,7 @@ void pv_pantahub_proto_init()
 
 	session.sync_initialized = false;
 	session.post_trail_active = false;
-	session.synced = false;
+	session.post_trail_req = NULL;
 	dl_list_init(&session.object_sync_list);
 }
 
@@ -352,11 +356,6 @@ void pv_pantahub_proto_reset_fail()
 	session.any_failed_request = false;
 }
 
-void pv_pantahub_proto_reset_trails_status()
-{
-	session.trails_status = PV_TRAILS_STATUS_UNKNOWN;
-}
-
 bool pv_pantahub_proto_is_online()
 {
 	return session.online;
@@ -445,11 +444,14 @@ out:
 	session.failed_requests = 0;
 }
 
-static int _recv_buffer(struct evhttp_request *req, char **body)
+static int _recv_buffer_status(struct evhttp_request *req, char **body,
+			       int *status)
 {
 	int res;
 
 	res = pv_event_rest_recv_buffer(req, body, BODY_MAX_LEN);
+	if (status)
+		*status = res;
 	if (res == -1) {
 		pv_log(WARN, "did not get any response");
 		_on_request_unresponsive();
@@ -468,6 +470,23 @@ static int _recv_buffer(struct evhttp_request *req, char **body)
 	}
 
 	return 0;
+}
+
+static int _recv_buffer(struct evhttp_request *req, char **body)
+{
+	return _recv_buffer_status(req, body, NULL);
+}
+
+static void _forget_unclaimed_creds()
+{
+	pv_log(INFO, "device '%s' unknown to Hub, registering again",
+	       pv_config_get_str(PH_CREDS_ID));
+
+	pv_config_set_creds_id("");
+	pv_config_set_creds_prn("");
+	pv_config_set_creds_secret("");
+	if (pv_config_save_creds())
+		pv_log(WARN, "could not remove credentials from disk");
 }
 
 static void _recv_post_device_cb(struct evhttp_request *req, void *ctx)
@@ -551,13 +570,17 @@ bool pv_pantahub_proto_is_registered()
 static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
 	char *body = NULL;
+	int status;
+	struct pantavisor *pv = pv_get_instance();
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
 	session.open_session_active = 0;
 
-	if (_recv_buffer(req, &body)) {
+	if (_recv_buffer_status(req, &body, &status)) {
 		pv_log(WARN, "POST auth failed");
+		if (status == 401 && pv->unclaimed)
+			_forget_unclaimed_creds();
 		goto out;
 	}
 	if (!body) {
@@ -627,7 +650,10 @@ void _save_hint(const char *challenge)
 		return;
 
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", challenge);
+	if (strlen(challenge))
+		SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", challenge);
+	else
+		buf[0] = '\0';
 	if (pv_fs_file_save(path, buf, 0444))
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
@@ -636,15 +662,21 @@ void _save_hint(const char *challenge)
 static void _recv_get_device_cb(struct evhttp_request *req, void *ctx)
 {
 	char *body = NULL;
+	int status;
 	struct pv_device device;
+	struct pantavisor *pv = pv_get_instance();
 	memset(&device, 0, sizeof(device));
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_device_cb);
 
 	session.get_device_active = false;
 
-	if (_recv_buffer(req, &body)) {
+	if (_recv_buffer_status(req, &body, &status)) {
 		pv_log(WARN, "GET device failed");
+		if (status == 404 && pv->unclaimed) {
+			_free_token();
+			_forget_unclaimed_creds();
+		}
 		goto out;
 	}
 	if (!body) {
@@ -659,8 +691,13 @@ static void _recv_get_device_cb(struct evhttp_request *req, void *ctx)
 
 	if (device.owner && strlen(device.owner)) {
 		pv_log(DEBUG, "device successfuly claimed");
+		pv->unclaimed = false;
+		if (pv_config_save_creds())
+			pv_log(WARN, "could not save credentials");
+		_save_hint("");
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_CLAIMED, "1");
-		session.owned = true;
+		_free_token();
+		pv_wake_state_machine();
 		goto out;
 	}
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_CLAIMED, "0");
@@ -687,7 +724,7 @@ void pv_pantahub_proto_get_device()
 	}
 	if (session.get_device_active) {
 		pv_log(DEBUG,
-		       "get_usrmeta_active = true; skip sending another request...");
+		       "get_device_active = true; skip sending another request...");
 		return;
 	}
 
@@ -698,11 +735,6 @@ void pv_pantahub_proto_get_device()
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, NULL, session.token, NULL,
 			       _recv_get_device_cb, NULL, NULL))
 		session.get_device_active = true;
-}
-
-bool pv_pantahub_proto_is_device_owned()
-{
-	return session.owned;
 }
 
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
@@ -1408,8 +1440,8 @@ static void _put_progress(const char *rev, const char *progress)
 	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s/progress",
 		 pv_config_get_str(PH_CREDS_ID), rev);
 
-	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, NULL, session.token, progress,
-			       _recv_put_progress_cb, NULL, NULL))
+	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, NULL, session.token,
+			       progress, _recv_put_progress_cb, NULL, NULL))
 		session.put_progress_active = true;
 }
 
@@ -1440,6 +1472,20 @@ void pv_pantahub_proto_queue_progress(const char *rev, const char *progress)
 
 /* --- sync functions --- */
 
+static struct pv_object_sync *_search_object_sync(const char *id)
+{
+	struct pv_object_sync *o, *tmp;
+
+	dl_list_for_each_safe(o, tmp, &session.object_sync_list,
+			      struct pv_object_sync, list)
+	{
+		if (!strcmp(o->id, id))
+			return o;
+	}
+
+	return NULL;
+}
+
 static void _free_object_sync_list()
 {
 	struct pv_object_sync *o, *tmp;
@@ -1447,6 +1493,8 @@ static void _free_object_sync_list()
 	dl_list_for_each_safe(o, tmp, &session.object_sync_list,
 			      struct pv_object_sync, list)
 	{
+		if (o->active && o->req)
+			pv_event_rest_cancel_request(o->req);
 		dl_list_del(&o->list);
 		if (o->id)
 			free(o->id);
@@ -1462,8 +1510,11 @@ void pv_pantahub_proto_free_sync()
 {
 	_free_object_sync_list();
 	session.sync_initialized = false;
+	if (session.post_trail_active && session.post_trail_req)
+		pv_event_rest_cancel_request(session.post_trail_req);
 	session.post_trail_active = false;
-	session.synced = false;
+	session.post_trail_req = NULL;
+	pv_wakelock_release(WL_SYNC);
 }
 
 void pv_pantahub_proto_init_sync()
@@ -1473,6 +1524,7 @@ void pv_pantahub_proto_init_sync()
 	struct pv_object_sync *s;
 	char objpath[PATH_MAX];
 	struct stat st;
+	char *nv_list;
 
 	if (session.sync_initialized)
 		return;
@@ -1483,8 +1535,13 @@ void pv_pantahub_proto_init_sync()
 		return;
 	}
 
+	nv_list = pv_state_get_novalidate_list(pv->state);
+
 	pv_objects_iter_begin(pv->state, o)
 	{
+		if (_search_object_sync(o->id))
+			continue;
+
 		pv_paths_storage_object(objpath, PATH_MAX, o->id);
 		if (stat(objpath, &st) < 0) {
 			pv_log(WARN, "could not stat object '%s'", o->id);
@@ -1498,7 +1555,11 @@ void pv_pantahub_proto_init_sync()
 		s->id = strdup(o->id);
 		s->name = strdup(o->name);
 		s->size = st.st_size;
-		s->state = PV_OBJECT_SYNC_PENDING;
+		if (pv_state_is_object_validated(pv->state, nv_list, o->name,
+						 o->id))
+			s->state = PV_OBJECT_SYNC_PENDING;
+		else
+			s->state = PV_OBJECT_SYNC_NEED_HASH;
 		s->active = false;
 		s->puturl = NULL;
 
@@ -1506,8 +1567,38 @@ void pv_pantahub_proto_init_sync()
 	}
 	pv_objects_iter_end;
 
+	if (nv_list)
+		free(nv_list);
+
 	session.sync_initialized = true;
 	pv_log(DEBUG, "sync initialized");
+}
+
+int pv_pantahub_proto_hash_objects()
+{
+	struct pv_object_sync *o, *tmp;
+	char objpath[PATH_MAX];
+
+	dl_list_for_each_safe(o, tmp, &session.object_sync_list,
+			      struct pv_object_sync, list)
+	{
+		if (o->state != PV_OBJECT_SYNC_NEED_HASH)
+			continue;
+
+		pv_paths_storage_object(objpath, PATH_MAX, o->id);
+		if (pv_storage_validate_file_checksum(objpath, o->id)) {
+			pv_log(INFO,
+			       "object '%s' sha256 mismatch, probably writable image, skipping",
+			       o->id);
+			o->state = PV_OBJECT_SYNC_SKIPPED;
+		} else {
+			o->state = PV_OBJECT_SYNC_PENDING;
+		}
+
+		return 0;
+	}
+
+	return 1;
 }
 
 static void _recv_post_object_cb(struct evhttp_request *req, void *ctx)
@@ -1519,6 +1610,7 @@ static void _recv_post_object_cb(struct evhttp_request *req, void *ctx)
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_object_cb);
 
 	s->active = false;
+	s->req = NULL;
 
 	if (!req) {
 		pv_log(WARN, "POST object '%s': no response", s->id);
@@ -1542,8 +1634,7 @@ static void _recv_post_object_cb(struct evhttp_request *req, void *ctx)
 	} else if (res == 200) {
 		char *puturl = pv_pantahub_msg_parse_object_puturl(body);
 		if (!puturl) {
-			pv_log(WARN,
-			       "POST object '%s': no puturl in response",
+			pv_log(WARN, "POST object '%s': no puturl in response",
 			       s->id);
 			goto out;
 		}
@@ -1555,88 +1646,57 @@ static void _recv_post_object_cb(struct evhttp_request *req, void *ctx)
 	} else if (res == 401) {
 		pv_log(WARN, "POST object '%s': unauthorized", s->id);
 		_free_token();
-		pv_pantahub_evaluate_state();
 	} else {
-		pv_log(WARN, "POST object '%s': returned %d, will retry",
-		       s->id, res);
+		pv_log(WARN, "POST object '%s': returned %d, will retry", s->id,
+		       res);
 	}
 
 out:
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
-int pv_pantahub_proto_post_objects()
+static int _post_object(struct pv_object_sync *o)
 {
-	struct pv_object_sync *o, *tmp;
-	unsigned int count = 0;
-	bool all_done = true;
 	char uri[512];
 	char body[512];
 
-	if (!session.token) {
-		pv_log(ERROR, "session must be opened first");
-		return -1;
-	}
+	SNPRINTF_WTRUNC(body, sizeof(body),
+			"{ \"objectname\": \"%s\","
+			" \"size\": \"%jd\","
+			" \"sha256sum\": \"%s\""
+			" }",
+			o->name, (intmax_t)o->size, o->id);
 
-	dl_list_for_each_safe(o, tmp, &session.object_sync_list,
-			      struct pv_object_sync, list)
-	{
-		if (o->state == PV_OBJECT_SYNC_PENDING) {
-			all_done = false;
-			if (!o->active) {
-				SNPRINTF_WTRUNC(body, sizeof(body),
-						"{ \"objectname\": \"%s\","
-						" \"size\": \"%jd\","
-						" \"sha256sum\": \"%s\""
-						" }",
-						o->name, (intmax_t)o->size,
-						o->id);
+	snprintf(uri, sizeof(uri), "/objects/");
 
-				snprintf(uri, sizeof(uri), "/objects/");
-
-				if (!_send_by_endpoint(EVHTTP_REQ_POST, uri,
-						       NULL, session.token,
-						       body,
-						       _recv_post_object_cb,
-						       o, NULL)) {
-					o->active = true;
-					count++;
-					if (count >= (unsigned int)pv_config_get_int(
-							     PH_UPDATER_TRANSFER_MAX_COUNT))
-						break;
-				}
-			} else {
-				count++;
-			}
-		} else if (o->state == PV_OBJECT_SYNC_NEED_PUT) {
-			all_done = false;
-		}
-	}
-
-	return all_done ? 1 : 0;
+	return _send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, session.token,
+				 body, _recv_post_object_cb, o, &o->req);
 }
 
 static void _recv_put_object_cb(struct evhttp_request *req, void *ctx)
 {
 	struct pv_object_sync *s = (struct pv_object_sync *)ctx;
+	char *body = NULL;
 	int res;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_put_object_cb);
 
 	s->active = false;
+	s->req = NULL;
 
 	if (!req) {
 		pv_log(WARN, "PUT object '%s': no response", s->id);
 		_on_request_unresponsive();
-		return;
+		goto out;
 	}
 
-	res = pv_event_rest_recv_buffer(req, NULL, 0);
+	res = pv_event_rest_recv_buffer(req, &body, BODY_MAX_LEN);
 	if (res == -1) {
 		pv_log(WARN, "PUT object '%s': no response", s->id);
 		_on_request_unresponsive();
-		return;
+		goto out;
 	}
 
 	_on_request_responsive();
@@ -1647,7 +1707,6 @@ static void _recv_put_object_cb(struct evhttp_request *req, void *ctx)
 	} else if (res == 401) {
 		pv_log(WARN, "PUT object '%s': unauthorized", s->id);
 		_free_token();
-		pv_pantahub_evaluate_state();
 	} else {
 		pv_log(WARN,
 		       "PUT object '%s': returned %d, will retry (puturl may have expired)",
@@ -1659,37 +1718,94 @@ static void _recv_put_object_cb(struct evhttp_request *req, void *ctx)
 			s->puturl = NULL;
 		}
 	}
+
+out:
+	if (body)
+		free(body);
+	pv_pantahub_evaluate_state();
 }
 
-int pv_pantahub_proto_put_objects()
+static int _put_object(struct pv_object_sync *o)
+{
+	char objpath[PATH_MAX];
+
+	pv_paths_storage_object(objpath, PATH_MAX, o->id);
+
+	return pv_event_rest_send_file_by_url(o->puturl, objpath, o->size,
+					      _recv_put_object_cb, o, &o->req);
+}
+
+static int _send_objects(pv_object_sync_state_t state,
+			 int (*send)(struct pv_object_sync *))
 {
 	struct pv_object_sync *o, *tmp;
 	unsigned int count = 0;
-	bool all_done = true;
-	char objpath[PATH_MAX];
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return -1;
+	}
 
 	dl_list_for_each_safe(o, tmp, &session.object_sync_list,
 			      struct pv_object_sync, list)
 	{
-		if (o->state != PV_OBJECT_SYNC_DONE)
-			all_done = false;
+		if (o->active)
+			count++;
+	}
 
-		if (o->state == PV_OBJECT_SYNC_NEED_PUT && !o->active) {
-			pv_paths_storage_object(objpath, PATH_MAX, o->id);
+	dl_list_for_each_safe(o, tmp, &session.object_sync_list,
+			      struct pv_object_sync, list)
+	{
+		if (count >= (unsigned int)pv_config_get_int(
+				     PH_UPDATER_TRANSFER_MAX_COUNT))
+			break;
 
-			if (!pv_event_rest_send_file_by_url(
-				    o->puturl, objpath, o->size,
-				    _recv_put_object_cb, o)) {
-				o->active = true;
-				count++;
-				if (count >= (unsigned int)pv_config_get_int(
-						     PH_UPDATER_TRANSFER_MAX_COUNT))
-					break;
-			}
+		if (o->active || o->state != state)
+			continue;
+
+		if (!send(o)) {
+			o->active = true;
+			count++;
 		}
 	}
 
-	return all_done ? 1 : 0;
+	return 0;
+}
+
+int pv_pantahub_proto_post_objects()
+{
+	return _send_objects(PV_OBJECT_SYNC_PENDING, _post_object);
+}
+
+int pv_pantahub_proto_put_objects()
+{
+	return _send_objects(PV_OBJECT_SYNC_NEED_PUT, _put_object);
+}
+
+static bool _is_any_object_sync(pv_object_sync_state_t state)
+{
+	struct pv_object_sync *o, *tmp;
+
+	dl_list_for_each_safe(o, tmp, &session.object_sync_list,
+			      struct pv_object_sync, list)
+	{
+		if (o->state == state)
+			return true;
+	}
+
+	return false;
+}
+
+bool pv_pantahub_proto_is_sync_posting()
+{
+	return !session.sync_initialized ||
+	       _is_any_object_sync(PV_OBJECT_SYNC_NEED_HASH) ||
+	       _is_any_object_sync(PV_OBJECT_SYNC_PENDING);
+}
+
+bool pv_pantahub_proto_is_sync_putting()
+{
+	return _is_any_object_sync(PV_OBJECT_SYNC_NEED_PUT);
 }
 
 static void _recv_post_trail_cb(struct evhttp_request *req, void *ctx)
@@ -1700,11 +1816,12 @@ static void _recv_post_trail_cb(struct evhttp_request *req, void *ctx)
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_trail_cb);
 
 	session.post_trail_active = false;
+	session.post_trail_req = NULL;
 
 	if (!req) {
 		pv_log(WARN, "POST /trails/: no response");
 		_on_request_unresponsive();
-		return;
+		goto out;
 	}
 
 	res = pv_event_rest_recv_buffer(req, &body, BODY_MAX_LEN);
@@ -1718,11 +1835,12 @@ static void _recv_post_trail_cb(struct evhttp_request *req, void *ctx)
 
 	if (res == 200) {
 		pv_log(INFO, "factory revision pushed to Hub");
-		session.synced = true;
+		pv_pantahub_proto_free_sync();
+		// no need to GET /trails/ again
+		session.trails_status = PV_TRAILS_STATUS_SYNCED;
 	} else if (res == 401) {
 		pv_log(WARN, "POST /trails/: unauthorized");
 		_free_token();
-		pv_pantahub_evaluate_state();
 	} else {
 		pv_log(WARN, "POST /trails/: returned %d, will retry", res);
 	}
@@ -1730,6 +1848,7 @@ static void _recv_post_trail_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 void pv_pantahub_proto_post_trail()
@@ -1759,17 +1878,12 @@ void pv_pantahub_proto_post_trail()
 		return;
 	}
 
-	if (!_send_by_endpoint(EVHTTP_REQ_POST, "/trails/", NULL,
-			       session.token, json, _recv_post_trail_cb,
-			       NULL, NULL)) {
+	if (!_send_by_endpoint(EVHTTP_REQ_POST, "/trails/", NULL, session.token,
+			       json, _recv_post_trail_cb, NULL,
+			       &session.post_trail_req)) {
 		session.post_trail_active = true;
 		pv_log(DEBUG, "POST /trails/ sent");
 	}
 
 	free(json);
-}
-
-bool pv_pantahub_proto_is_synced()
-{
-	return session.synced;
 }

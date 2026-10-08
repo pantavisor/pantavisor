@@ -34,6 +34,8 @@ enum wl_scope {
 	WL_SHUTDOWN,
 	WL_DEVMETA,
 	WL_USRMETA,
+	// first sync after claim
+	WL_SYNC,
 	// so the device never suspends out from under an operator on serial
 	WL_DEBUG_SHELL,
 	// managed: spans a timed wake window, long enough for the network to

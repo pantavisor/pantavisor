@@ -44,13 +44,13 @@ The client state can be consulted at any moment via [device metadata](../referen
 :::
 
 * **init**: means we are in remote mode and the client has been initialized.
-* **register**: device is trying to register as a non-claimed device in the cloud. This credentials will be stored after reboot.
-* **claim**: device is registered and is waiting to be claimed.
-* **prep sync**: device has been claimed and is initializing the sync session with Hub.
-* **sync objects**: device is uploading any [artifacts](../../../reference/legacy/revisions.md) that are not yet present in the cloud.
-* **sync state**: device is posting the current [state JSON](../../../reference/legacy/revisions.md) to Hub to record the installed revision.
+* **register**: device has not been claimed yet, so it asks the Hub for pre-claiming temporary ones. Those are kept on disk until the device is claimed.
 * **login**: device is using its credentials to start a session with Hub.
-* **wait hub**: device is waiting for Hub to reply. We also use this to decide whether the device is claimed or not.
+* **claim**: device is registered and waiting to be [claimed](../../meta-pantavisor/getting-started/operate/device-access/remote-pantahub.md#1--claim-the-device0). Claiming only progresses while the running revision is DONE.
+* **wait hub**: device is asking Hub whether its running revision is already in its trail, which means Hub comms work and the device is claimed.
+* **prep sync**: objects that [checksum validation](storage.md#integrity) did not cover are hashed. The ones that no longer match their ID, such as writable images, are left out. The device then asks Hub for an upload URL for each object.
+* **sync objects**: device is uploading the [artifacts](revisions.md) that are not yet present in Hub.
+* **sync state**: device is posting its [state JSON](revisions.md) to Hub, which becomes the first step of its trail.
 * **report**: an update finished and device will continue uploading devmeta, downloading usrmeta while reporting its update status.
 * **idle**: device has checked all objects and state JSON is in the cloud. This is where the device will spend most of its time, uploading devmeta, downloading usrmeta and waiting for new updates.
 * **prep download**: a new update (same as a new state JSON) has been received and the device will now download the object metadata information for each of its objects. This includes object size, sha and download URL.

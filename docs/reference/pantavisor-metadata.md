@@ -21,7 +21,7 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantahub.address` | IP:port | Pantacor Hub address the client is communicating with |
 | `pantahub.claimed` | 0 or 1 | `0` while the device is unclaimed, `1` once it has been claimed |
 | `pantahub.online` | 0 or 1 | 1 if connection to Pantacor Hub was established |
-| `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, claim, sync, login, wait hub, report, idle, prep download or download) |
+| `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, login, claim, wait Hub, prep sync, sync objects, sync state, report, idle, prep download or download) |
 | `pantavisor.arch` | string | CPU architecture |
 | `pantavisor.cpumodel` | string | CPU model name |
 | `pantavisor.dtmodel` | string | Device Tree model name |

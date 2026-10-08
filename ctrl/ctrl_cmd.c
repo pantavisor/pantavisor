@@ -26,8 +26,6 @@
 #include "pantavisor.h"
 #include "config.h"
 
-#include "pantahub/pantahub.h"
-
 #include <event2/http.h>
 
 #include <stdbool.h>
@@ -116,7 +114,7 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 			"Cannot do this operation while update is ongoing");
 	}
 
-	if (pv_pantahub_is_device_claimed() && cmd->op == CMD_MAKE_FACTORY) {
+	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {
 		return _cmd_reject(
 			cmd, PV_HTTP_CONFLICT, -1,
 			"Cannot do this operation if device is already claimed");
@@ -141,7 +139,7 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 				   "Already in remote mode");
 	}
 
-	if (!pv_pantahub_is_device_claimed() && cmd->op == CMD_UNCLAIM) {
+	if (pv->unclaimed && cmd->op == CMD_UNCLAIM) {
 		return _cmd_reject(cmd, HTTP_NOCONTENT, -1,
 				   "Device is already unclaimed");
 	}

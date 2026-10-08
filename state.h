@@ -82,6 +82,9 @@ state_spec_t pv_state_spec(struct pv_state *s);
 
 int pv_state_validate(struct pv_state *s);
 bool pv_state_validate_checksum(struct pv_state *s);
+char *pv_state_get_novalidate_list(struct pv_state *state);
+bool pv_state_is_object_validated(struct pv_state *s, const char *nv_list,
+				  const char *name, const char *id);
 
 int pv_state_prepare_run(struct pv_state *s);
 int pv_state_start(struct pv_state *s);

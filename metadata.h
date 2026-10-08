@@ -30,7 +30,6 @@
 #define DEVMETA_KEY_INTERFACES "interfaces"
 #define DEVMETA_KEY_PH_CLAIMED "pantahub.claimed"
 #define DEVMETA_KEY_PH_ONLINE "pantahub.online"
-#define DEVMETA_KEY_PV_CLAIMED "pantavisor.claimed"
 #define DEVMETA_KEY_PH_STATE "pantahub.state"
 #define DEVMETA_KEY_PV_ARCH "pantavisor.arch"
 #define DEVMETA_KEY_PV_DTMODEL "pantavisor.dtmodel"

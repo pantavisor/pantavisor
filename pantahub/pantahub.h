@@ -36,8 +36,6 @@ bool pv_pantahub_is_reporting(void);
 bool pv_pantahub_is_online(void);
 bool pv_pantahub_got_any_failure(void);
 
-bool pv_pantahub_is_device_claimed(void);
-
 bool pv_pantahub_is_progress_queue_empty(void);
 void pv_pantahub_queue_progress(const char *rev, const char *progress);
 

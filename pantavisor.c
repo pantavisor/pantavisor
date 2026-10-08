@@ -438,11 +438,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
 		if (pv_wait_delay_timedout()) {
-			if (pv_pantahub_is_device_claimed()) {
-				// rest of network wait stuff: connectivity check. update management,
-				// meta data uppload, ph logger push start...
-				next_state = pv_wait_network(pv);
-			} else {
+			if (pv->unclaimed) {
 				// drive the update FSM too: claim is gated on
 				// running a DONE rev, so an unclaimed device that
 				// boots into a try revision (e.g. a local upgrade
@@ -451,6 +447,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 				// deadlock — claim refuses while INPROGRESS, and
 				// pv_wait_update() never runs from this branch.
 				next_state = pv_wait_update();
+			} else {
+				// rest of network wait stuff: connectivity check. update management,
+				// meta data uppload, ph logger push start...
+				next_state = pv_wait_network(pv);
 			}
 		}
 		tstate = timer_current_state(&t);
@@ -552,7 +552,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_issue_reboot();
 		break;
 	case CMD_MAKE_FACTORY:
-		if (pv_pantahub_is_device_claimed()) {
+		if (!pv->unclaimed) {
 			pv_log(WARN,
 			       "ignoring make factory command because device is already claimed");
 			goto out;
@@ -601,9 +601,10 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		pv->remote_mode = true;
 		pv_metadata_add_devmeta(DEVMETA_KEY_PV_MODE, "remote");
+		pv_pantahub_start();
 		break;
 	case CMD_UNCLAIM:
-		if (!pv_pantahub_is_device_claimed()) {
+		if (pv->unclaimed) {
 			pv_log(WARN,
 			       "ignoring unclaim command because device is already unclaimed");
 			goto out;
@@ -623,8 +624,15 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		// still claimed at this point, so this saves to pantahub.config
 		if (pv_config_save_creds())
 			pv_log(WARN, "could not remove credentials from disk");
+		pv->unclaimed = true;
+		// and now to unclaimed.config
+		if (pv_config_save_creds())
+			pv_log(WARN, "could not remove unclaimed credentials");
+		// restart from init so the client registers again
 		pv_pantahub_stop();
-		pv_metadata_rm_devmeta("pantahub.claimed");
+		if (pv->remote_mode)
+			pv_pantahub_start();
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_CLAIMED, "0");
 		break;
 	case CMD_DEFER_REBOOT:
 		if (!pv_config_get_bool(PV_DEBUG_SHELL)) {
@@ -728,6 +736,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	ph_logger_close();
 
 	pv_pantahub_stop();
+	pv_config_unload_creds();
 
 	// stop pvctrl
 	pv_ctrl_stop();

@@ -28,9 +28,6 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <errno.h>
-#include <string.h>
-#include <trest.h>
-#include <thttp.h>
 
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -45,10 +42,11 @@
 
 #include "pantahub/pantahub.h"
 
-#include "trestclient.h"
 #include "pantavisor.h"
 #include "json.h"
 #include "metadata.h"
+#include "paths.h"
+#include "state.h"
 
 #include "update/update.h"
 
@@ -75,8 +73,8 @@
 
 #define PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT "/btools/%s.register"
 
-
 static struct pv_pantahub *global_ph;
+static bool creds_loaded = false;
 
 const char *_get_state_string(ph_state_t state)
 {
@@ -112,6 +110,17 @@ const char *_get_state_string(ph_state_t state)
 	return "unknown";
 }
 
+static void _save_hint_file(const char *name, const char *value)
+{
+	char buf[256], path[PATH_MAX];
+
+	pv_paths_pv_file(path, PATH_MAX, name);
+	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", value);
+	if (pv_fs_file_save(path, buf, 0444) < 0)
+		pv_log(WARN, "could not save file %s: %s", path,
+		       strerror(errno));
+}
+
 struct pv_pantahub *_get_ph_instance()
 {
 	return global_ph;
@@ -129,11 +138,10 @@ static void _close_state()
 	pv_event_periodic_stop(&ph->devmeta_timer);
 	pv_event_periodic_stop(&ph->usrmeta_timer);
 
-	// _close_state runs on every PH transition; only drop a held devmeta
-	// lock on real de-auth (a still-authed transient offline keeps holding,
-	// bounded by the max-hold backstop)
-	if (!pv_pantahub_proto_is_auth())
+	if (!pv_pantahub_proto_is_auth()) {
 		pv_wakelock_devmeta_deauth();
+		pv_wakelock_release(WL_SYNC);
+	}
 }
 
 int pv_pantahub_stop()
@@ -144,14 +152,16 @@ int pv_pantahub_stop()
 
 	_close_state();
 
+	// callbacks run by the cleanup below must find no client
+	global_ph = NULL;
+
 	pv_pantahub_proto_close();
 
 	pv_event_rest_cleanup();
 
 	free(ph);
-	global_ph = NULL;
 
-	return pv_config_unload_creds();
+	return 0;
 }
 
 static void _run_state_cb(evutil_socket_t fd, short events, void *arg);
@@ -177,24 +187,34 @@ static void _next_state(ph_state_t state)
 
 static void _run_state_init()
 {
+	struct pantavisor *pv = pv_get_instance();
+
 	pv_pantahub_proto_init();
 
 	if (pv_event_rest_init()) {
 		pv_log(ERROR, "HTTP REST initialization failed");
-		_next_state(PH_STATE_INIT);
+		return;
 	}
+
+	// a registered but not yet claimed device keeps its creds here
+	if (pv->unclaimed)
+		pv_config_load_unclaimed_creds();
 
 	pv_pantahub_evaluate_state();
 }
 
-static void _register_builtin_cb(evutil_socket_t fd, short event, void *arg)
+static bool _is_claim_allowed()
 {
-	pv_log(TRACE, "run event: cb=%p", (void *)_register_builtin_cb);
+	struct pantavisor *pv = pv_get_instance();
 
-	pv_pantahub_proto_post_device();
+	if (pv_state_is_done(pv->state))
+		return true;
+
+	WARN_ONCE("will not allow claiming if not running a DONE revision");
+	return false;
 }
 
-static void _register_ext()
+static int _register_ext()
 {
 	char path[PATH_MAX];
 	int status;
@@ -204,13 +224,37 @@ static void _register_ext()
 			pv_config_get_str(PH_CREDS_TYPE));
 
 	if (!pv_fs_path_exist(path)) {
-		pv_log(ERROR, "path '%s' does not exist. Rebooting...", path);
-		pv_issue_reboot();
-		return;
+		pv_log(ERROR, "register handler '%s' does not exist", path);
+		return -1;
 	}
 
 	if (tsh_run(path, 1, &status) < 0) {
 		pv_log(ERROR, "registration failed: %s", path);
+		return -1;
+	}
+
+	return 0;
+}
+
+static void _register_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_register_cb);
+
+	if (!_is_claim_allowed())
+		return;
+
+	switch (pv_config_get_creds_type()) {
+	case CREDS_BUILTIN:
+		pv_pantahub_proto_post_device();
+		break;
+	case CREDS_EXTERNAL:
+		if (!_register_ext())
+			pv_pantahub_evaluate_state();
+		break;
+	default:
+		pv_log(ERROR,
+		       "cannot register: supported PH_CREDS_TYPE are builtin and ext-*");
+		break;
 	}
 }
 
@@ -220,21 +264,9 @@ static void _run_state_register()
 	if (!ph)
 		return;
 
-	switch (pv_config_get_creds_type()) {
-	case CREDS_BUILTIN:
-		pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
-					_register_builtin_cb);
-		break;
-	case CREDS_EXTERNAL:
-		_register_ext();
-		pv_pantahub_evaluate_state();
-		break;
-	default:
-		pv_log(ERROR,
-		       "cannot continue registering device. Rebooting...");
-		pv_issue_reboot();
-		break;
-	}
+	pv_event_periodic_start(&ph->request_timer,
+				pv_config_get_int(PH_UPDATER_INTERVAL),
+				_register_cb);
 }
 
 static void _login_cb(evutil_socket_t fd, short event, void *arg)
@@ -257,6 +289,9 @@ static void _claim_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(TRACE, "run event: cb=%p", (void *)_claim_cb);
 
+	if (!_is_claim_allowed())
+		return;
+
 	pv_pantahub_proto_get_device();
 }
 
@@ -266,7 +301,9 @@ static void _run_state_claim()
 	if (!ph)
 		return;
 
-	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _claim_cb);
+	pv_event_periodic_start(&ph->request_timer,
+				pv_config_get_int(PH_UPDATER_INTERVAL),
+				_claim_cb);
 }
 
 static void _wait_hub_cb(evutil_socket_t fd, short event, void *arg)
@@ -285,12 +322,27 @@ static void _run_state_wait_hub()
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _wait_hub_cb);
 }
 
+static void _hash_objects_cb(evutil_socket_t fd, short event, void *arg)
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_hash_objects_cb);
+
+	if (!ph || ph->state != PH_STATE_PREP_SYNC)
+		return;
+
+	if (pv_pantahub_proto_hash_objects())
+		pv_pantahub_evaluate_state();
+	else
+		pv_event_one_shot(_hash_objects_cb);
+}
+
 static void _prep_sync_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(TRACE, "run event: cb=%p", (void *)_prep_sync_cb);
 
 	if (pv_pantahub_proto_post_objects())
-		_next_state(PH_STATE_SYNC_OBJECTS);
+		pv_pantahub_evaluate_state();
 }
 
 static void _run_state_prep_sync()
@@ -301,7 +353,9 @@ static void _run_state_prep_sync()
 
 	pv_pantahub_proto_init_sync();
 
-	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _prep_sync_cb);
+	pv_event_one_shot(_hash_objects_cb);
+	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
+				_prep_sync_cb);
 }
 
 static void _sync_objects_cb(evutil_socket_t fd, short event, void *arg)
@@ -309,7 +363,7 @@ static void _sync_objects_cb(evutil_socket_t fd, short event, void *arg)
 	pv_log(TRACE, "run event: cb=%p", (void *)_sync_objects_cb);
 
 	if (pv_pantahub_proto_put_objects())
-		_next_state(PH_STATE_SYNC_STATE);
+		pv_pantahub_evaluate_state();
 }
 
 static void _run_state_sync_objects()
@@ -327,12 +381,6 @@ static void _sync_state_cb(evutil_socket_t fd, short event, void *arg)
 	pv_log(TRACE, "run event: cb=%p", (void *)_sync_state_cb);
 
 	pv_pantahub_proto_post_trail();
-
-	if (pv_pantahub_proto_is_synced()) {
-		pv_pantahub_proto_free_sync();
-		pv_pantahub_proto_reset_trails_status();
-		_next_state(PH_STATE_WAIT_HUB);
-	}
 }
 
 static void _run_state_sync_state()
@@ -343,6 +391,18 @@ static void _run_state_sync_state()
 
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
 				_sync_state_cb);
+}
+
+static void _evaluate_sync()
+{
+	pv_wakelock_acquire(WL_SYNC);
+
+	if (pv_pantahub_proto_is_sync_posting())
+		_next_state(PH_STATE_PREP_SYNC);
+	else if (pv_pantahub_proto_is_sync_putting())
+		_next_state(PH_STATE_SYNC_OBJECTS);
+	else
+		_next_state(PH_STATE_SYNC_STATE);
 }
 
 static void _usrmeta_cb(evutil_socket_t fd, short event, void *arg)
@@ -524,6 +584,12 @@ static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 
 int pv_pantahub_start()
 {
+	struct pantavisor *pv = pv_get_instance();
+	char tmp[256];
+
+	if (_get_ph_instance())
+		return 0;
+
 	pv_log(DEBUG, "starting Pantacor Hub client...");
 
 	global_ph = calloc(1, sizeof(struct pv_pantahub));
@@ -533,10 +599,29 @@ int pv_pantahub_start()
 	global_ph->state = PH_STATE_INIT;
 
 	// load pantahub.config from vol or storage
-	if (pv_config_load_creds()) {
-		pv_log(ERROR, "creds load failed");
-		return -1;
+	if (!creds_loaded) {
+		if (pv_config_load_creds()) {
+			pv_log(ERROR, "creds load failed");
+			return -1;
+		}
+		creds_loaded = true;
+
+		const char *prn = pv_config_get_str(PH_CREDS_PRN);
+		pv->unclaimed = !prn || !strcmp(prn, "");
 	}
+
+	if (pv->unclaimed) {
+		pv_log(DEBUG, "device is not claimed yet");
+	} else {
+		pv_log(DEBUG, "device is already claimed");
+		_save_hint_file(DEVICE_ID_FNAME,
+				pv_config_get_str(PH_CREDS_ID));
+	}
+
+	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d",
+			pv_config_get_str(PH_CREDS_HOST),
+			pv_config_get_int(PH_CREDS_PORT));
+	_save_hint_file(PHHOST_FNAME, tmp);
 
 	pv_event_one_shot(_run_state_cb);
 
@@ -559,7 +644,7 @@ void pv_pantahub_evaluate_state()
 		return;
 	}
 
-	if (!pv_pantahub_proto_is_device_owned()) {
+	if (pv->unclaimed) {
 		_next_state(PH_STATE_CLAIM);
 		return;
 	}
@@ -570,7 +655,7 @@ void pv_pantahub_evaluate_state()
 	}
 
 	if (pv_pantahub_proto_is_trails_unsynced()) {
-		_next_state(PH_STATE_PREP_SYNC);
+		_evaluate_sync();
 		return;
 	}
 
@@ -621,11 +706,6 @@ bool pv_pantahub_is_online()
 bool pv_pantahub_got_any_failure()
 {
 	return pv_pantahub_proto_got_any_failure();
-}
-
-bool pv_pantahub_is_device_claimed()
-{
-	return pv_pantahub_proto_is_device_owned();
 }
 
 bool pv_pantahub_is_progress_queue_empty()

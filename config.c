@@ -540,7 +540,7 @@ creds_t pv_config_get_creds_type()
 	} else if (strlen(ct) >= 4 && !strncmp(ct, "ext-", 4)) {
 		return CREDS_EXTERNAL;
 	} else {
-		pv_log(ERROR, "CREDS_TYPE '%s unknown", ct);
+		pv_log(ERROR, "PH_CREDS_TYPE '%s' unknown", ct);
 	}
 
 	return CREDS_ERROR;
@@ -1485,12 +1485,34 @@ static int pv_config_save_creds_to_file(char *path)
 	return 0;
 }
 
+int pv_config_load_unclaimed_creds()
+{
+	char path[PATH_MAX];
+	struct stat st;
+
+	pv_paths_pv_file(path, PATH_MAX, UNCLAIMED_FNAME);
+
+	if (stat(path, &st))
+		return 0;
+
+	if (pv_config_load_creds_from_file(path)) {
+		pv_log(WARN, "cannot load creds from %s", path);
+		return 0;
+	}
+
+	return 0;
+}
+
 int pv_config_save_creds()
 {
 	struct pantavisor *pv = pv_get_instance();
 	char path[PATH_MAX];
 
-	pv_paths_pv_file(path, PATH_MAX, PANTAHUB_FNAME);
+	if (pv->unclaimed)
+		pv_paths_pv_file(path, PATH_MAX, UNCLAIMED_FNAME);
+	else
+		pv_paths_pv_file(path, PATH_MAX, PANTAHUB_FNAME);
+
 	if (pv_config_save_creds_to_file(path)) {
 		pv_log(ERROR, "cannot save creds in %s", path);
 		return -1;
