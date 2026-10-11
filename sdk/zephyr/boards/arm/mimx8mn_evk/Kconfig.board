@@ -1,0 +1,9 @@
+# MIMX8MN EVK board (Cortex-M7)
+
+# Copyright (c) 2024-2026 Pantacor Ltd.
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_MIMX8MN_EVK
+	bool "NXP i.MX8M Nano EVK (M7)"
+	depends on SOC_SERIES_IMX8MN_M7
+	select SOC_PART_NUMBER_MIMX8MN6DVTJZ

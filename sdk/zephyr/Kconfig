@@ -1,0 +1,84 @@
+menuconfig PANTAVISOR
+	bool "Pantavisor RTOS SDK"
+	help
+	  Enable the Pantavisor MCU SDK. Provides protocol server,
+	  heartbeat, log forwarding, and optional service mesh clients.
+
+if PANTAVISOR
+
+choice PANTAVISOR_TRANSPORT
+	prompt "PVCM transport"
+	default PANTAVISOR_TRANSPORT_UART
+
+config PANTAVISOR_TRANSPORT_UART
+	bool "UART transport"
+	help
+	  For external MCUs connected via UART. Supports hardware UARTs
+	  and PIO-based software UARTs (RP2040).
+
+config PANTAVISOR_TRANSPORT_RPMSG
+	bool "RPMsg transport"
+	depends on OPENAMP
+	help
+	  For internal M cores (i.MX8MN M7, i.MX8QM M4 etc).
+
+endchoice
+
+config PANTAVISOR_UART_DEVICE
+	string "UART device name"
+	default "UART_0"
+	depends on PANTAVISOR_TRANSPORT_UART
+	help
+	  Zephyr device tree node label for the PVCM UART.
+
+config PANTAVISOR_LOG_BACKEND
+	bool "Log backend -- forward to Pantavisor log server"
+	default y
+	depends on LOG
+	help
+	  Route all Zephyr LOG_INF/WRN/ERR output to the Pantavisor
+	  log server via PVCM_OP_LOG frames.
+
+config PANTAVISOR_BRIDGE
+	bool "REST API client"
+	help
+	  Enable pvcm_get() / pvcm_post() for calling Linux container
+	  REST APIs from firmware.
+
+config PANTAVISOR_DBUS
+	bool "DBus gateway client"
+	help
+	  Enable DBus method calls, signal subscriptions, and service
+	  exposure from firmware.
+
+config PANTAVISOR_FS
+	bool "Remote filesystem"
+	depends on FILE_SYSTEM
+	help
+	  Mount Linux directories on the MCU via pvcm-run.
+	  Standard Zephyr filesystem API (fs_open, fs_read, etc.)
+	  backed by RPC over the PVCM protocol.
+
+config PANTAVISOR_SHELL
+	bool "Shell commands"
+	depends on SHELL
+	help
+	  Register 'pv' shell commands: pv status, pv containers, etc.
+
+config PANTAVISOR_HEARTBEAT_INTERVAL_MS
+	int "Heartbeat interval (ms)"
+	default 5000
+	help
+	  Interval between heartbeat messages sent to pvcm-manager.
+
+config HEAP_MEM_POOL_ADD_SIZE_PANTAVISOR
+	int "Heap memory for Pantavisor SDK (bytes)"
+	default 32768 if PANTAVISOR_BRIDGE || PANTAVISOR_DBUS || PANTAVISOR_FS
+	default 4096
+	help
+	  Heap memory required by the Pantavisor SDK for dynamic HTTP/D-Bus
+	  buffers. Path, headers, and body are k_malloc'd from REQ metadata
+	  sizes — no fixed limits. 32KB is sufficient for typical API
+	  responses up to ~16KB per request.
+
+endif # PANTAVISOR

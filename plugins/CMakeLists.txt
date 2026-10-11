@@ -22,3 +22,18 @@ install(TARGETS pv_lxc
 	DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/${CMAKE_PROJECT_NAME}
 )
 
+if(PANTAVISOR_PVCM)
+    add_library(pv_mcu MODULE
+        pv_mcu.c
+        pv_mcu.h
+    )
+
+    get_filename_component(PARENT_DIR ../ ABSOLUTE)
+    target_include_directories(pv_mcu PRIVATE ${PARENT_DIR})
+    SET_TARGET_PROPERTIES(pv_mcu PROPERTIES PREFIX "")
+
+    install(TARGETS pv_mcu
+        DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}/${CMAKE_PROJECT_NAME}
+    )
+endif()
+
