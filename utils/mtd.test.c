@@ -54,7 +54,7 @@ int ioctl(int fd, unsigned long req, ...)
 	va_end(ap);
 
 	if (req == MEMGETBADBLOCK)
-		return bad[*(loff_t *)arg / BLOCK];
+		return bad[*(long long *)arg / BLOCK];
 	if (req == MEMUNLOCK) {
 		errno = 524;
 		return -1;

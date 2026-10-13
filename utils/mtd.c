@@ -89,7 +89,7 @@ void pv_mtd_free(struct pv_mtd *mtd)
 // not every MTD type knows bad blocks (NOR): then the block is good
 static bool is_bad_block(struct pv_mtd *mtd, off_t off)
 {
-	loff_t loff = off;
+	long long loff = off; // the kernel's loff_t, which musl does not name
 
 	return ioctl(mtd->fd, MEMGETBADBLOCK, &loff) > 0;
 }
