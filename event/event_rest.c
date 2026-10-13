@@ -153,7 +153,7 @@ int pv_event_rest_init(void)
 	char path[PATH_MAX];
 	pv_paths_cert(path, PATH_MAX, "");
 
-	mbedtls_ssl_conf_authmode(&config, MBEDTLS_SSL_VERIFY_NONE);
+	mbedtls_ssl_conf_authmode(&config, MBEDTLS_SSL_VERIFY_REQUIRED);
 	int res;
 	res = mbedtls_x509_crt_parse_path(&cacert, path);
 	if (res != 0) {
