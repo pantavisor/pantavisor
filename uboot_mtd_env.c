@@ -91,7 +91,7 @@ static void env_close(struct mtd_env *e)
 
 static int is_bad_block(int fd, off_t offset)
 {
-	loff_t off = offset;
+	long long off = offset; // the kernel's loff_t, which musl does not name
 
 	// not every MTD type knows bad blocks (NOR): then the block is good
 	return ioctl(fd, MEMGETBADBLOCK, &off) > 0;
