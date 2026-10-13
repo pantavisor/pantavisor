@@ -263,8 +263,8 @@ int pv_bootloader_rearm_try(const char *rev)
 		return -1;
 	}
 
-	// after setting pv_try: uboot.txt matches keys by prefix, so setting
-	// pv_try would drop a pv_trying written before it
+	// pv_trying is cleared last so the cleared state is what stays; a
+	// key match is exact now, so the order no longer matters for uboot.txt
 	if (ops->rearm_try && ops->rearm_try())
 		return -1;
 

@@ -38,6 +38,8 @@
 #include "config.h"
 #include "paths.h"
 #include "uboot_env_file.h"
+#include "uboot_env_buf.h"
+#include "uboot_mtd_env.h"
 #include "utils/str.h"
 #include "utils/fs.h"
 
@@ -49,26 +51,27 @@
 
 static char *pv_env = 0;
 static char *uboot_txt = 0;
-static char mtd_env_str[32];
+static char trying_mtd[64];
 static int single_env;
 
-#define MTD_MATCH "dev:    size   erasesize  name\n"
 #define MTD_ENV "pv-env"
 #define MTD_ENV_SIZE 65536
-#define UBOOT_ENV_SIZE 1024
+#define TRYING_ENV_MTD "mtd:"
 
 static void uboot_free()
 {
 	if (uboot_txt)
 		free(uboot_txt);
+	if (pv_env)
+		free(pv_env);
+	uboot_txt = NULL;
+	pv_env = NULL;
 }
 
 static int uboot_init()
 {
-	int fd, ret;
-	struct stat st;
 	char buf[PATH_MAX];
-	char *next;
+	const char *trying;
 
 	// already init'd?
 	if (uboot_txt)
@@ -83,262 +86,136 @@ static int uboot_init()
 	// get mtd_path from config or else use default
 	single_env = pv_config_get_bool(PV_BOOTLOADER_MTD_ONLY);
 	const char *mtd_path = pv_config_get_str(PV_BOOTLOADER_MTD_ENV);
-	if (mtd_path)
-		memcpy(mtd_env_str, mtd_path, strlen(mtd_path));
-	else
-		memcpy(mtd_env_str, MTD_ENV, sizeof(MTD_ENV));
+	if (!mtd_path || !*mtd_path)
+		mtd_path = MTD_ENV;
 
 	// find pv-env for trying flag store
-	if (stat("/proc/mtd", &st))
-		return 0;
+	if (!pv_uboot_mtd_find(mtd_path, buf, sizeof(buf)))
+		pv_env = strdup(buf);
 
-	fd = open("/proc/mtd", O_RDONLY);
-	if (fd < 0) {
-		pv_log(ERROR, "open failed for /proc/mtd: %s", strerror(errno));
-		return -1;
-	}
-
-	ret = read(fd, buf, sizeof(MTD_MATCH));
-	if (ret < 0) {
-		pv_log(ERROR, "Failed to read from %zd bytes from /proc/mtd",
-		       sizeof(MTD_MATCH));
-		return -2;
-	}
-
-	if (strncmp(buf, MTD_MATCH, strlen(MTD_MATCH))) {
-		pv_log(ERROR,
-		       "First line of /proc/mtd does not match '%s' instead we have '%s'",
-		       MTD_MATCH, buf);
-		return -3;
-	}
-
-	char *ns, *ne;
-	ret = read(fd, buf, sizeof(buf));
-	next = buf;
-	while (next && ((next - buf) < ret)) {
-		char name[64];
-		ns = strchr(next, '\"');
-		if (!ns)
-			break;
-		ns += 1;
-		ne = strchr(ns, '\"');
-		if (!ne)
-			break;
-		strncpy(name, ns, ne - ns);
-		name[ne - ns] = '\0';
-		if (!strcmp(name, mtd_env_str)) {
-			int idx = -1;
-			sscanf(next, "mtd%d:", &idx);
-			SNPRINTF_WTRUNC(buf, sizeof(buf), "/dev/mtd%d", idx);
-			pv_env = strdup(buf);
-			break;
-		}
-		next = ne + 2;
-	}
+	trying = pv_config_get_str(PV_BOOTLOADER_TRYING_ENV);
+	if (trying && !strncmp(trying, TRYING_ENV_MTD, strlen(TRYING_ENV_MTD)))
+		SNPRINTF_WTRUNC(trying_mtd, sizeof(trying_mtd), "%s",
+				trying + strlen(TRYING_ENV_MTD));
 
 	pv_log(DEBUG, "pv-env@%s", pv_env);
 
 	return 0;
 }
 
+// the key=value list lives in the pv-env partition or in uboot.txt
 static char *uboot_get_env_key(char *key)
 {
-	int fd, n, len, ret;
-	char *buf, *path, *value = NULL;
+	static unsigned char buf[MTD_ENV_SIZE];
+	int fd, ret;
 
-	path = uboot_txt;
-	if (single_env) {
-		path = pv_env;
-		len = MTD_ENV_SIZE;
-	} else {
-		len = UBOOT_ENV_SIZE;
-	}
+	if (single_env)
+		return pv_env ? pv_uboot_mtd_env_get(pv_env, UBOOT_MTD_RAW,
+						     key) :
+				NULL;
 
-	fd = open(path, O_RDONLY);
-	if (!fd)
-		return value;
-
-	lseek(fd, 0, SEEK_SET);
-	buf = calloc(len, sizeof(char));
-	ret = read(fd, buf, len);
+	fd = open(uboot_txt, O_RDONLY);
+	if (fd < 0)
+		return NULL;
+	ret = read(fd, buf, sizeof(buf));
 	close(fd);
+	if (ret <= 0)
+		return NULL;
 
-	n = strlen(key);
-
-	int k = 0;
-	for (int i = 0; i < ret; i++) {
-		if (buf[i] != '\0')
-			continue;
-
-		if (!strncmp(buf + k, key, n)) {
-			value = strdup(buf + k + n + 1);
-			break;
-		}
-		k = i + 1;
-	}
-	free(buf);
-
-	return value;
+	return uboot_env_get(buf, ret, key);
 }
 
-// this always happens in uboot.txt
-static int uboot_set_env_key(char *key, char *value)
+// set the key to value, or remove it when value is NULL
+static int uboot_edit_env_key(char *key, char *value)
 {
-	int fd, ret = -1, res, len;
-	unsigned char old[MTD_ENV_SIZE] = { 0 };
-	unsigned char new[MTD_ENV_SIZE] = { 0 };
-	char *s, *d, *path;
-	char v[128] = { 0 };
+	static unsigned char buf[MTD_ENV_SIZE];
+	int fd, ret = -1;
 
-	pv_log(DEBUG, "setting boot env key %s with value %s", key, value);
+	pv_log(DEBUG, "%s boot env key %s", value ? "setting" : "removing",
+	       key);
 
-	path = uboot_txt;
-	if (single_env) {
-		path = pv_env;
-		len = MTD_ENV_SIZE * sizeof(char);
-	} else {
-		len = UBOOT_ENV_SIZE;
+	if (single_env)
+		return pv_env && !pv_uboot_mtd_env_set(pv_env, UBOOT_MTD_RAW,
+						       key, value) ?
+			       0 :
+			       -1;
+
+	memset(buf, 0, sizeof(buf));
+	fd = open(uboot_txt, O_RDWR | O_CREAT | O_SYNC, 0600);
+	if (fd < 0) {
+		pv_log(ERROR, "open failed for %s: %s", uboot_txt,
+		       strerror(errno));
+		return -1;
 	}
 
-	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
-	if (fd < 0) {
-		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
+	if (read(fd, buf, sizeof(buf)) < 0)
+		goto out;
+	if (uboot_env_edit(buf, sizeof(buf), key, value)) {
+		pv_log(ERROR, "no room for %s in %s", key, uboot_txt);
 		goto out;
 	}
 
 	lseek(fd, 0, SEEK_SET);
-	res = read(fd, old, len);
-	close(fd);
-	pv_fs_path_sync(path);
-
-	d = (char *)new;
-	for (uint16_t i = 0; i < res; i++) {
-		if ((old[i] == 0xFF && old[i + 1] == 0xFF) ||
-		    (old[i] == '\0' && old[i + 1] == '\0'))
-			break;
-
-		if (old[i] == '\0')
-			continue;
-
-		s = (char *)old + i;
-		len = strlen(s);
-		if (memcmp(s, key, strlen(key))) {
-			memcpy(d, s, len + 1);
-			d += len + 1;
-		}
-		i += len;
-	}
-
-	SNPRINTF_WTRUNC(v, sizeof(v), "%s=%s", key, value);
-
-	memcpy(d, v, strlen(v) + 1);
-
-	fd = open(path, O_RDWR);
-	if (fd < 0) {
-		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
-		goto out;
-	}
-
-	if (single_env) {
-		erase_info_t ei;
-		mtd_info_t mi;
-		ioctl(fd, MEMGETINFO, &mi);
-		ei.start = 0;
-		ei.length = mi.erasesize;
-		if (ioctl(fd, MEMUNLOCK, &ei))
-			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s",
-			       strerror(errno));
-		if (ioctl(fd, MEMERASE, &ei))
-			pv_log(DEBUG, "ioctl: MEMERASE errno=%s",
-			       strerror(errno));
-	}
-	lseek(fd, 0, SEEK_SET);
-	write(fd, new, sizeof(new));
-	fsync(fd);
-	close(fd);
-	pv_fs_path_sync(path);
-
-	ret = 0;
-
+	if (write(fd, buf, sizeof(buf)) == (ssize_t)sizeof(buf) && !fsync(fd))
+		ret = 0;
 out:
+	close(fd);
+	pv_fs_path_sync(uboot_txt);
+
 	return ret;
 }
 
-// this always happens in uboot.txt
-static int uboot_unset_env_key(char *key)
+static int uboot_set_env_key(char *key, char *value)
 {
-	return uboot_set_env_key(key, "\0");
+	return uboot_edit_env_key(key, value);
 }
 
+static int uboot_unset_env_key(char *key)
+{
+	return uboot_edit_env_key(key, NULL);
+}
+
+// only pv_trying is cleared, whatever else the partition holds stays
 static int uboot_flush_env(void)
 {
-	int fd;
-	erase_info_t ei;
-	mtd_info_t mi;
-
-	if (single_env) {
-		uboot_unset_env_key("pv_trying");
-		return 0;
-	}
-
-	if (!pv_env)
-		return 0;
-
-	if (!strstr(pv_env, "mtd"))
-		return 0;
-
-	fd = open(pv_env, O_RDWR | O_SYNC);
-	if (fd < 0)
-		return 0;
-
-	char buf[32];
-	read(fd, buf, sizeof(buf));
-	buf[31] = '\0';
-	pv_log(DEBUG, "Buf-dirty: '%s'", buf);
-
-	ioctl(fd, MEMGETINFO, &mi);
-	ei.start = 0;
-	ei.length = mi.erasesize;
-	if (ioctl(fd, MEMUNLOCK, &ei))
-		pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s", strerror(errno));
-	if (ioctl(fd, MEMERASE, &ei))
-		pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
-
-	close(fd);
-	pv_fs_path_sync(pv_env);
-
-	fd = open(pv_env, O_RDONLY);
-	if (fd < 0) {
-		pv_log(ERROR, "open failed for %s: %s", pv_env,
-		       strerror(errno));
-		return 0;
-	}
-
-	lseek(fd, 0, SEEK_SET);
-	memset(buf, 0, sizeof(buf));
-	read(fd, buf, sizeof(buf));
-	buf[31] = '\0';
-	pv_log(DEBUG, "Buf-clean: '%s'", buf);
-
-	close(fd);
+	if (pv_env)
+		pv_uboot_mtd_env_set(pv_env, UBOOT_MTD_RAW, "pv_trying", NULL);
 
 	return 0;
 }
 
+// failing to clear pv_trying only makes the device fall back, so none of
+// this fails the re-arm
+static void uboot_clear_trying(void)
+{
+	char dev[PATH_MAX];
+
+	if (!*trying_mtd) {
+		pv_uboot_env_file_clear_trying();
+		return;
+	}
+
+	if (pv_uboot_mtd_find(trying_mtd, dev, sizeof(dev))) {
+		pv_log(INFO, "no MTD partition %s, not clearing pv_trying",
+		       trying_mtd);
+		return;
+	}
+
+	pv_uboot_mtd_env_set(dev, UBOOT_MTD_STD, "pv_trying", NULL);
+}
+
 static int uboot_rearm_try(void)
 {
-	// without the pv-env partition, ask for it in uboot.txt, which only the
-	// appengine boot script reads; other U-Boot setups may still fall back
-	if (single_env || (pv_env && strstr(pv_env, "mtd")))
+	// the pv-env partition was already cleared by flush_env
+	if (single_env || pv_env)
 		return 0;
 
-	// only appengine reads pv_trying from uboot.txt; U-Boot would import it
+	// only appengine's boot script reads an empty pv_trying as "try again"
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
-		uboot_unset_env_key("pv_trying");
+		uboot_set_env_key("pv_trying", "");
 
-	// the generic boot script keeps pv_trying in pv.env; failing here only
-	// means the device falls back, so the re-arm itself still succeeds
-	pv_uboot_env_file_clear_trying();
+	// failing here only means the device falls back to the committed revision
+	uboot_clear_trying();
 
 	return 0;
 }

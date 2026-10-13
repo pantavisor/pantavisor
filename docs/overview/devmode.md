@@ -166,12 +166,12 @@ pvr device get <device> | jq '."device-meta"["pantavisor.devmode"]'
 ```
 
 :::note
-A reboot that devmode requests itself arms the try again, so the device comes back up in the devmode revision. On U-Boot the "already tried" marker lives in the `pv.env` file of the boot script, and Pantavisor clears it there: the generic boot script passes `PV_BOOTLOADER_TRYING_ENV=part:<n>:/pv.env`, see [bootloader](bsp.md#where-pv_trying-is-stored) and [configuration](../reference/pantavisor-configuration.md). Pantavisor only rewrites a `pv.env` that already exists. If it cannot, it logs a warning and the device boots the last commit after the reboot; run the devmode revision again. Appengine comes back up in the devmode revision on its own.
+A reboot that devmode requests itself arms the try again, so the device comes back up in the devmode revision. On U-Boot the "already tried" marker is `pv_trying`, and Pantavisor clears it where the board keeps it, as set by `PV_BOOTLOADER_TRYING_ENV`: in the `pv.env` file of the generic boot script (`part:<n>:/pv.env`), or in the U-Boot environment in flash (`mtd:<name>`, for example `mtd:u-boot-env`). Pantavisor only rewrites a `pv.env` that already exists, and edits only the `pv_trying` key in an environment that `saveenv` has written; see [bootloader](bsp.md#where-pv_trying-is-stored) and [configuration](../reference/pantavisor-configuration.md). If there is nothing to edit, or the write fails, it logs and the device boots the last commit after the reboot; run the devmode revision again. Appengine comes back up in the devmode revision on its own.
 
 Check what happened on the device:
 
 ```
-grep -r uboot-env-file /storage/logs/devmode/
+grep -r -E "uboot-env-file|uboot-mtd-env" /storage/logs/devmode/
 ```
 :::
 
