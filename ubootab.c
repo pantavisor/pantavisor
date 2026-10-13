@@ -43,6 +43,7 @@
 #include "utils/tsh.h"
 #include "utils/mtd.h"
 #include "ubootab_header.h"
+#include "uboot_mtd_env.h"
 #include "config.h"
 #include "bootloader.h"
 #include "paths.h"
@@ -54,6 +55,11 @@
 #include "log.h"
 
 #define UBOOTAB_FW_CONFIG "/etc/fw_env.config"
+#define TRYING_ENV_MTD "mtd:"
+
+// native: the U-Boot env is edited in its MTD partition, not by fw_setenv
+static bool native_env;
+static char env_dev[PATH_MAX];
 
 static int run_command(const char *fmt, char *output, int size, ...)
 {
@@ -78,7 +84,7 @@ static int run_command(const char *fmt, char *output, int size, ...)
 	return 0;
 }
 
-static char *ubootab_get_env_key(char *key)
+static char *fw_get_env_key(char *key)
 {
 	char buf[4096] = { 0 };
 	size_t n;
@@ -93,13 +99,44 @@ static char *ubootab_get_env_key(char *key)
 	return n ? strdup(buf) : NULL;
 }
 
+static char *ubootab_get_env_key(char *key)
+{
+	if (!native_env)
+		return fw_get_env_key(key);
+
+	// no usable env is not an error: the key is just unset
+	return *env_dev ? pv_uboot_mtd_env_get(env_dev, UBOOT_MTD_STD, key) :
+			  NULL;
+}
+
+// set key to value, or unset it when value is NULL
+static int native_edit_env_key(char *key, char *value)
+{
+	int ret = *env_dev ? pv_uboot_mtd_env_set(env_dev, UBOOT_MTD_STD, key,
+						  value) :
+			     1;
+
+	if (ret > 0)
+		pv_log(WARN,
+		       "no U-Boot environment to store %s in, U-Boot never saved one",
+		       key);
+
+	return ret < 0 ? -1 : 0;
+}
+
 static int ubootab_set_env_key(char *key, char *value)
 {
+	if (native_env)
+		return native_edit_env_key(key, value);
+
 	return run_command("fw_setenv %s %s", NULL, 0, key, value);
 }
 
 static int ubootab_unset_env_key(char *key)
 {
+	if (native_env)
+		return native_edit_env_key(key, NULL);
+
 	return run_command("fw_setenv %s", NULL, 0, key);
 }
 
@@ -164,9 +201,24 @@ static void ubootab_free()
 {
 }
 
+static void select_native_env(void)
+{
+	const char *spec = pv_config_get_str(PV_BOOTLOADER_TRYING_ENV);
+
+	if (!spec || strncmp(spec, TRYING_ENV_MTD, strlen(TRYING_ENV_MTD)))
+		return;
+
+	native_env = true;
+	if (pv_uboot_mtd_find(spec + strlen(TRYING_ENV_MTD), env_dev,
+			      sizeof(env_dev)))
+		pv_log(WARN, "no MTD partition for %s", spec);
+}
+
 static int ubootab_init()
 {
-	setup_fw_utils();
+	select_native_env();
+	if (!native_env)
+		setup_fw_utils();
 
 	return 0;
 }

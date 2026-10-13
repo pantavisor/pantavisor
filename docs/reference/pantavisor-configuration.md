@@ -75,14 +75,14 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_BOOTLOADER_FITCONFIG` | string | empty | set FIT configuration name |
 | `PV_BOOTLOADER_MTD_ENV` | MTD partition name | empty | legacy raw `key=value` partition for the bootloader env (`pv-env` when empty), see [bootloader](../overview/bsp.md#where-pv_trying-is-stored) |
 | `PV_BOOTLOADER_MTD_ONLY` | `0` or `1` | `0` | keep `pv_rev` and `pv_try` in the `PV_BOOTLOADER_MTD_ENV` partition instead of `uboot.txt` |
-| `PV_BOOTLOADER_TRYING_ENV` | `part:<n>:<path>`, `ubi::<path>`, `LABEL=<x>:<path>`, `UUID=<x>:<path>` or `mtd:<name>` | empty | where U-Boot keeps `pv_trying`, which [devmode](../overview/devmode.md) clears to boot a revision again; the first four name a `pv.env` file (`<n>` is the partition number in hex on the disk of the storage device; when empty, `LABEL=boot` then the storage root are probed for `/pv.env`), `mtd:<name>` is the U-Boot environment in MTD partition `<name>`; see [bootloader](../overview/bsp.md#where-pv_trying-is-stored) |
+| `PV_BOOTLOADER_TRYING_ENV` | `part:<n>:<path>`, `ubi::<path>`, `LABEL=<x>:<path>`, `UUID=<x>:<path>` or `mtd:<name>` | empty | where U-Boot keeps `pv_trying`, which [devmode](../overview/devmode.md) clears to boot a revision again; the first four name a `pv.env` file (`<n>` is the partition number in hex on the disk of the storage device; when empty, `LABEL=boot` then the storage root are probed for `/pv.env`), `mtd:<name>` is the U-Boot environment in MTD partition `<name>`, which [uboot-ab](../overview/bsp.md#uboot-ab) also reads `pv_rev` and `pv_try` from and writes them to; see [bootloader](../overview/bsp.md#where-pv_trying-is-stored) |
 | `PV_BOOTLOADER_TYPE` | `uboot`, `uboot-ab`, `uboot-pvk`, `rpiab` or `grub` | `uboot` | set [bootloader](../overview/bsp.md#bootloader) type |
 | `PV_BOOTLOADER_UBOOTAB_A_NAME` | string | `fitA` | name of the partition to use as "A" in uboot-ab mode |
 | `PV_BOOTLOADER_UBOOTAB_B_NAME` | string | `fitB` | name of the partition to use as "B" in uboot-ab mode |
-| `PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME` | string | empty | name of the partition where the uboot environment is backed up |
-| `PV_BOOTLOADER_UBOOTAB_ENV_NAME` | string | empty | name  of the partition where the uboot environment is stored |
-| `PV_BOOTLOADER_UBOOTAB_ENV_OFFSET` | offset in bytes | `0` | environment offset from the beginning of the partition |
-| `PV_BOOTLOADER_UBOOTAB_ENV_SIZE` | size in bytes | `0` | size of the uboot environment |
+| `PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME` | string | empty | name of the partition where the uboot environment is backed up; only used for `fw_setenv`, not with `PV_BOOTLOADER_TRYING_ENV=mtd:<name>` |
+| `PV_BOOTLOADER_UBOOTAB_ENV_NAME` | string | empty | name of the partition where the uboot environment is stored; only used for `fw_setenv`, not with `PV_BOOTLOADER_TRYING_ENV=mtd:<name>` |
+| `PV_BOOTLOADER_UBOOTAB_ENV_OFFSET` | offset in bytes | `0` | environment offset from the beginning of the partition; only used for `fw_setenv` |
+| `PV_BOOTLOADER_UBOOTAB_ENV_SIZE` | size in bytes | `0` | size of the uboot environment; only used for `fw_setenv` |
 | `PV_CACHE_DEVMETADIR` | path | `/storage/cache/devmeta` | set persistent [device metadata](pantavisor-metadata.md#device-metadata) dir |
 | `PV_CACHE_USRMETADIR` | path | `/storage/cache/meta` | set persistent [user metadata](pantavisor-metadata.md#user-metadata) dir |
 | `PV_CONTROL_REMOTE` | `0` or `1` | `1` | allow remote control from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
