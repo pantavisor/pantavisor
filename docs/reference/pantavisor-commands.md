@@ -314,7 +314,7 @@ socket:
 | `GET` | `/steps/locals/{name}/progress` | update progress of a local revision |
 | `PUT` | `/steps/locals/{name}/commitmsg` | set the commit message of a local revision |
 
-[Devmode](../overview/devmode.md) revisions are sent the same way, under `devmode/l/{name}` (based on the local revision `locals/{name}`) or `devmode/r/{number}` (based on the Hub revision `{number}`, digits only). They need [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary)`=1`; otherwise the `PUT` answers `403`. Every `locals/{name}` route above also exists as `devmode/l/{name}` and `devmode/r/{number}`.
+[Devmode](../overview/devmode.md) revisions are sent the same way, under `devmode/l/{name}` (based on the local revision `locals/{name}`) or `devmode/r/{number}` (based on the Hub revision `{number}`, digits only). They need [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary)`=1`, set in `pantavisor.config` or the OEM config (user metadata cannot set it); otherwise the `PUT` answers `403`. Every `locals/{name}` route above also exists as `devmode/l/{name}` and `devmode/r/{number}`.
 
 ```
 curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/devmode/r/12"

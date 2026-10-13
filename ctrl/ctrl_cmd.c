@@ -120,7 +120,7 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 		if (!pv_config_get_bool(PV_DEVMODE_ALLOWED))
 			return _cmd_reject(
 				cmd, HTTP_FORBIDDEN, -1,
-				"Devmode is disabled, set PV_DEVMODE_ALLOWED=true");
+				"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config");
 		if (cmd->op == CMD_LOCAL_RUN_COMMIT)
 			return _cmd_reject(
 				cmd, PV_HTTP_CONFLICT, -1,

@@ -56,7 +56,7 @@ static bool ctrl_devmode_check_active(struct evhttp_request *req,
 	if (!pv_config_get_bool(PV_DEVMODE_ALLOWED)) {
 		pv_ctrl_utils_send_error(
 			req, HTTP_FORBIDDEN,
-			"Devmode is disabled, set PV_DEVMODE_ALLOWED=true");
+			"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config");
 		return false;
 	}
 

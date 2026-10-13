@@ -473,7 +473,9 @@ To activate an installed local revision, follow with `pvcontrol cmd run` /
 
 [Devmode](../overview/devmode.md) needs
 [`PV_DEVMODE_ALLOWED`](../reference/pantavisor-configuration.md#summary) set to
-`true`. All subcommands need the `mgmt` role.
+`1` in `pantavisor.config` or in the OEM config of the revision (see
+[Enable devmode](../overview/devmode.md#enable-devmode)); user metadata cannot
+set it. All subcommands need the `mgmt` role.
 
 ```bash
 pvcontrol devmode status

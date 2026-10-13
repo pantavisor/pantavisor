@@ -152,7 +152,7 @@ usage_containers() {
 
 usage_devmode() {
 	echo "Usage: pvcontrol devmode <status|create|reset|apply> [arguments]"
-	echo "Devmode operations (needs PV_DEVMODE_ALLOWED=true)"
+	echo "Devmode operations (needs PV_DEVMODE_ALLOWED=true in pantavisor.config or the OEM config)"
 	echo "       pvcontrol devmode status                    - show devmode state and the inlay directory of each container"
 	echo "       pvcontrol devmode create [base]             - copy base (a revision number or locals/<name>, default: running revision) into a devmode revision and run it"
 	echo "       pvcontrol devmode reset <container>         - empty the inlay of a container"

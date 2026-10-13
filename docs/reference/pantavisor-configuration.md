@@ -92,7 +92,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_DEBUG_SHELL_TIMEOUT` | time (in seconds) | `60` | time that Pantavisor waits before rebooting if [debug shell console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) is opened |
 | `PV_DEBUG_SSH` | `0` or `1` | `1` | enable SSH debug access |
 | `PV_DEBUG_SSH_AUTHORIZED_KEYS` | string | empty | set authorized keys for SSH debug access |
-| `PV_DEVMODE_ALLOWED` | `true` or `false` | `0` | allow [devmode](../overview/devmode.md) revisions |
+| `PV_DEVMODE_ALLOWED` | `true` or `false` | `0` | allow [devmode](../overview/devmode.md) revisions; settable only in pantavisor.config and the OEM config |
 | `PV_DISK_EXPORTSDIR` | path | `/exports` | set exports directory |
 | `PV_DISK_VOLDIR` | path | `/volumes` | set volumes directory |
 | `PV_DISK_WRITABLEDIR` | path | `/writable` | set writable directory |
@@ -230,7 +230,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_DEBUG_SHELL_TIMEOUT`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_DEBUG_SSH`                       | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `PV_DEBUG_SSH_AUTHORIZED_KEYS`       | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| `PV_DEVMODE_ALLOWED`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `PV_DEVMODE_ALLOWED`                 | ✓ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ |
 | `PV_DISK_EXPORTSDIR`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_DISK_VOLDIR`                     | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_DISK_WRITABLEDIR`                | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |

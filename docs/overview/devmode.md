@@ -9,11 +9,23 @@ Devmode lets a developer change the files of a container on a running device and
 
 ## Enable devmode
 
-Devmode is off by default. Turn it on with [`PV_DEVMODE_ALLOWED`](../reference/pantavisor-configuration.md#summary), for example through [user metadata](../reference/pantavisor-metadata.md#user-metadata) (the key is the variable name, as for any [configuration level](pantavisor-configuration-levels.md#user-metadata)):
+Devmode is off by default. Turn it on with [`PV_DEVMODE_ALLOWED`](../reference/pantavisor-configuration.md#summary) in one of the two places that are part of the device's trusted configuration:
 
-```bash
-pvcontrol usrmeta save PV_DEVMODE_ALLOWED true
-```
+- [pantavisor.config](pantavisor-configuration-levels.md#pantavisorconfig), set when the image is built or on the device:
+
+  ```
+  PV_DEVMODE_ALLOWED=1
+  ```
+
+- the [OEM configuration](pantavisor-configuration-levels.md#oem) file inside the revision, at `<PV_OEM_NAME>/<PV_POLICY>.config` (`<PV_OEM_NAME>/default.config` when `PV_POLICY` is empty). With `PV_OEM_NAME=myoem`, from a [pvr](https://docs.pantahub.com/pvr/) checkout of the device:
+
+  ```bash
+  mkdir -p myoem
+  echo "PV_DEVMODE_ALLOWED=1" >> myoem/default.config
+  pvr add . && pvr commit && pvr post
+  ```
+
+Check the result with `pvcontrol conf ls`; the key reports `pv conf file` or `oem config` as its level. Any other level (user metadata, commands, the kernel command line, environment variables, policies) is refused with a warning in the log, because anyone who can write user metadata or edit the boot partition could otherwise open the device to unsigned code.
 
 With `PV_DEVMODE_ALLOWED=false`, a devmode revision is refused: `PUT /steps/devmode/...` and the `run` command for a devmode revision both return an error.
 
