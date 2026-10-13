@@ -105,7 +105,7 @@ A devmode revision is never committed. It is installed as a try, and stays one:
 - A rolled back devmode revision can be run again with `pvcontrol cmd run devmode/r/12`.
 
 :::note
-A reboot that devmode requests itself arms the try again, so the device comes back up in the devmode revision. Some U-Boot setups keep the "already tried" marker in `pv.env`, which Pantavisor cannot write; there the device boots the last commit after any reboot, and you run the devmode revision again.
+A reboot that devmode requests itself arms the try again, so the device comes back up in the devmode revision. Some U-Boot setups keep the "already tried" marker in `pv.env`, which Pantavisor cannot write; there the device boots the last commit after any reboot, and you run the devmode revision again. Appengine handles this itself and comes back up in the devmode revision.
 :::
 
 ## Garbage collection
