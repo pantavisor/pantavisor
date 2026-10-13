@@ -210,8 +210,9 @@ static int uboot_rearm_try(void)
 	if (single_env || pv_env)
 		return 0;
 
-	// appengine's boot script reads an empty pv_trying as "try again"
-	uboot_set_env_key("pv_trying", "");
+	// only appengine reads pv_trying from uboot.txt; U-Boot would import it
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		uboot_set_env_key("pv_trying", "");
 	uboot_clear_trying();
 
 	return 0;
