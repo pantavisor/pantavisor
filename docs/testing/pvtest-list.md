@@ -70,6 +70,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/devmode-refused` | Devmode revisions are refused while `PV_DEVMODE_ALLOWED` is false | ✓ |
 | `local/runtime/devmode-create` | Create a devmode revision from the running one, list its inlays; the committed revision does not change | ✓ |
 | `local/runtime/devmode-inlay-files` | A file written into an inlay shows up after a restart, survives another one and is gone after a reset | ✓ |
+| `local/runtime/devmode-leave` | Running the committed revision leaves devmode and no container keeps an inlay | ✓ |
 
 ### control
 

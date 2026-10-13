@@ -1,0 +1,14 @@
+== enable devmode and run a devmode revision ==
+== write a file into the inlay of pv-example-norole and restart it ==
+present in devmode: yes
+devmode active: true
+== run the committed revision again ==
+== devmode is off ==
+{
+  "enabled": true,
+  "active": false,
+  "has_containers": false
+}
+present after leaving devmode: no
+inlays visible to pv-example-mgmt: 0
+committed revision status: DONE
