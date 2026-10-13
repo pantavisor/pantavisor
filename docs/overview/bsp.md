@@ -117,7 +117,7 @@ An update always writes the FIT of the new revision into the partition that does
 
 #### Environment
 
-`pv_rev`, `pv_try` and `pv_trying` live in the U-Boot environment. With `PV_BOOTLOADER_TRYING_ENV=mtd:<name>` (set by the boot script, for example `mtd:u-boot-env`) Pantavisor reads and edits that environment itself, as described under [uboot](#where-pv_trying-is-stored); without it, `fw_printenv`/`fw_setenv` are used with an `/etc/fw_env.config` generated from the keys below. A missing `pv_rev` is revision `0`. An erased or garbage environment only means U-Boot never ran `saveenv`: it never fails a boot, update, rollback or devmode re-arm, Pantavisor logs it and carries on.
+`pv_rev`, `pv_try` and `pv_trying` live in the U-Boot environment. With `PV_BOOTLOADER_TRYING_ENV=mtd:<name>` (set by the boot script, for example `mtd:u-boot-env`) Pantavisor reads and edits that environment itself, as described under [uboot](#where-pv_trying-is-stored); without it, `fw_printenv`/`fw_setenv` are used with an `/etc/fw_env.config` generated from the keys below. A missing `pv_rev` is revision `0`. An erased or garbage environment only means U-Boot never ran `saveenv`: it never fails a boot, update, rollback or devmode re-arm, Pantavisor logs it and carries on. A [devmode](devmode.md) re-arm removes `pv_trying` so U-Boot boots `pv_try` again; check it from the U-Boot console with `printenv pv_try pv_trying`.
 
 This mode can be tuned up with the following [config keys](../reference/pantavisor-configuration.md); the `ENV` keys only matter for the `fw_setenv` path:
 

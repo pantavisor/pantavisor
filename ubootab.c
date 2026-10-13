@@ -320,6 +320,12 @@ static int ubootab_flush_env()
 	return 0;
 }
 
+// devmode re-arm: without pv_trying U-Boot boots pv_try again
+static int ubootab_rearm_try(void)
+{
+	return ubootab_unset_env_key("pv_trying");
+}
+
 const struct bl_ops ubootab_ops = {
 	.free = ubootab_free,
 	.init = ubootab_init,
@@ -330,4 +336,5 @@ const struct bl_ops ubootab_ops = {
 	.install_update = ubootab_install_update,
 	.commit_update = NULL,
 	.fail_update = NULL,
+	.rearm_try = ubootab_rearm_try,
 };
