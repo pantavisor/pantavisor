@@ -49,6 +49,12 @@ A devmode revision is never committed. It is installed as a try, and stays one:
 A reboot that devmode requests itself arms the try again, so the device comes back up in the devmode revision. Some U-Boot setups keep the "already tried" marker in `pv.env`, which Pantavisor cannot write; there the device boots the last commit after any reboot, and you run the devmode revision again.
 :::
 
+## Garbage collection
+
+Devmode revisions are listed by `pvcontrol steps ls` and cleaned up by the [garbage collector](storage.md#garbage-collector) like local revisions: the running, updating and last committed revisions are kept, the rest can be removed. Removing a devmode revision also removes its files.
+
+While `devmode/l/<name>` or `devmode/r/<number>` exists, the revision it is based on (`locals/<name>` or `<number>`) is never collected. Run the collector by hand with `pvcontrol cmd run-gc`.
+
 ## Reference
 
 - [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_DEVMODE_ALLOWED`
