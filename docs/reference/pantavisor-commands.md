@@ -201,6 +201,8 @@ A command is not always accepted. These are the non-`200` responses and what cau
 | `409` | — | `UPDATE_METADATA` | device is not in remote mode |
 | `409` | — | `GO_REMOTE` | remote control is disabled by [`PV_CONTROL_REMOTE`](pantavisor-configuration.md#summary) |
 | `409` | — | `DEFER_REBOOT` | the [debug shell](pantavisor-configuration.md#summary) is not active |
+| `403` | — | `LOCAL_RUN`, `LOCAL_RUN_COMMIT` | the payload is a [devmode](../overview/devmode.md) revision and [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `0` |
+| `409` | — | `LOCAL_RUN_COMMIT` | the payload is a devmode revision, which is never committed |
 | `503` | `Retry-After: 600` | `REBOOT_DEVICE`, `POWEROFF_DEVICE`, `LOCAL_RUN`, `LOCAL_RUN_COMMIT`, `MAKE_FACTORY`, `UNCLAIM` | an [update](../overview/updates.md) is ongoing |
 | `503` | `Retry-After: 120` | any | another command is still pending |
 
@@ -273,6 +275,12 @@ socket:
 | `GET` | `/steps/locals/{name}` | read back a local revision's state json |
 | `GET` | `/steps/locals/{name}/progress` | update progress of a local revision |
 | `PUT` | `/steps/locals/{name}/commitmsg` | set the commit message of a local revision |
+
+[Devmode](../overview/devmode.md) revisions are sent the same way, under `devmode/l/{name}` (based on the local revision `locals/{name}`) or `devmode/r/{number}` (based on the Hub revision `{number}`, digits only). They need [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary)`=1`; otherwise the `PUT` answers `403`. Every `locals/{name}` route above also exists as `devmode/l/{name}` and `devmode/r/{number}`.
+
+```
+curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/devmode/r/12"
+```
 
 Finally, you can set a commit message that will be stored along a revision and showed when listing revisions so the user can idendifcate each one of them:
 

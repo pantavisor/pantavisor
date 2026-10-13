@@ -72,6 +72,7 @@ bool pv_update_is_done(void);
 bool pv_update_is_failed(void);
 bool pv_update_is_final(void);
 bool pv_update_is_local(void);
+bool pv_update_is_devmode(void);
 
 char *pv_update_get_rev(void);
 struct pv_state *pv_update_get_state(void);

@@ -25,6 +25,7 @@
 #include "json.h"
 #include "pantavisor.h"
 #include "config.h"
+#include "storage.h"
 
 #include <event2/http.h>
 
@@ -112,6 +113,18 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 		return _cmd_reject(
 			cmd, HTTP_SERVUNAVAIL, 10 * 60,
 			"Cannot do this operation while update is ongoing");
+	}
+
+	if ((cmd->op == CMD_LOCAL_RUN || cmd->op == CMD_LOCAL_RUN_COMMIT) &&
+	    cmd->payload && pv_storage_is_revision_devmode(cmd->payload)) {
+		if (!pv_config_get_bool(PV_DEVMODE_ALLOWED))
+			return _cmd_reject(
+				cmd, HTTP_FORBIDDEN, -1,
+				"Devmode is disabled, set PV_DEVMODE_ALLOWED=true");
+		if (cmd->op == CMD_LOCAL_RUN_COMMIT)
+			return _cmd_reject(
+				cmd, PV_HTTP_CONFLICT, -1,
+				"A devmode revision cannot be committed");
 	}
 
 	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {

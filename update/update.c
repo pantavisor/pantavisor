@@ -1033,7 +1033,17 @@ bool pv_update_is_local()
 	if (!u)
 		return false;
 
-	return pv_storage_is_revision_local(u->rev);
+	return pv_storage_is_revision_local(u->rev) ||
+	       pv_storage_is_revision_devmode(u->rev);
+}
+
+bool pv_update_is_devmode()
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u)
+		return false;
+
+	return pv_storage_is_revision_devmode(u->rev);
 }
 
 char *pv_update_get_rev()
