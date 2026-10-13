@@ -39,6 +39,9 @@ struct bl_ops {
 	int (*commit_update)();
 	int (*fail_update)();
 
+	/* make the next boot try pv_try again; optional */
+	int (*rearm_try)(void);
+
 	/*
 	 * Validate boot state and determine current revision.
 	 * Called after pv_try/pv_done are loaded from storage.
@@ -67,6 +70,7 @@ int pv_bootloader_install_update(char *rev);
 int pv_bootloader_pre_commit_update(char *rev);
 int pv_bootloader_post_commit_update(const char *rev);
 int pv_bootloader_fail_update(void);
+int pv_bootloader_rearm_try(const char *rev);
 
 void pv_bootloader_remove(void);
 

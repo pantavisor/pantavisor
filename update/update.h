@@ -73,6 +73,8 @@ bool pv_update_is_failed(void);
 bool pv_update_is_final(void);
 bool pv_update_is_local(void);
 bool pv_update_is_devmode(void);
+// reboot into the running devmode revision instead of the last commit
+int pv_update_devmode_reboot(void);
 
 char *pv_update_get_rev(void);
 struct pv_state *pv_update_get_state(void);
