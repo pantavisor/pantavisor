@@ -528,8 +528,6 @@ int pv_state_validate(struct pv_state *s)
 	pv_state_apply_lifecycle_goals(s);
 	// set default restart policies
 	pv_state_set_default_restart_policies(s);
-	// add the devmode inlay volumes
-	pv_volumes_add_devmode(s);
 
 	return 0;
 }

@@ -207,7 +207,12 @@ void pv_volumes_add_devmode(struct pv_state *s)
 
 	dl_list_for_each_safe(p, tmp, &s->platforms, struct pv_platform, list)
 	{
-		struct pv_volume *v = pv_volume_add(s, DEVMODE_INLAY_DNAME);
+		struct pv_volume *v;
+
+		if (p->devmode_inlay)
+			continue;
+
+		v = pv_volume_add(s, DEVMODE_INLAY_DNAME);
 		if (!v)
 			continue;
 
