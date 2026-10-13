@@ -175,6 +175,7 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 120 },
 	{ INT, "PH_UPDATER_TRANSFER_MAX_COUNT", PH | OEM | RUN, 0, false,
 	  .value.i = 5 },
+	{ STR, "PV_BOOTLOADER_ENV_FILE", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_BOOTLOADER_FITCONFIG", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, false, .value.s = NULL },
 	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, false, .value.b = false },

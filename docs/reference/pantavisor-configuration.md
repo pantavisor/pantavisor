@@ -72,6 +72,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_UPDATER_INTERVAL` | time (in seconds) | `5` | set time between [Pantacor Hub](../overview/remote-control.md#pantacor-hub) [update](../overview/updates.md) requests |
 | `PH_UPDATER_NETWORK_TIMEOUT` | time (in seconds) | `120` | set time before [rollback](../overview/updates.md#error) if device cannot communicate with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_UPDATER_TRANSFER_MAX_COUNT` | number of transfers | `5` | set maximum number of object transfers to and from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) during [updates](../overview/updates.md) |
+| `PV_BOOTLOADER_ENV_FILE` | `part:<n>:<path>`, `ubi::<path>`, `LABEL=<x>:<path>` or `UUID=<x>:<path>` | empty | location of the U-Boot `pv.env` file that [devmode](../overview/devmode.md) rewrites to boot a revision again; `<n>` is the partition number in hex on the disk of the storage device; when empty, `LABEL=boot` then the storage root are probed for `/pv.env`; the generic U-Boot boot script sets it |
 | `PV_BOOTLOADER_FITCONFIG` | string | empty | set FIT configuration name |
 | `PV_BOOTLOADER_MTD_ENV` | string | empty | set MTD name for bootloader env |
 | `PV_BOOTLOADER_MTD_ONLY` | `0` or `1` | `0` | enable MTD for bootloader env |
@@ -209,6 +210,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PH_UPDATER_INTERVAL`                | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_UPDATER_NETWORK_TIMEOUT`         | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_UPDATER_TRANSFER_MAX_COUNT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_BOOTLOADER_ENV_FILE`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_FITCONFIG`            | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_MTD_ENV`              | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_MTD_ONLY`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
