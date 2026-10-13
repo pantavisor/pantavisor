@@ -91,9 +91,33 @@ grep uboot-mtd-env /storage/logs/0/pantavisor/pantavisor.log
 
 ### uboot-ab
 
-This mode is similar to [uboot](#uboot) but it will use [fit images](https://github.com/devicetree-org/devicetree-specification) stored in two mtd partitions so the Kernel can be loaded in a faster manner by the bootloader. The selection of the partition to be booted is done by Pantavisor using U-Boot env variables, as well as the writing of the Kernel images in each partition.
+This mode keeps the kernel as a [FIT image](https://github.com/devicetree-org/devicetree-specification) in two raw MTD partitions, `fitA` and `fitB` (NAND), so U-Boot can load it straight from flash. Pantavisor writes the FIT of an incoming revision into the partition that does not hold `pv_rev`, so the committed revision is never overwritten and a failed try falls back to it. U-Boot picks the partition to boot.
 
-This mode can be tuned up with the following [config keys](../reference/pantavisor-configuration.md):
+#### What U-Boot must do
+
+The boot script reads the 4 KiB header of both partitions, boots the one whose `fit_rev` equals the revision it wants (`pv_try`, else `pv_rev`; no `pv_rev` means `0`), and falls back to `pv_rev` for a try it already attempted (`pv_trying`). When no partition matches, it boots `fitA`.
+
+| Item | Value |
+|------|-------|
+| Header | at offset 0 of the partition, `fit_rev=<rev>\nfit_size=<bytes>\n`, NUL padded to 4096 bytes; `env import -t <addr> 0x1000` reads it |
+| FIT | `fit_size` bytes at offset `0x1000` |
+| Bad blocks | the partition is the sequence of its good erase blocks, as `nand read` sees it; the header sits at the start of the first good block |
+| Revision match | exact: `fit_rev=1` does not match revision `10` |
+| Headers without `fit_size` | written by older Pantavisor versions, still readable |
+
+Inspect a partition on the device:
+
+```
+dd if=/dev/mtd4 bs=4096 count=1 2>/dev/null | strings
+```
+
+#### Updates
+
+An update always writes the FIT of the new revision into the partition that does not hold `pv_rev`, even when the FIT did not change, and then sets `pv_try`. The write erases and programs only good blocks and fails, leaving the flash untouched, when header plus FIT do not fit in them. A failed write fails the update. Partitions are found by their exact name in `/proc/mtd`; `CONFIG_MTD_BLOCK` is not needed.
+
+#### Configuration
+
+This mode can be tuned up with the following [config keys](../reference/pantavisor-configuration.md); the `ENV` keys only matter for the `fw_setenv` path:
 
 * `PV_BOOTLOADER_UBOOTAB_A_NAME`
 * `PV_BOOTLOADER_UBOOTAB_B_NAME`

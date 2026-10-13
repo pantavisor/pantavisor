@@ -16,7 +16,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
  * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE SE OR OTHER DEALINGS IN THE
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
 
@@ -27,6 +27,11 @@
 #include <sys/types.h>
 #include <stdint.h>
 
+/*
+ * A raw MTD partition seen as the list of its good erase blocks, the way
+ * U-Boot's nand read sees it: logical offset 0 is the start of the first
+ * good block and bad blocks are skipped.
+ */
 struct pv_mtd {
 	char name[NAME_MAX];
 	char dev[PATH_MAX];
@@ -36,13 +41,22 @@ struct pv_mtd {
 	off_t size;
 };
 
+/* Partition with exactly this name in /proc/mtd, or NULL. Free it. */
 struct pv_mtd *pv_mtd_from_name(const char *name);
 void pv_mtd_free(struct pv_mtd *mtd);
-int pv_mtd_erase(struct pv_mtd *mtd, off_t from, off_t len);
-ssize_t pv_mtd_read(struct pv_mtd *mtd, void *buf, size_t size);
-ssize_t pv_mtd_write(struct pv_mtd *mtd, const void *buf, size_t buf_sz);
-ssize_t pv_mtd_copy_from_fd(struct pv_mtd *mtd, int fd, off_t size);
-ssize_t pv_mtd_copy_to_fd(struct pv_mtd *mtd, int fd, off_t size);
-off_t pv_mtd_seek(struct pv_mtd *mtd, off_t offset, int whence);
+
+/* Bytes the good erase blocks of the partition can hold. */
+off_t pv_mtd_capacity(struct pv_mtd *mtd);
+
+/* Read len bytes from logical offset off; returns bytes read or -1. */
+ssize_t pv_mtd_read(struct pv_mtd *mtd, off_t off, void *buf, size_t len);
+
+/*
+ * Write head (head_len bytes) followed by size bytes read from fd into the
+ * good blocks from the start of the partition, erasing each block first.
+ * Fails without touching the flash when it does not fit. Returns 0 or -1.
+ */
+int pv_mtd_write_image(struct pv_mtd *mtd, const void *head, size_t head_len,
+		       int fd, off_t size);
 
 #endif

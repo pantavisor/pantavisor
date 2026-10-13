@@ -348,6 +348,8 @@ add_executable(pantavisor
 			uboot_mtd_env.c
 			uboot_mtd_env.h
 			ubootab.c
+			ubootab_header.c
+			ubootab_header.h
 			updater.c
 			updater.h
 			update/update.c
@@ -666,6 +668,22 @@ add_executable(test-pv-uboot-env
 target_link_libraries(test-pv-uboot-env z)
 add_test(NAME uboot_env_buf COMMAND test-pv-uboot-env)
 install(TARGETS test-pv-uboot-env DESTINATION bin)
+
+add_executable(test-pv-ubootab-header
+			ubootab_header.test.c
+			ubootab_header.c
+			ubootab_header.h
+)
+add_test(NAME ubootab_header COMMAND test-pv-ubootab-header)
+install(TARGETS test-pv-ubootab-header DESTINATION bin)
+
+add_executable(test-pv-mtd
+			utils/mtd.test.c
+			utils/mtd.c
+			utils/mtd.h
+)
+add_test(NAME mtd COMMAND test-pv-mtd)
+install(TARGETS test-pv-mtd DESTINATION bin)
 ENDIF()
 
 enable_testing()
