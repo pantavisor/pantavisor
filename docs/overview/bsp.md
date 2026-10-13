@@ -68,6 +68,27 @@ In regards of how the interaction with the bootloader is done, Pantavisor can be
 
 In this mode, both Pantavisor and U-Boot will write and read to and from a file in [storage](storage.md) that contains the revision information that U-Boot needs so it can boot up at any time. With that information, Kernel and initrd will be loaded from that same [storage](storage.md) by U-Boot.
 
+#### Where `pv_trying` is stored
+
+While a new revision is being tried, U-Boot keeps a `pv_trying` marker so it can tell "already tried" from "first try" and fall back to `pv_rev` if the try never reached Pantavisor. Pantavisor clears it only when [devmode](devmode.md) re-arms a try; normal updates and rollbacks leave it to U-Boot. Where the marker lives depends on the board; `PV_BOOTLOADER_TRYING_ENV` tells Pantavisor which one:
+
+| Setup | `PV_BOOTLOADER_TRYING_ENV` | Pantavisor clears `pv_trying` by |
+|-------|----------------------------|----------------------------------|
+| `pv.env` file on the boot partition (generic boot script on eMMC/SD) | `part:<n>:/pv.env`, set by the boot script | rewriting the file |
+| U-Boot environment in flash, written by `saveenv` (generic boot script on UBI) | `mtd:<name>`, set by the BSP, for example `mtd:u-boot-env` | editing that key in the environment in place |
+| `pv-env` MTD partition (legacy, raw `key=value` list) | not used | removing only `pv_trying` from the partition |
+| `PV_BOOTLOADER_MTD_ONLY=1` (legacy, `PV_BOOTLOADER_MTD_ENV` partition holds all keys) | not used | removing only `pv_trying`; `pv_rev` and `pv_try` stay |
+
+With `mtd:<name>` Pantavisor reads the first good erase block of the partition, finds the environment size by checking the CRC32 for each power-of-two size from 4 KiB up to the erase size, removes the exact key `pv_trying`, recomputes the CRC, erases and writes the block, and reads it back to verify. Every other key keeps its value and order. Pantavisor never wipes a partition that holds a U-Boot environment.
+
+If the partition has no environment Pantavisor can edit, it logs at `INFO` and writes nothing, and the boot, update, rollback or re-arm carries on. This is the case for an erased partition, garbage, a CRC that matches no size, a read error and a missing partition: U-Boot has simply never run `saveenv` there. A redundant environment (two copies, flags byte) is detected and left alone with a warning.
+
+To see what Pantavisor did with the environment, on the device:
+
+```
+grep uboot-mtd-env /storage/logs/0/pantavisor/pantavisor.log
+```
+
 ### uboot-ab
 
 This mode is similar to [uboot](#uboot) but it will use [fit images](https://github.com/devicetree-org/devicetree-specification) stored in two mtd partitions so the Kernel can be loaded in a faster manner by the bootloader. The selection of the partition to be booted is done by Pantavisor using U-Boot env variables, as well as the writing of the Kernel images in each partition.

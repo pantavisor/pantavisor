@@ -343,6 +343,10 @@ add_executable(pantavisor
 			uboot.c
 			uboot_env_file.c
 			uboot_env_file.h
+			uboot_env_buf.c
+			uboot_env_buf.h
+			uboot_mtd_env.c
+			uboot_mtd_env.h
 			ubootab.c
 			updater.c
 			updater.h
@@ -653,6 +657,15 @@ add_executable(test-pv-tsh
 )
 target_link_libraries(test-pv-tsh)
 install(TARGETS test-pv-tsh DESTINATION bin)
+
+add_executable(test-pv-uboot-env
+			uboot_env_buf.test.c
+			uboot_env_buf.c
+			uboot_env_buf.h
+)
+target_link_libraries(test-pv-uboot-env z)
+add_test(NAME uboot_env_buf COMMAND test-pv-uboot-env)
+install(TARGETS test-pv-uboot-env DESTINATION bin)
 ENDIF()
 
 enable_testing()
