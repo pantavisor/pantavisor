@@ -68,6 +68,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/ctrl-empty-object-put` | Bodyless object PUT replies, no hang (pv-ctrl) | ✓ |
 | `local/runtime/invalid-signal-handling` | Invalid Signal Handling | |
 | `local/runtime/devmode-refused` | Devmode revisions are refused while `PV_DEVMODE_ALLOWED` is false | ✓ |
+| `local/runtime/devmode-create` | Create a devmode revision from the running one, list its inlays; the committed revision does not change | ✓ |
 
 ### control
 
