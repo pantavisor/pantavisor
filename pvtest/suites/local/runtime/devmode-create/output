@@ -1,4 +1,4 @@
-== enable devmode through user-meta ==
+== enable devmode through pantavisor.config ==
 {
   "enabled": true,
   "active": false

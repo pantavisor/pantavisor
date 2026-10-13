@@ -5,10 +5,17 @@
 }
 == put devmode/l/local_runtime_devmode_refused is refused ==
 put failed: yes
-{"Error":"Devmode is disabled, set PV_DEVMODE_ALLOWED=true"}
+{"Error":"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config"}
 == put devmode/r/1 is refused ==
 put failed: yes
-{"Error":"Devmode is disabled, set PV_DEVMODE_ALLOWED=true"}
+{"Error":"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config"}
+== PV_DEVMODE_ALLOWED in user-meta does not allow devmode ==
+{
+  "enabled": false,
+  "active": false
+}
+put failed: yes
+{"Error":"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config"}
 == devmode create fails ==
 create failed: yes
 == no devmode revision was installed for this revision ==

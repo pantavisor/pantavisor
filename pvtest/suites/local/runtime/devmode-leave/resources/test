@@ -5,6 +5,7 @@
 # the file.
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
 
 target="pv-example-norole"
 writer="pv-example-mgmt"
@@ -17,7 +18,7 @@ cleanup() {
 	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
 	wait_for_down 30
 	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
-	pvcontrol usrmeta delete PV_DEVMODE_ALLOWED > /dev/null 2>&1
+	devmode_conf_restore
 }
 trap cleanup EXIT
 
@@ -26,7 +27,7 @@ target_has_file() {
 }
 
 echo "== enable devmode and run a devmode revision =="
-pvcontrol usrmeta save PV_DEVMODE_ALLOWED true > /dev/null
+devmode_conf_enable || exit 1
 pvcontrol devmode create > /dev/null 2>&1
 wait_for_down 30
 wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \

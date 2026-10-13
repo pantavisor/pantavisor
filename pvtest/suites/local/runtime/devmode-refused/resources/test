@@ -1,7 +1,8 @@
 #!/bin/sh
 #
 # With PV_DEVMODE_ALLOWED=false (the default) a devmode revision cannot be
-# installed, and GET /devmode reports devmode as off.
+# installed, and GET /devmode reports devmode as off. PV_DEVMODE_ALLOWED set
+# through user-meta is ignored: only pantavisor.config and the OEM config count.
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
 
@@ -22,6 +23,17 @@ for devmode_name in "devmode/l/${current_rev#locals/}" "devmode/r/1"; do
 	echo "put failed: $([ "$put_exit" -ne 0 ] && echo yes || echo no)"
 	echo "$put_output" | tr -d '\r' | grep '^{'
 done
+
+echo "== PV_DEVMODE_ALLOWED in user-meta does not allow devmode =="
+trap 'pvcontrol usrmeta delete PV_DEVMODE_ALLOWED > /dev/null 2>&1' EXIT
+pvcontrol usrmeta save PV_DEVMODE_ALLOWED true > /dev/null
+sleep 2
+pvcontrol devmode status | jq -M '{enabled, active}' | tr -d '\r'
+put_output=$(pvcontrol steps put "$state_staged" "devmode/r/1" 2>&1)
+put_exit=$?
+echo "put failed: $([ "$put_exit" -ne 0 ] && echo yes || echo no)"
+echo "$put_output" | tr -d '\r' | grep '^{'
+pvcontrol usrmeta delete PV_DEVMODE_ALLOWED > /dev/null 2>&1
 
 pv_unstage_file "$state_staged"
 rm -f "$state_json"
