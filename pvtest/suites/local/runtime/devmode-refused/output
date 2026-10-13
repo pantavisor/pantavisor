@@ -1,0 +1,17 @@
+== devmode status ==
+{
+  "enabled": false,
+  "active": false
+}
+== put devmode/l/local_runtime_devmode_refused is refused ==
+put failed: yes
+{"Error":"Devmode is disabled, set PV_DEVMODE_ALLOWED=true"}
+== put devmode/r/1 is refused ==
+put failed: yes
+{"Error":"Devmode is disabled, set PV_DEVMODE_ALLOWED=true"}
+== devmode create fails ==
+create failed: yes
+== no devmode revision was installed for this revision ==
+0
+== still on the committed revision ==
+revision unchanged: yes

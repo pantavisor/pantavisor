@@ -1,0 +1,39 @@
+#!/bin/sh
+#
+# With PV_DEVMODE_ALLOWED=false (the default) a devmode revision cannot be
+# installed, and GET /devmode reports devmode as off.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+current_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+
+echo "== devmode status =="
+pvcontrol devmode status | jq -M '{enabled, active}' | tr -d '\r'
+
+state_json=$(mktemp)
+pvcontrol steps get "$current_rev" > "$state_json"
+state_staged=$(pv_stage_file "$state_json")
+
+# the error body is a JSON line; other lines are noise from the target shell
+for devmode_name in "devmode/l/${current_rev#locals/}" "devmode/r/1"; do
+	echo "== put $devmode_name is refused =="
+	put_output=$(pvcontrol steps put "$state_staged" "$devmode_name" 2>&1)
+	put_exit=$?
+	echo "put failed: $([ "$put_exit" -ne 0 ] && echo yes || echo no)"
+	echo "$put_output" | tr -d '\r' | grep '^{'
+done
+
+pv_unstage_file "$state_staged"
+rm -f "$state_json"
+
+echo "== devmode create fails =="
+pvcontrol devmode create > /dev/null 2>&1
+create_exit=$?
+echo "create failed: $([ "$create_exit" -ne 0 ] && echo yes || echo no)"
+
+echo "== no devmode revision was installed for this revision =="
+pvcontrol steps ls | jq -M --arg r "${current_rev#locals/}" '[.[].name | select(. == "devmode/l/" + $r)] | length' | tr -d '\r'
+
+echo "== still on the committed revision =="
+now_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+echo "revision unchanged: $([ "$now_rev" = "$current_rev" ] && echo yes || echo no)"

@@ -67,6 +67,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/steps-rw` | Step read + local revision put (pv-ctrl) | ✓ |
 | `local/runtime/ctrl-empty-object-put` | Bodyless object PUT replies, no hang (pv-ctrl) | ✓ |
 | `local/runtime/invalid-signal-handling` | Invalid Signal Handling | |
+| `local/runtime/devmode-refused` | Devmode revisions are refused while `PV_DEVMODE_ALLOWED` is false | ✓ |
 
 ### control
 
