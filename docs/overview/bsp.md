@@ -70,7 +70,7 @@ In this mode, both Pantavisor and U-Boot will write and read to and from a file 
 
 #### Where `pv_trying` is stored
 
-While a new revision is being tried, U-Boot keeps a `pv_trying` marker so it can tell "already tried" from "first try" and fall back to `pv_rev` if the try never reached Pantavisor. The generic boot script keeps it in a `pv.env` file on the boot partition, written with `env export` and read back with `env import` on every boot.
+While a new revision is being tried, U-Boot keeps a `pv_trying` marker so it can tell "already tried" from "first try" and fall back to `pv_rev` if the try never reached Pantavisor. The generic boot script keeps it in a `pv.env` file on the boot partition on eMMC/SD, written with `env export` and read back with `env import` on every boot, and in U-Boot's own environment (`saveenv`) on UBI.
 
 Pantavisor clears `pv_trying` only when [devmode](devmode.md) re-arms a try, so that the next boot comes up in the devmode revision again; normal updates and rollbacks leave it to U-Boot. `PV_BOOTLOADER_TRYING_ENV` tells Pantavisor where the file is:
 
@@ -79,14 +79,19 @@ Pantavisor clears `pv_trying` only when [devmode](devmode.md) re-arms a try, so 
 | `part:<n>:<path>` | `<path>` on partition `<n>` (hex, as U-Boot prints it) of the disk that holds the storage partition; the generic boot script passes `part:${pv_bootpart}:/pv.env` on the kernel command line |
 | `LABEL=<x>:<path>`, `UUID=<x>:<path>` | `<path>` on the partition with that label or UUID |
 | empty | probe `LABEL=boot`, then the storage root, for `/pv.env` |
+| `mtd:<name>` | not a file: the U-Boot environment that `saveenv` wrote into MTD partition `<name>`, for example `mtd:u-boot-env` (generic boot script on UBI) |
+
+The legacy `pv-env` MTD partition (raw `key=value` list, `PV_BOOTLOADER_MTD_ENV`) and `PV_BOOTLOADER_MTD_ONLY=1` need no `PV_BOOTLOADER_TRYING_ENV`: Pantavisor removes only the `pv_trying` key there, so `pv_rev` and `pv_try` stay.
 
 Pantavisor only rewrites a `pv.env` that already exists, mounting the partition (vfat or ext4) for the write if it is not the storage partition. If the file is missing or cannot be written, it logs and the device boots the last committed revision after the reboot.
+
+With `mtd:<name>` Pantavisor reads the first good erase block of the partition, finds the environment size by checking the CRC32 for each power-of-two size from 4 KiB up to the erase size, removes the exact key `pv_trying`, recomputes the CRC, erases and writes the block, and reads it back to verify. Every other key keeps its value and order. Pantavisor never wipes a partition that holds a U-Boot environment. If the partition has no environment Pantavisor can edit (erased, garbage, a CRC that matches no size, a read error, a missing partition), it logs at `INFO` and writes nothing: U-Boot has simply never run `saveenv` there. A redundant environment (two copies, flags byte) is left alone with a warning.
 
 To check on the device, look at the kernel command line and at what Pantavisor logged:
 
 ```
 tr ' ' '\n' < /proc/cmdline | grep PV_BOOTLOADER_TRYING_ENV
-grep -r uboot-env-file /storage/logs/devmode/
+grep -r -E "uboot-env-file|uboot-mtd-env" /storage/logs/devmode/
 ```
 
 ### uboot-ab
