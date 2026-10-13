@@ -19,6 +19,14 @@ With `PV_DEVMODE_ALLOWED=false`, a devmode revision is refused: `PUT /steps/devm
 
 ## Devmode revisions
 
+`pvcontrol devmode create` does the following steps for you; it uses the running revision as base unless you name one:
+
+```bash
+pvcontrol devmode create
+```
+
+By hand:
+
 A devmode revision is a copy of another revision that you run on the device. Its name says which one it is based on:
 
 | Name | Based on |

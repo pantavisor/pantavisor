@@ -469,6 +469,35 @@ To activate an installed local revision, follow with `pvcontrol cmd run` /
 
 ---
 
+## Devmode
+
+[Devmode](../overview/devmode.md) needs
+[`PV_DEVMODE_ALLOWED`](../reference/pantavisor-configuration.md#summary) set to
+`true`. All subcommands need the `mgmt` role.
+
+```bash
+pvcontrol devmode status
+pvcontrol devmode create
+pvcontrol devmode create 12
+pvcontrol devmode create locals/my-rev
+pvcontrol devmode reset my-container
+pvcontrol devmode apply my-container
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `status` | Devmode state and the inlay directory of each container. |
+| `create [base]` | Copies the state json of `base` into `devmode/r/<number>` (`base` is a revision number) or `devmode/l/<name>` (`base` is `locals/<name>`), then runs it. Without `base`, the running revision is used; if that is a devmode revision, its own base is used. `-m <message>` sets the commit message. |
+| `reset <container>` | Removes all files from the inlay of the container. |
+| `apply <container>` | Restarts the container so it sees the inlay files. A container with restart policy `system` reboots the device into the devmode revision instead. |
+
+```console
+$ pvcontrol devmode create 12
+running devmode/r/12 (based on 12)
+$ pvcontrol devmode status
+{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode"}]}
+```
+
 ## Drivers
 
 `pvcontrol` does not wrap the `/drivers` endpoints; use raw `pvcurl`:
@@ -514,6 +543,10 @@ On a platform without managed drivers these are effectively no-ops returning
 | `steps ls` | GET | `/steps` |
 | `steps get\|show-progress <rev>` | GET | `/steps/{rev}` / `/steps/{rev}/progress` |
 | `steps put\|install <path> <rev>` | PUT | `/steps/{rev}` (+ `/commitmsg`) |
+| `devmode status` | GET | `/devmode` |
+| `devmode create [base]` | GET, PUT, POST | `/steps/{base}`, `/steps/devmode/...`, `/commands` |
+| `devmode reset <container>` | DELETE | `/devmode/containers/{name}` |
+| `devmode apply <container>` | PUT | `/containers/{name}` (`?reboot=1` for `system` containers) |
 
 For the authoritative endpoint contracts (request/response shapes, status
 codes, management-socket requirements), see
