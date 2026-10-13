@@ -35,6 +35,38 @@ pvcontrol cmd run devmode/r/12
 
 Unlike a local revision, running a devmode revision does not switch the device to local mode. The device keeps talking to [Pantacor Hub](remote-control.md#pantacor-hub): metadata and logs keep flowing, and a new Hub update replaces the devmode revision. The Hub is never told about a devmode revision: its progress is not reported there, and a lost Hub connection does not roll it back.
 
+## The inlay
+
+While a devmode revision runs, every container has a writable layer called the inlay. It sits in the root filesystem of the container directly below the container's own writable layer (the `lxc-overlay` upper):
+
+| Order | Layer |
+|-------|-------|
+| 1, top | container writable layer (upper) |
+| 2 | inlay (`_devmode`) |
+| 3 | `/configs/<container>` overlay, if the container has one |
+| 4 | `root.ovl.squashfs`, if any |
+| 5, bottom | `root.squashfs` |
+
+Files you put in the inlay shadow the same files of the image. The inlay only applies to containers whose root filesystem is an overlay; others log a warning and run without it.
+
+Inlay files are stored per revision, so the inlay is kept when you post the same devmode name again and removed together with the devmode revision. Files the container itself changed at runtime live in the upper layer and shadow inlay files, unless the container's lxc-overlay is cleared on every boot.
+
+### Write files into the inlay
+
+A container with the `mgmt` [role](containers.md) sees the inlay of every container read-write at `/pantavisor/devmode/<container>`. Copy the changed files there with `cp`, `rsync` or `scp`:
+
+```bash
+rsync -a ./build/rootfs/ /pantavisor/devmode/my-container/
+```
+
+From the [debug ssh](../reference/pantavisor-configuration.md#summary) shell, the same directory is under `/storage/disks/rev/<devmode revision>/<container>/_devmode`.
+
+The container sees new files after its next start, because the root filesystem is mounted again on start:
+
+```bash
+pvcontrol containers restart my-container
+```
+
 ## Fallback to the last commit
 
 A devmode revision is never committed. It is installed as a try, and stays one:

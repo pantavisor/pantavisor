@@ -528,6 +528,8 @@ int pv_state_validate(struct pv_state *s)
 	pv_state_apply_lifecycle_goals(s);
 	// set default restart policies
 	pv_state_set_default_restart_policies(s);
+	// add the devmode inlay volumes
+	pv_volumes_add_devmode(s);
 
 	return 0;
 }
@@ -683,6 +685,12 @@ static plat_goal_state_t pv_state_check_goal_prev_group(struct pv_state *s,
 static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 {
 	struct pv_volume *v, *tmp;
+
+	// management containers get every inlay bind mounted, so they must exist
+	if ((p->roles & PLAT_ROLE_MGMT) && pv_volumes_mount_devmode(s)) {
+		pv_log(ERROR, "devmode volumes could not be mounted");
+		return -1;
+	}
 
 	// Skip already-mounted volumes (e.g. re-entering here to start a STAGED platform).
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)

@@ -104,6 +104,7 @@ In addition to this, `mgmt` containers get these elements in /pantavisor:
 * Full [stored logs](storage.md#logs) for all containers and revisions.
 * The stored [user metadata](storage.md#user-metadata) and [device metadata](storage.md#device-metadata) for all containers.
 * Challenge and device-id information for [Pantacor Hub](remote-control.md#pantacor-hub).
+* While a [devmode](devmode.md#write-files-into-the-inlay) revision runs, a read-write directory `/pantavisor/devmode/<container>` per container, holding its inlay files.
 
 ## Restart Policy
 

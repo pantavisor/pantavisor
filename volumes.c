@@ -44,6 +44,7 @@
 #include "tsh.h"
 #include "init.h"
 #include "logserver/logserver.h"
+#include "storage.h"
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
@@ -194,6 +195,43 @@ struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
 	}
 
 	return v;
+}
+
+void pv_volumes_add_devmode(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+
+	if (!pv_config_get_bool(PV_DEVMODE_ALLOWED) ||
+	    !pv_storage_is_revision_devmode(s->rev))
+		return;
+
+	dl_list_for_each_safe(p, tmp, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_volume *v = pv_volume_add(s, DEVMODE_INLAY_DNAME);
+		if (!v)
+			continue;
+
+		v->type = VOL_REVISION;
+		v->plat = p;
+		p->devmode_inlay = true;
+	}
+}
+
+int pv_volumes_mount_devmode(struct pv_state *s)
+{
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		if (!v->plat || !v->plat->devmode_inlay || v->mounted ||
+		    strcmp(v->name, DEVMODE_INLAY_DNAME))
+			continue;
+
+		if (pv_volume_mount(v))
+			return -1;
+	}
+
+	return 0;
 }
 
 struct pv_volume *pv_volume_add(struct pv_state *s, char *name)
