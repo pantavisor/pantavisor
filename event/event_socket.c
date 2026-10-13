@@ -59,7 +59,7 @@ void pv_event_socket_ignore(struct pv_event_socket *listener)
 	if (!listener->ev)
 		return;
 
-	pv_log(DEBUG, "stop listening event to socket fd %d", listener->fd);
+	pv_log(TRACE, "stop listening event to socket fd %d", listener->fd);
 
 	/* event_del removes the fd from the epoll set while it is still
 	 * open; without it, callers that close(fd) before pv_event_socket_ignore

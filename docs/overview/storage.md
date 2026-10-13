@@ -21,7 +21,8 @@ Its structure is as follows:
 │   ├── dropbear
 │   └── usrmeta
 ├── config                         # Pantacor Hub RW configuration
-│   └── pantahub.config 
+│   ├── pantahub.config
+│   └── unclaimed.config
 ├── disks                          # persistent container and Pantavisor storage 
 ├── logs                           # container and Pantavisor logs are centralized here
 ├── objects                        # general revision artifacts
@@ -118,7 +119,7 @@ Stores the `PH_` prefixed keys of the [configuration](../reference/pantavisor-co
 
 These configuration keys are persistent. By default, they are saved in plain text, but this can be changed if set to a [volume](#volumes) assigned to a [crypt disk](#disks).
 
-These credentials are written automatically when the device claims/registers against [Pantacor Hub](remote-control.md#pantacor-hub); there is no direct write endpoint for them. To wipe them and force the device to re-register (e.g. to re-claim it), run:
+These credentials are written automatically when the device registers with and is claimed by [Pantacor Hub](remote-control.md#pantacor-hub). A registered device keeps its credentials in `unclaimed.config` until it is claimed, then in `pantahub.config`. To wipe them out and force the device to re-register (e.g. to re-claim it), run:
 
 ```bash
 pvcontrol cmd unclaim

@@ -1633,7 +1633,7 @@ static char *pv_state_get_novalidate_known_obj(struct dl_list *objects,
  * objects to be checked with a full sha256sum check
  * before starting the platforms.
  */
-static char *pv_state_get_novalidate_list(struct pv_state *state)
+char *pv_state_get_novalidate_list(struct pv_state *state)
 {
 	jsmntok_t *tokv = NULL;
 	int tokc = 0;
@@ -1690,6 +1690,33 @@ static char *pv_state_get_novalidate_list(struct pv_state *state)
 		}
 	}
 	return nv_list;
+}
+
+bool pv_state_is_object_validated(struct pv_state *s, const char *nv_list,
+				  const char *name, const char *id)
+{
+	struct pv_object *o;
+	char needle[PATH_MAX + 67];
+
+	if (getenv("pv_quickboot") ||
+	    !pv_config_get_bool(PV_SECUREBOOT_CHECKSUM))
+		return false;
+
+	if (snprintf(needle, sizeof(needle), "%s %s", name, id) >=
+	    (int)sizeof(needle))
+		return false;
+
+	if (nv_list && strstr(nv_list, needle))
+		return false;
+
+	pv_objects_installs_iter_begin(s, o)
+	{
+		if (!strcmp(o->id, id))
+			return true;
+	}
+	pv_objects_installs_iter_end;
+
+	return false;
 }
 
 bool pv_state_validate_checksum(struct pv_state *s)

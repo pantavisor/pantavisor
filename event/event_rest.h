@@ -30,12 +30,10 @@
 int pv_event_rest_init(void);
 void pv_event_rest_cleanup(void);
 
-// out_req, when non-NULL, receives the request handle on success (untouched
-// on failure); NULL-tolerant for callers that never need to cancel
 int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
-	const char *endpoint, const char *token, const char *body,
-	void (*chunk_cb)(struct evhttp_request *, void *),
+	const char *endpoint, const char *autotok, const char *token,
+	const char *body, void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
 	struct evhttp_request **out_req, size_t rate_limit_bytes_per_sec,
 	off_t resume_from);
@@ -46,7 +44,12 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      size_t rate_limit_bytes_per_sec,
 			      off_t resume_from);
 
-// drops any download pacer for req, then evhttp_cancel_request()s it
+int pv_event_rest_send_file_by_url(const char *url, const char *path,
+				   off_t size,
+				   void (*done_cb)(struct evhttp_request *,
+						   void *),
+				   void *ctx, struct evhttp_request **out_req);
+
 void pv_event_rest_cancel_request(struct evhttp_request *req);
 
 int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,

@@ -42,6 +42,7 @@ userspace. Each scope owns a guard and contributes at most one to the count.
 | `update_check` | A poll-for-updates roundtrip is in flight |
 | `devmeta` | A local [device-metadata](pantavisor-metadata.md#device-metadata) change is not yet synced to Pantacor Hub, bounded by `PV_POWER_DEVMETA_MAX_HELD` |
 | `usrmeta` | A [user-metadata](pantavisor-metadata.md#user-metadata) GET is in flight |
+| `sync` | A newly claimed device is uploading its running revision to Pantacor Hub |
 | `shutdown` | Teardown (sync, unmount) during shutdown |
 | `debug_shell` | A debug/serial shell session is open |
 | `poll` | A managed-mode wake window is open |
@@ -87,6 +88,7 @@ pvcontrol wakelocks ls
 | `held.update_check` | bool | A poll-for-updates roundtrip is in flight |
 | `held.devmeta` | bool | A local device-metadata change is not yet synced to Hub |
 | `held.usrmeta` | bool | A user-metadata GET is in flight |
+| `held.sync` | bool | A newly claimed device is uploading its running revision to Hub |
 | `held.shutdown` | bool | Teardown (sync, unmount) is running during shutdown |
 | `held.debug_shell` | bool | A debug/serial shell session is open |
 | `held.poll` | bool | A managed-mode wake window is open (mirrors `polling`) |

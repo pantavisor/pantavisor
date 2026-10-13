@@ -28,7 +28,6 @@ void pv_pantahub_proto_init(void);
 void pv_pantahub_proto_close(void);
 
 void pv_pantahub_proto_reset_fail(void);
-void pv_pantahub_proto_reset_trails_status(void);
 
 bool pv_pantahub_proto_is_online(void);
 bool pv_pantahub_proto_got_any_failure(void);
@@ -38,8 +37,13 @@ bool pv_pantahub_proto_is_any_progress_request_pending(void);
 bool pv_pantahub_proto_is_trails_unknown(void);
 bool pv_pantahub_proto_is_trails_unsynced(void);
 
+void pv_pantahub_proto_post_device(void);
+bool pv_pantahub_proto_is_registered(void);
+
 void pv_pantahub_proto_post_auth(void);
 bool pv_pantahub_proto_is_auth(void);
+
+void pv_pantahub_proto_get_device(void);
 
 void pv_pantahub_proto_get_trails_status(void);
 
@@ -52,6 +56,15 @@ void pv_pantahub_proto_init_object_transfer(void);
 void pv_pantahub_proto_cancel_transfers(void);
 int pv_pantahub_proto_get_objects_metadata(void);
 int pv_pantahub_proto_get_objects(void);
+
+void pv_pantahub_proto_init_sync(void);
+int pv_pantahub_proto_hash_objects(void);
+int pv_pantahub_proto_post_objects(void);
+int pv_pantahub_proto_put_objects(void);
+bool pv_pantahub_proto_is_sync_posting(void);
+bool pv_pantahub_proto_is_sync_putting(void);
+void pv_pantahub_proto_post_trail(void);
+void pv_pantahub_proto_free_sync(void);
 
 void pv_pantahub_proto_queue_progress(const char *rev, const char *progress);
 

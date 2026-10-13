@@ -139,6 +139,7 @@ $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/wakelocks"
     "update_check": false,
     "devmeta": false,
     "usrmeta": false,
+    "sync": false,
     "shutdown": false,
     "debug_shell": false,
     "poll": false

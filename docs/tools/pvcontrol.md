@@ -176,7 +176,7 @@ Returns the current power mode and wakelock state — mode, refcount, whether
 autosleep/settle/poll are active, and which scopes are held. Example output:
 
 ```json
-{"mode":"locks","count":0,"degraded":false,"autosleep":false,"settling":false,"polling":false,"run_window":false,"held":{"boot":false,"update":false,"update_check":false,"devmeta":false,"usrmeta":false,"shutdown":false,"debug_shell":false,"poll":false}}
+{"mode":"locks","count":0,"degraded":false,"autosleep":false,"settling":false,"polling":false,"run_window":false,"held":{"boot":false,"update":false,"update_check":false,"devmeta":false,"usrmeta":false,"sync":false,"shutdown":false,"debug_shell":false,"poll":false}}
 ```
 
 See [`GET /wakelocks`](../reference/pantavisor-power.md#get-wakelocks) for the field-by-field
