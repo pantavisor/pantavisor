@@ -511,11 +511,12 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	if (p->devmode_inlay && !strncmp(path, "overlayfs:", 10)) {
 		__pv_paths_volumes_plat_file(seed, PATH_MAX, p->name,
 					     DEVMODE_INLAY_DNAME);
-		if (!inschr(path, PATH_MAX, ':', seed))
+		if (!inschr(path, PATH_MAX, ':', seed)) {
 			pv_log(WARN, "failed to add devmode inlay %s to %s",
 			       seed, path);
-		else
+		} else {
 			c->set_config_item(c, "lxc.rootfs.path", path);
+		}
 	} else if (p->devmode_inlay) {
 		pv_log(WARN, "rootfs of %s is not an overlay; no devmode inlay",
 		       p->name);

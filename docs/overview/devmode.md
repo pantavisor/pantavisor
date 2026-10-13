@@ -67,6 +67,23 @@ The container sees new files after its next start, because the root filesystem i
 pvcontrol containers restart my-container
 ```
 
+### Containers with the system restart policy
+
+A container with restart policy `system` cannot be restarted through the API. In a devmode revision, restarting it answers `409` (reboot needed). Reboot the device into the devmode revision with `?reboot=1`:
+
+```bash
+curl -X PUT --data '{"action":"restart"}' --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-system-container?reboot=1"
+```
+
+### Check and reset the inlay
+
+```bash
+curl -X GET --unix-socket /pantavisor/pv-ctrl http://localhost/devmode
+curl -X DELETE --unix-socket /pantavisor/pv-ctrl http://localhost/devmode/containers/my-container
+```
+
+The first call shows whether devmode is on, the running devmode revision, the revision it is based on and the inlay directory of each container. The second call removes all files from the inlay of one container; it takes effect on the next restart of that container.
+
 ## Fallback to the last commit
 
 A devmode revision is never committed. It is installed as a try, and stays one:
@@ -90,4 +107,4 @@ While `devmode/l/<name>` or `devmode/r/<number>` exists, the revision it is base
 ## Reference
 
 - [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_DEVMODE_ALLOWED`
-- [Control socket](../reference/pantavisor-commands.md#steps) — `/steps/devmode/...` and the `LOCAL_RUN` command
+- [Control socket](../reference/pantavisor-commands.md#devmode) — `/devmode`, `/steps/devmode/...`, container restart with `?reboot=1`

@@ -53,7 +53,7 @@ The same values are reported per group by [`/groups`](#groups) and per revision 
 
 ### Lifecycle control
 
-Containers with `restart_policy: "container"` can be stopped, started, and restarted via the API. Containers with `restart_policy: "system"` are protected and will return HTTP 403.
+Containers with `restart_policy: "container"` can be stopped, started, and restarted via the API. Containers with `restart_policy: "system"` are protected and will return HTTP 403, except for `restart` during [devmode](#devmode).
 
 To stop a container:
 
@@ -86,6 +86,44 @@ Restart force-stops the container and resets the retry counter to zero. For cont
 | start (from STAGED) | STAGED → INSTALLED → start | unaffected (was never running) |
 | restart (with recovery) | Running → STOPPED → recovery engine restarts | Retry counter reset to 0 |
 | restart (no recovery) | Running → STOPPED → INSTALLED → start | Direct restart |
+
+While a [devmode](../overview/devmode.md) revision runs, a `system` container answers `restart` with `409` (reboot needed). Add `?reboot=1` to reboot the device into the devmode revision instead:
+
+```
+$ curl -X PUT --header "Content-Type: application/json" --data "{\"action\":\"restart\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-system-container?reboot=1"
+```
+
+`stop` and `start` of a `system` container stay `403`.
+
+## /devmode
+
+This endpoint reports the state of [devmode](../overview/devmode.md) and manages the per-container inlay. It is only available to containers with the `mgmt` role.
+
+To get the devmode state:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode"
+{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode"}]}
+```
+
+`revision`, `base` and `containers` are only present when `active` is `true`, that is, when the running revision is a devmode revision.
+
+To empty the inlay of one container:
+
+```
+$ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/containers/my-container"
+```
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/devmode` | devmode state: `enabled`, `active`, running devmode `revision`, its `base` and the inlay path of each container |
+| `DELETE` | `/devmode/containers/{name}` | remove all files from the inlay of a container |
+
+| Status | Condition |
+|--------|-----------|
+| `403` | [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `false` (`DELETE` only) |
+| `404` | `DELETE` for a container that is not in the running revision |
+| `409` | the running revision is not a devmode revision (`DELETE` only) |
 
 ## /daemons
 
