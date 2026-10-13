@@ -43,6 +43,8 @@ pvcontrol cmd run devmode/r/12
 
 Unlike a local revision, running a devmode revision does not switch the device to local mode. The device keeps talking to [Pantacor Hub](remote-control.md#pantacor-hub): metadata and logs keep flowing, and a new Hub update replaces the devmode revision. The Hub is never told about a devmode revision: its progress is not reported there, and a lost Hub connection does not roll it back.
 
+Starting a devmode revision, switching to another one and running a normal revision again all reboot the device, so that every container starts with or without its inlay. Wait for the new revision to show `UPDATED` (devmode) or `DONE` (normal) in `pvcontrol steps ls`.
+
 ## The inlay
 
 While a devmode revision runs, every container has a writable layer called the inlay. It sits in the root filesystem of the container directly below the container's own writable layer (the `lxc-overlay` upper):

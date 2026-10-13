@@ -1296,6 +1296,16 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 // returns: -1 if there was an error and reboot is mandatory
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
 {
+	// the inlay volumes and the mgmt bind mounts are part of the container
+	// start, so entering, leaving or switching devmode revisions restarts
+	// everything
+	if ((pv_storage_is_revision_devmode(current->rev) ||
+	     pv_storage_is_revision_devmode(pending->rev)) &&
+	    strcmp(current->rev, pending->rev)) {
+		pv_log(INFO, "devmode revision change requires reboot");
+		return 1;
+	}
+
 	if (pv_state_compare_jsons(current, pending) ||
 	    pv_state_compare_objects(current, pending)) {
 		pv_log(INFO,
