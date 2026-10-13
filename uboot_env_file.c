@@ -306,14 +306,14 @@ static int rewrite_probed(void)
 
 int pv_uboot_env_file_clear_trying(void)
 {
-	const char *spec = pv_config_get_str(PV_BOOTLOADER_ENV_FILE);
+	const char *spec = pv_config_get_str(PV_BOOTLOADER_TRYING_ENV);
 	struct env_file ef;
 
 	if (!spec || !*spec)
 		return rewrite_probed();
 
 	if (resolve(&ef, spec)) {
-		pv_log(WARN, "cannot resolve PV_BOOTLOADER_ENV_FILE '%s'",
+		pv_log(WARN, "cannot resolve PV_BOOTLOADER_TRYING_ENV '%s'",
 		       spec);
 		return -1;
 	}
