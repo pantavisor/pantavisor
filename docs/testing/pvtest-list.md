@@ -151,12 +151,13 @@ Remote experience tests require an active Pantacor Hub connection and exercise t
 
 ### core
 
-*Core remote initialization: pantahub.config parsing (encrypted and unencrypted).*
+*Core remote initialization: pantahub.config parsing (encrypted and unencrypted), Hub TLS certificate verification.*
 
 | Test | Description | Done |
 |------|-------------|------|
 | `remote/core/encrypted-pantahub-config` | Encrypted `pantahub.config` handling | ✓ |
 | `remote/core/unencrypted-pantahub-config` | Unencrypted `pantahub.config` handling | |
+| `remote/core/hub-certificate-verification` | Hub TLS certificate verification | ✓ |
 
 ### lifecycle
 
