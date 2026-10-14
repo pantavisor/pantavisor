@@ -29,7 +29,7 @@ trying each row in order:
 | `<NNN>…` (any other character after the closing `>`) | [RFC 3164](#rfc-3164) |
 | Valid JSON object | [JSON](#json-protocol) |
 | Only `level=`/`src=`/`message=` pairs, all three present | [Key-Value](#key-value-protocol) |
-| Binary `struct logserver_msg` | [Legacy binary](#legacy-protocol-code--0) |
+| Binary `struct pv_ls_msg` | [Legacy binary](#legacy-protocol-code--0) |
 
 A message that matches a protocol but fails to parse is dropped with a `WARN`.
 
@@ -73,7 +73,7 @@ Stream socket for sending log messages. Accepts every protocol in
 ### Legacy Protocol (code = 0)
 
 ```C
-struct logserver_msg {
+struct pv_ls_msg {
     int code;
     int len;
     char buf[0];
@@ -95,7 +95,7 @@ struct logserver_msg {
 
 ### JSON Protocol
 
-Sent as-is, not wrapped in `logserver_msg`.
+Sent as-is, not wrapped in `pv_ls_msg`.
 
 ```json
 { "version": "0", "level": "INFO", "src": "myapp", "message": "Connection established" }
@@ -110,7 +110,7 @@ Sent as-is, not wrapped in `logserver_msg`.
 
 ### Key-Value Protocol
 
-Sent as-is, not wrapped in `logserver_msg`.
+Sent as-is, not wrapped in `pv_ls_msg`.
 
 ```
 level=INFO src=myapp message="hello world"

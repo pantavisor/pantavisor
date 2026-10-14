@@ -20,11 +20,50 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_NULL_H
-#define LOGSERVER_NULL_H
-
 #include "logserver_out.h"
 
-struct logserver_out *logserver_null_new(void);
+#include <stdlib.h>
+#include <string.h>
 
-#endif
+struct pv_ls_out *
+pv_ls_out_new(int id, const char *name,
+	      int (*add)(struct pv_ls_out *out, const struct pv_ls_log *log),
+	      void (*free)(struct pv_ls_out *out), void *opaque)
+{
+	if (!add)
+		return NULL;
+
+	struct pv_ls_out *out = calloc(1, sizeof(struct pv_ls_out));
+	if (!out)
+		return NULL;
+
+	out->name = strdup(name);
+	if (!out->name) {
+		free(out);
+		return NULL;
+	}
+
+	memset(out->last_log, 0, PATH_MAX);
+
+	out->id = id;
+	out->add = add;
+	out->free = free;
+	out->opaque = opaque;
+	dl_list_init(&out->list);
+
+	return out;
+}
+
+void pv_ls_out_free(struct pv_ls_out *out)
+{
+	if (!out)
+		return;
+
+	if (out->name)
+		free(out->name);
+
+	if (out->free)
+		out->free(out);
+
+	free(out);
+}

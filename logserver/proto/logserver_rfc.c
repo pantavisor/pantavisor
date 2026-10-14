@@ -21,7 +21,7 @@
  */
 
 #include "logserver_rfc.h"
-#include "logserver/logserver_timestamp.h"
+#include "logserver/utils/logserver_timestamp.h"
 #include "log.h"
 
 #include <syslog.h>
@@ -31,9 +31,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#define LOGSERVER_RFC_SOCKET "/dev/log"
+#define PV_LS_RFC_SOCKET "/dev/log"
 
-int logserver_rfc_level_to_pv(int prival)
+int pv_ls_rfc_level_to_pv(int prival)
 {
 	int level = prival & 0x07;
 
@@ -65,7 +65,7 @@ int logserver_rfc_level_to_pv(int prival)
 	return pv_level;
 }
 
-char *logserver_rfc_get_facility(int prival)
+char *pv_ls_rfc_get_facility(int prival)
 {
 	int facility = prival >> 3;
 
@@ -101,7 +101,7 @@ char *logserver_rfc_get_facility(int prival)
 	return "unknown";
 }
 
-int logserver_rfc_get_prival(const char *buf)
+int pv_ls_rfc_get_prival(const char *buf)
 {
 	if (buf[0] != '<')
 		return -1;
@@ -122,7 +122,7 @@ int logserver_rfc_get_prival(const char *buf)
 	return prival;
 }
 
-log_protocol_code_t logserver_rfc_check_type(const char *buf)
+pv_ls_proto_code_t pv_ls_rfc_check_type(const char *buf)
 {
 	if (!buf || !buf[0] || buf[0] != '<')
 		return LOG_PROTOCOL_UNKNOWN;
@@ -139,21 +139,20 @@ log_protocol_code_t logserver_rfc_check_type(const char *buf)
 	return LOG_PROTOCOL_UNKNOWN;
 }
 
-int logserver_rfc_to_log(struct logserver_rfc *rfc, const char *cgroup,
-			 const char *rev, const char *upd_rev,
-			 struct logserver_log *log)
+int pv_ls_rfc_to_log(struct pv_ls_rfc *rfc, const char *cgroup, const char *rev,
+		     const char *upd_rev, struct pv_ls_log *log)
 {
 	if (!rfc || !log)
 		return -1;
 
-	if (logserver_proto_set_platform_name(cgroup, log->plat) != 0)
+	if (pv_ls_proto_set_platform_name(cgroup, log->plat) != 0)
 		return -1;
 
 	log->code = rfc->code;
-	log->lvl = logserver_rfc_level_to_pv(rfc->prival);
+	log->lvl = pv_ls_rfc_level_to_pv(rfc->prival);
 	log->tnano = 0;
 	log->time = rfc->time;
-	log->tsec = logserver_timestamp_get_tsec(log->time);
+	log->tsec = pv_ls_timestamp_get_tsec(log->time);
 	log->src = rfc->app;
 	log->running_rev = rev ? (char *)rev : "";
 	log->updated_rev = upd_rev ? (char *)upd_rev : "";

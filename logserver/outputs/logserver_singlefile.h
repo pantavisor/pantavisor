@@ -20,15 +20,11 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_TIMESTAMP_H
-#define LOGSERVER_TIMESTAMP_H
+#ifndef LOGSERVER_SINGLEFILE_H
+#define LOGSERVER_SINGLEFILE_H
 
-#include <time.h>
-#include <stdint.h>
+#include "logserver_out.h"
 
-int logserver_timestamp_get_formated(char *buf, int buf_size,
-				     const time_t *time, const char *name);
-
-uint64_t logserver_timestamp_get_tsec(time_t time);
+struct pv_ls_out *pv_ls_singlefile_new(void);
 
 #endif
