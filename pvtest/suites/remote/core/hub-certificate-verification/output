@@ -1,0 +1,13 @@
+== post revision enabling remote control in OEM config ==
+== remove creds and reboot ==
+== wait for register state ==
+register
+== register attempts fail TLS ==
+404 received: no
+== inject fake claimed creds and reboot ==
+== wait for login state ==
+login
+== login attempts fail TLS ==
+0
+404 received: no
+== cleanup ==

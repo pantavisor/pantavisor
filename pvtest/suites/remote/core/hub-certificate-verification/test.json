@@ -1,0 +1,17 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Hub TLS certificate verification",
+	"setup": {
+		"config": {
+			"env": "PH_CREDS_HOST=ingress.pantahub.com PV_SECUREBOOT_MODE=disabled"
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
