@@ -20,11 +20,17 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_UPDATE_H
-#define LOGSERVER_UPDATE_H
+#include "logserver_null.h"
+#include "config.h"
 
-#include "logserver_out.h"
+static int pv_ls_null_add_log(struct pv_ls_out *out,
+			      const struct pv_ls_log *log)
+{
+	return 0;
+}
 
-struct logserver_out *logserver_update_new(void);
-
-#endif
+struct pv_ls_out *pv_ls_null_new()
+{
+	return pv_ls_out_new(LOG_SERVER_OUTPUT_NULL_SINK, "nullsink",
+			     pv_ls_null_add_log, NULL, NULL);
+}

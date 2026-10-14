@@ -20,50 +20,11 @@
  * SOFTWARE.
  */
 
+#ifndef LOGSERVER_FILETREE_H
+#define LOGSERVER_FILETREE_H
+
 #include "logserver_out.h"
 
-#include <stdlib.h>
-#include <string.h>
+struct pv_ls_out *pv_ls_filetree_new(void);
 
-struct logserver_out *logserver_out_new(
-	int id, const char *name,
-	int (*add)(struct logserver_out *out, const struct logserver_log *log),
-	void (*free)(struct logserver_out *out), void *opaque)
-{
-	if (!add)
-		return NULL;
-
-	struct logserver_out *out = calloc(1, sizeof(struct logserver_out));
-	if (!out)
-		return NULL;
-
-	out->name = strdup(name);
-	if (!out->name) {
-		free(out);
-		return NULL;
-	}
-
-	memset(out->last_log, 0, PATH_MAX);
-
-	out->id = id;
-	out->add = add;
-	out->free = free;
-	out->opaque = opaque;
-	dl_list_init(&out->list);
-
-	return out;
-}
-
-void logserver_out_free(struct logserver_out *out)
-{
-	if (!out)
-		return;
-
-	if (out->name)
-		free(out->name);
-
-	if (out->free)
-		out->free(out);
-
-	free(out);
-}
+#endif

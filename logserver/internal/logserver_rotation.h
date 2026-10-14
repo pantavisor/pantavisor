@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Pantacor Ltd.
+ * Copyright (c) 2026 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,39 +20,27 @@
  * SOFTWARE.
  */
 
-#include "logserver_stdout.h"
-#include "logserver_utils.h"
-#include "config.h"
+#ifndef PV_LOGSERVER_ROTATION_H
+#define PV_LOGSERVER_ROTATION_H
 
-#include <string.h>
+#include <linux/limits.h>
+#include <sys/types.h>
 
-static int add_log(struct logserver_out *out, const struct logserver_log *log)
-{
-	if (!strcmp(out->name, "stdout_containers") &&
-	    !strncmp(log->plat, "pantavisor", strlen("pantavisor")))
-		return 0;
+typedef int (*logfn)(int, char *, ...);
 
-	if (!strcmp(out->name, "stdout_pantavisor") &&
-	    strncmp(log->plat, "pantavisor", strlen("pantavisor")))
-		return 0;
+struct pv_ls_rot {
+	char path[PATH_MAX];
+	off_t total_size;
+	off_t rot_size;
+	off_t high_wm;
+	off_t low_wm;
+	off_t cur_size;
+};
 
-	return logserver_utils_stdout(log);
-}
+struct pv_ls_rot pv_ls_rotation_init(const char *rev, logfn log);
+void pv_ls_rotation_update(struct pv_ls_rot *rot, const char *rev);
+int pv_ls_rotation_log_rot(struct pv_ls_rot *rot, const char *fname);
+void pv_ls_rotation_add(struct pv_ls_rot *rot, int len);
+off_t pv_ls_rotation_deletion(struct pv_ls_rot *rot);
 
-struct logserver_out *logserver_stdout_new()
-{
-	return logserver_out_new(LOG_SERVER_OUTPUT_STDOUT, "stdout", add_log,
-				 NULL, NULL);
-}
-
-struct logserver_out *logserver_stdout_containers_new()
-{
-	return logserver_out_new(LOG_SERVER_OUTPUT_STDOUT_CONTAINERS,
-				 "stdout_containers", add_log, NULL, NULL);
-}
-
-struct logserver_out *logserver_stdout_pantavisor_new()
-{
-	return logserver_out_new(LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR,
-				 "stdout_pantavisor", add_log, NULL, NULL);
-}
+#endif

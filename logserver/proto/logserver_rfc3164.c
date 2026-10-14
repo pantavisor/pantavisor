@@ -29,7 +29,7 @@
 #include <time.h>
 #include <string.h>
 
-static char *logserver_rfc3164_get_timestamp(char *buf, time_t *tst)
+static char *pv_ls_rfc3164_get_timestamp(char *buf, time_t *tst)
 {
 	if (!buf || *buf == '\0')
 		return NULL;
@@ -49,9 +49,9 @@ static char *logserver_rfc3164_get_timestamp(char *buf, time_t *tst)
 	return ptr;
 }
 
-static int logserver_rfc3164_parse(char *buf, struct logserver_rfc *rfc)
+static int pv_ls_rfc3164_parse(char *buf, struct pv_ls_rfc *rfc)
 {
-	rfc->prival = logserver_rfc_get_prival(buf);
+	rfc->prival = pv_ls_rfc_get_prival(buf);
 	if (rfc->prival < 0)
 		return -1;
 
@@ -59,7 +59,7 @@ static int logserver_rfc3164_parse(char *buf, struct logserver_rfc *rfc)
 	if (!ptr)
 		return -1;
 	ptr++;
-	ptr = logserver_rfc3164_get_timestamp(ptr, &rfc->time);
+	ptr = pv_ls_rfc3164_get_timestamp(ptr, &rfc->time);
 
 	if (!ptr || *ptr == '\0')
 		return -1;
@@ -92,16 +92,14 @@ static int logserver_rfc3164_parse(char *buf, struct logserver_rfc *rfc)
 	return 0;
 }
 
-int logserver_rfc3164_to_log(struct logserver_log_data *data,
-			     struct logserver_log *log)
+int pv_ls_rfc3164_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log)
 {
-	struct logserver_rfc rfc = {
-		.code = logserver_rfc_check_type(data->buf),
+	struct pv_ls_rfc rfc = {
+		.code = pv_ls_rfc_check_type(data->buf),
 	};
 
-	if (logserver_rfc3164_parse(data->buf, &rfc) != 0)
+	if (pv_ls_rfc3164_parse(data->buf, &rfc) != 0)
 		return -1;
 
-	return logserver_rfc_to_log(&rfc, data->cgroup, data->rev, data->upd,
-				    log);
+	return pv_ls_rfc_to_log(&rfc, data->cgroup, data->rev, data->upd, log);
 }

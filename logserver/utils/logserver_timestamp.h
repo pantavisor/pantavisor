@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 Pantacor Ltd.
+ * Copyright (c) 2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,28 +20,15 @@
  * SOFTWARE.
  */
 
-#ifndef PV_LOGSERVER_ROTATION_H
-#define PV_LOGSERVER_ROTATION_H
+#ifndef LOGSERVER_TIMESTAMP_H
+#define LOGSERVER_TIMESTAMP_H
 
-#include <linux/limits.h>
-#include <sys/types.h>
+#include <time.h>
+#include <stdint.h>
 
-typedef int (*logfn)(int, char *, ...);
+int pv_ls_timestamp_get_formated(char *buf, int buf_size, const time_t *time,
+				 const char *name);
 
-struct logserver_rot {
-	char path[PATH_MAX];
-	off_t total_size;
-	off_t rot_size;
-	off_t high_wm;
-	off_t low_wm;
-	off_t cur_size;
-};
-
-struct logserver_rot pv_logserver_rot_init(const char *rev, logfn log);
-void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev);
-int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname);
-void pv_logserver_rot_add(struct logserver_rot *rot, int len);
-off_t pv_logserver_rot_deletion(struct logserver_rot *rot);
-
+uint64_t pv_ls_timestamp_get_tsec(time_t time);
 
 #endif

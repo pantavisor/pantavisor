@@ -20,11 +20,11 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_FILETREE_H
-#define LOGSERVER_FILETREE_H
+#ifndef LOGSERVER_NULL_H
+#define LOGSERVER_NULL_H
 
 #include "logserver_out.h"
 
-struct logserver_out *logserver_filetree_new(void);
+struct pv_ls_out *pv_ls_null_new(void);
 
 #endif

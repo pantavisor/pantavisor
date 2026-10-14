@@ -23,7 +23,7 @@
 #ifndef LOGSERVER_PROTO_H
 #define LOGSERVER_PROTO_H
 
-#include "logserver/logserver_out.h"
+#include "logserver/outputs/logserver_out.h"
 
 #include <stddef.h>
 
@@ -35,9 +35,9 @@ typedef enum {
 	LOG_PROTOCOL_JSON,
 	LOG_PROTOCOL_KEY_VAL,
 	LOG_PROTOCOL_CMD = 256
-} log_protocol_code_t;
+} pv_ls_proto_code_t;
 
-struct logserver_log_data {
+struct pv_ls_log_data {
 	char *rev;
 	char *upd;
 	char *cgroup;
@@ -45,9 +45,8 @@ struct logserver_log_data {
 	size_t len;
 };
 
-log_protocol_code_t logserver_proto_get(const char *buf);
-int logserver_proto_to_log(struct logserver_log_data *data,
-			   struct logserver_log *log);
-int logserver_proto_set_platform_name(const char *cgroup, char *name);
+pv_ls_proto_code_t pv_ls_proto_get(const char *buf);
+int pv_ls_proto_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log);
+int pv_ls_proto_set_platform_name(const char *cgroup, char *name);
 
 #endif

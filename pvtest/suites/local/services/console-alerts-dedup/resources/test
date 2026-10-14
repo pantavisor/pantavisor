@@ -2,10 +2,10 @@
 #
 # Console alerts are skipped when a stdout output already shows the line, so the
 # same message does not appear twice: logserver.c only calls pv_wall_log when
-# alert && (filtered || !logserver_stdout_shows()).
+# alert && (filtered || !pv_ls_stdout_shows()).
 #
 # test.json pins PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct -- the same pair
-# the appengine pool boots with -- so logserver_stdout_shows() is true here,
+# the appengine pool boots with -- so pv_ls_stdout_shows() is true here,
 # unlike in console-alerts.
 #
 # Two rows of docs/reference/logserver-sockets.md#relation-to-logging:

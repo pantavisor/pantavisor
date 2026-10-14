@@ -27,14 +27,13 @@
 
 #include <stdbool.h>
 
-struct logserver_msg {
-	log_protocol_code_t code;
+struct pv_ls_msg {
+	pv_ls_proto_code_t code;
 	int len;
 	char buf[0];
 };
 
-log_protocol_code_t logserver_bin_check_type(const char *buf);
-int logserver_bin_to_log(struct logserver_log_data *data,
-			 struct logserver_log *log);
+pv_ls_proto_code_t pv_ls_bin_check_type(const char *buf);
+int pv_ls_bin_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log);
 
 #endif

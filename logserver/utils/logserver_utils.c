@@ -26,7 +26,7 @@
 
 #include "logserver_utils.h"
 #include "logserver_timestamp.h"
-#include "proto/logserver_proto.h"
+#include "logserver/proto/logserver_proto.h"
 #include "config.h"
 #include "utils/fs.h"
 #include "log.h"
@@ -44,8 +44,8 @@
 #include <libgen.h>
 #include <time.h>
 
-static int get_data_line(const struct logserver_data *data,
-			 struct logserver_data *line, int sep)
+static int pv_ls_utils_get_data_line(const struct pv_ls_data *data,
+				     struct pv_ls_data *line, int sep)
 {
 	char *end = data->buf + data->len;
 	char *buf = !line->buf ? data->buf : line->buf + line->len;
@@ -75,14 +75,14 @@ static int get_data_line(const struct logserver_data *data,
 	return line->len;
 }
 
-static void remove_line_feed(char *str)
+static void pv_ls_utils_remove_line_feed(char *str)
 {
 	char *p = NULL;
 	while ((p = strchr(str, '\n')) != NULL)
 		*p = '\0';
 }
 
-static char *format_dmesg_log(const char *str, int len)
+static char *pv_ls_utils_format_dmesg_log(const char *str, int len)
 {
 	const char *buf = str;
 	while (*buf == '\n' || *buf == ' ')
@@ -107,7 +107,7 @@ static char *format_dmesg_log(const char *str, int len)
 		memcpy(formatted, buf, log_len);
 		formatted[log_len] = '\0';
 
-		remove_line_feed(formatted);
+		pv_ls_utils_remove_line_feed(formatted);
 		return formatted;
 	}
 
@@ -122,7 +122,7 @@ static char *format_dmesg_log(const char *str, int len)
 	int n = asprintf(&formatted, "[%12f] %.*s", time / 1000000.0,
 			 (int)(end - txt), txt);
 
-	remove_line_feed(formatted);
+	pv_ls_utils_remove_line_feed(formatted);
 
 	return formatted;
 }
@@ -131,23 +131,23 @@ static struct timespec sync_boot_start;
 
 static bool sync_ready;
 
-void logserver_utils_sync_start(void)
+void pv_ls_utils_sync_start(void)
 {
 	clock_gettime(CLOCK_MONOTONIC, &sync_boot_start);
 }
 
-void logserver_utils_sync_ready(void)
+void pv_ls_utils_sync_ready(void)
 {
 	sync_ready = true;
 }
 
-static bool sync_every_write(const struct logserver_log *log)
+static bool pv_ls_utils_sync_every_write(const struct pv_ls_log *log)
 {
 	char *mode = pv_config_get_str(PV_LOG_SYNC);
 	if (mode && !strcmp(mode, "always"))
 		return true;
 
-	if (logserver_in_update_window(log))
+	if (pv_ls_in_update_window(log))
 		return true;
 
 	int boot_window = pv_config_get_int(PV_LOG_SYNC_BOOT_WINDOW);
@@ -161,7 +161,7 @@ static bool sync_every_write(const struct logserver_log *log)
 	return !sync_ready || now.tv_sec - sync_boot_start.tv_sec < boot_window;
 }
 
-int logserver_utils_open_logfile(const char *path, bool sync)
+int pv_ls_utils_open_logfile(const char *path, bool sync)
 {
 	if (!path)
 		return -1;
@@ -173,22 +173,23 @@ int logserver_utils_open_logfile(const char *path, bool sync)
 	return open(path, flags, 0644);
 }
 
-int logserver_utils_open_datafile(const char *path,
-				  const struct logserver_log *log)
+int pv_ls_utils_open_datafile(const char *path, const struct pv_ls_log *log)
 {
-	return logserver_utils_open_logfile(path, sync_every_write(log));
+	return pv_ls_utils_open_logfile(path,
+					pv_ls_utils_sync_every_write(log));
 }
 
-void logserver_utils_close_datafile(int fd, const struct logserver_log *log)
+void pv_ls_utils_close_datafile(int fd, const struct pv_ls_log *log)
 {
-	if (log->lvl <= ERROR && !sync_every_write(log))
+	if (log->lvl <= ERROR && !pv_ls_utils_sync_every_write(log))
 		fdatasync(fd);
 
 	close(fd);
 }
 
-static int print_pvfmt_log(int fd, const struct logserver_log *log,
-			   const char *src, const char *ts_fmt, bool lf)
+static int pv_ls_utils_print_pvfmt_log(int fd, const struct pv_ls_log *log,
+				       const char *src, const char *ts_fmt,
+				       bool lf)
 {
 	if (log->data.len < 1)
 		return 0;
@@ -199,7 +200,7 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 	char fmt[512] = "[%s] %jd %s\t -- [%s]: %.*s\n";
 
 	if (ts_fmt) {
-		logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt);
+		pv_ls_timestamp_get_formated(ts, 256, &log->time, ts_fmt);
 		if (ts[0] == '\0') {
 			ts[0] = '-';
 			ts[1] = '-';
@@ -212,16 +213,17 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 	bool is_dmesg = !strncmp(util_src, "dmesg", strlen("dmesg"));
 
 	int total = 0;
-	struct logserver_data logline = { 0 };
-	struct logserver_data line = { 0 };
+	struct pv_ls_data logline = { 0 };
+	struct pv_ls_data line = { 0 };
 	char *line_str = NULL;
 
 	if (!lf)
 		log->data.buf[log->data.len - 1] = '\0';
 
-	while (get_data_line(&log->data, &line, '\n') > 0) {
+	while (pv_ls_utils_get_data_line(&log->data, &line, '\n') > 0) {
 		if (is_dmesg) {
-			logline.buf = format_dmesg_log(line.buf, line.len);
+			logline.buf = pv_ls_utils_format_dmesg_log(line.buf,
+								   line.len);
 			if (!logline.buf)
 				continue;
 
@@ -248,7 +250,7 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 	return total;
 }
 
-int logserver_utils_print_raw(int fd, const struct logserver_log *log)
+int pv_ls_utils_print_raw(int fd, const struct pv_ls_log *log)
 {
 	// this is a continuation of the previous message
 	if (log->data.len == 2 && !strncmp(log->data.buf, "\r\n", 2))
@@ -269,45 +271,46 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 		return dprintf(fd, tmpl, log->data.len, log->data.buf);
 
 	char ts[256] = { 0 };
-	if (logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt) != 0)
+	if (pv_ls_timestamp_get_formated(ts, 256, &log->time, ts_fmt) != 0)
 		strncpy(ts, "--", 3);
 
 	return dprintf(fd, tmpl, ts, log->data.len, log->data.buf);
 }
 
-int logserver_utils_stdout(const struct logserver_log *log)
+int pv_ls_utils_stdout(const struct pv_ls_log *log)
 {
-	return print_pvfmt_log(
+	return pv_ls_utils_print_pvfmt_log(
 		STDOUT_FILENO, log, "unknown",
 		pv_config_get_str(PV_LOG_STDOUT_TIMESTAMP_FORMAT), true);
 }
 
-int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
-				const char *src, bool lf)
+int pv_ls_utils_print_pvfmt(int fd, const struct pv_ls_log *log,
+			    const char *src, bool lf)
 {
-	return print_pvfmt_log(
+	return pv_ls_utils_print_pvfmt_log(
 		fd, log, src,
 		pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT), lf);
 }
 
-int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)
+int pv_ls_utils_print_json_fmt(int fd, const struct pv_ls_log *log)
 {
-	struct logserver_log tmp = *log;
-	struct logserver_data line = { 0 };
+	struct pv_ls_log tmp = *log;
+	struct pv_ls_data line = { 0 };
 
 	bool is_dmesg = !strncmp(log->src, "dmesg", strlen("dmesg"));
 	int total_len = 0;
 
-	while (get_data_line(&log->data, &line, '\n') > 0) {
+	while (pv_ls_utils_get_data_line(&log->data, &line, '\n') > 0) {
 		if (is_dmesg) {
-			tmp.data.buf = format_dmesg_log(line.buf, line.len);
+			tmp.data.buf = pv_ls_utils_format_dmesg_log(line.buf,
+								    line.len);
 			tmp.data.len = strlen(tmp.data.buf);
 		} else {
 			tmp.data.buf = line.buf;
 			tmp.data.len = line.len;
 		}
 
-		char *json = logserver_utils_jsonify_log(&tmp);
+		char *json = pv_ls_utils_jsonify_log(&tmp);
 		total_len += dprintf(fd, "%s\n", json);
 		free(json);
 
@@ -318,7 +321,7 @@ int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)
 	return total_len;
 }
 
-char *logserver_utils_jsonify_log(const struct logserver_log *log)
+char *pv_ls_utils_jsonify_log(const struct pv_ls_log *log)
 {
 	struct pv_json_ser js;
 	pv_json_ser_init(&js, 512);
@@ -335,7 +338,7 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 		pv_json_ser_key(&js, "tnano");
 		pv_json_ser_number(&js, 0);
 
-		if (logserver_timestamp_get_formated(
+		if (pv_ls_timestamp_get_formated(
 			    ts, 256, &log->time,
 			    pv_config_get_str(
 				    PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT)) == 0) {
@@ -361,7 +364,7 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 	return pv_json_ser_str(&js);
 }
 
-char *logserver_utils_output_to_str(int out_type)
+char *pv_ls_utils_output_to_str(int out_type)
 {
 	switch (out_type) {
 	case LOG_SERVER_OUTPUT_NULL_SINK:
@@ -379,7 +382,7 @@ char *logserver_utils_output_to_str(int out_type)
 	return "unknown";
 }
 
-static int write_option(const char *path, const char *op)
+static int pv_ls_utils_write_option(const char *path, const char *op)
 {
 	int fd = open(path, O_WRONLY);
 	if (fd < 0)
@@ -390,13 +393,14 @@ static int write_option(const char *path, const char *op)
 	return len < 0 ? len : 0;
 }
 
-int logserver_utils_printk_devmsg_on()
+int pv_ls_utils_printk_devmsg_on()
 {
-	return write_option("/proc/sys/kernel/printk_devkmsg", "on\n");
+	return pv_ls_utils_write_option("/proc/sys/kernel/printk_devkmsg",
+					"on\n");
 }
 
-int logserver_utils_ignore_loglevel()
+int pv_ls_utils_ignore_loglevel()
 {
-	return write_option("/sys/module/printk/parameters/ignore_loglevel",
-			    "Y\n");
+	return pv_ls_utils_write_option(
+		"/sys/module/printk/parameters/ignore_loglevel", "Y\n");
 }

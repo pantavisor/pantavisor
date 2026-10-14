@@ -25,8 +25,7 @@
 
 #include "logserver_proto.h"
 
-log_protocol_code_t logserver_json_check_type(const char *buf);
-int logserver_json_to_log(struct logserver_log_data *data,
-			  struct logserver_log *log);
+pv_ls_proto_code_t pv_ls_json_check_type(const char *buf);
+int pv_ls_json_to_log(struct pv_ls_log_data *data, struct pv_ls_log *log);
 
 #endif
