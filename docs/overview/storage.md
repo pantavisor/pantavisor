@@ -563,7 +563,7 @@ The Pantavisor garbage collector is in charge of cleaning up the /storage by aut
 
 It works by removing [logs](#logs), [trails](#trails-and-objects) and [stored disks](#disks) that belong to old revisions. After all this, all orphan [objects](#trails-and-objects) that were linked to removed revisions are deleted too.
 
-The garbage collector will not affect any of the files related to the running [revision](#trails-and-objects), the revision that is being updated or the latest [DONE](updates.md) revision. These revisions that are not affected by the garbage collector can be expanded to the factory revision using the [PV_STORAGE_GC_KEEP_FACTORY configuration parameter](../reference/pantavisor-configuration.md#summary).
+The garbage collector will not affect any of the files related to the running [revision](#trails-and-objects), the revision that is being updated or the latest [DONE](updates.md) revision. These revisions that are not affected by the garbage collector can be expanded to the factory revision using the [PV_STORAGE_GC_KEEP_FACTORY configuration parameter](../reference/pantavisor-configuration.md#summary). The revision a [devmode](devmode.md#garbage-collection) revision is based on is kept as long as that devmode revision exists.
 
 Currently, it can be triggered by three different events:
 
