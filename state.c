@@ -1117,6 +1117,8 @@ int pv_state_stop_force(struct pv_state *s)
 		ret |= -2;
 	}
 
+	pv_volumes_umount_devmode(s);
+
 	// Platform volumes are unmounted when each platform transitions to
 	// STOPPED (in pv_platform_set_status). Only BSP volumes (plat==NULL)
 	// need explicit unmount here.

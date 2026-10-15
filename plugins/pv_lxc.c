@@ -553,27 +553,19 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			 PLATFORM_DEVICE_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		struct pv_platform *dp, *dtmp;
-		struct pv_state *ds = __pv_get_instance()->state;
-		dl_list_for_each_safe(dp, dtmp, &ds->platforms,
-				      struct pv_platform, list)
-		{
+		// the folder is a shared mount, so the filesystems mounted in it
+		// later show up here as well; the pv directory is read-only
+		// inside, so the target must exist
+		if (p->devmode_inlay) {
 			char host_dir[PATH_MAX];
 
-			if (!dp->devmode_inlay)
-				continue;
-
-			// the pv directory is read-only inside, so the target must exist
-			snprintf(entry, sizeof(entry), "%s/%s", DEVMODE_DNAME,
-				 dp->name);
+			snprintf(entry, sizeof(entry), "%s", DEVMODE_DNAME);
 			__pv_paths_pv_file(host_dir, PATH_MAX, entry);
 			pv_fs_mkdir_p(host_dir, 0755);
 
-			__pv_paths_volumes_plat_file(path, PATH_MAX, dp->name,
-						     DEVMODE_INLAY_DNAME);
 			snprintf(entry, sizeof(entry),
-				 "%s %s/%s none bind,rw 0 0", path,
-				 PLATFORM_DEVMODE_PATH + 1, dp->name);
+				 "%s %s none rbind,rw 0 0", host_dir,
+				 PLATFORM_DEVMODE_PATH + 1);
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
 	} else {

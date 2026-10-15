@@ -154,7 +154,7 @@ static void ctrl_steps_recv(struct evhttp_request *req, void *ctx)
 			       name);
 			pv_ctrl_utils_drain_on_arrive_with_err(
 				req, HTTP_FORBIDDEN,
-				"Devmode is disabled, set PV_DEVMODE_ALLOWED=true");
+				"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config");
 			goto out;
 		}
 	} else if (!pv_storage_is_revision_local(name)) {

@@ -38,5 +38,6 @@ int pv_ctrl_endpoints_xconnect_graph_init(void);
 int pv_ctrl_endpoints_daemons_init(void);
 int pv_ctrl_endpoints_storage_init(void);
 int pv_ctrl_endpoints_wakelock_init(void);
+int pv_ctrl_endpoints_devmode_init(void);
 
 #endif
