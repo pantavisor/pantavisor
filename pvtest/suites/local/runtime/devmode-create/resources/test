@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# Enable devmode through pantavisor.config, create a devmode revision from the running
+# revision and check that /devmode lists an inlay for every container. The
+# devmode revision is a try: the revision that was committed before stays the
+# committed one. The test goes back to that revision at the end.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+echo "== enable devmode through pantavisor.config =="
+devmode_conf_enable || exit 1
+pvcontrol devmode status | jq -M '{enabled, active}' | tr -d '\r'
+
+echo "== create the devmode revision from the running revision =="
+pvcontrol devmode create > /dev/null 2>&1
+echo "create exit: $?"
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+
+echo "== device metadata in devmode =="
+echo "pantavisor.revision is the committed revision: $(pvcontrol devmeta ls | jq -M -r --arg rev "$base_rev" '.["pantavisor.revision"] == $rev' | tr -d '\r')"
+echo "pantavisor.devmode: $(pvcontrol devmeta ls | jq -M -r '.["pantavisor.devmode"]' | tr -d '\r')"
+
+echo "== devmode status =="
+pvcontrol devmode status | jq -M '{
+	enabled,
+	active,
+	revision,
+	base,
+	inlays: [.containers[] | select(.name | startswith("pv-example")) | {name, inlay: (.inlay | sub("^.*/disks/rev/"; "<storage>/disks/rev/"))}] | sort_by(.name)
+}' | tr -d '\r'
+
+echo "== the committed revision is unchanged =="
+pvcontrol steps show-progress "$base_rev" | jq -M -r '.status' | tr -d '\r'
+pvcontrol steps show-progress "$devmode_rev" | jq -M -r '.status' | tr -d '\r'

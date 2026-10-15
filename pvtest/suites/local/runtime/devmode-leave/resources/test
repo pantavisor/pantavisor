@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# Run a devmode revision with a file in a container inlay, then run the
+# committed revision again: devmode is off and the container no longer sees
+# the file.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+target="pv-example-norole"
+writer="pv-example-mgmt"
+file_in_target="/etc/devmode-file"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+target_has_file() {
+	pventer -c "$target" test -e "$file_in_target" && echo yes || echo no
+}
+
+echo "== enable devmode and run a devmode revision =="
+devmode_conf_enable || exit 1
+pvcontrol devmode create > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+
+echo "== write a file into the inlay of $target and restart it =="
+pventer -c "$writer" mkdir -p "/pantavisor/devmode/$target$(dirname "$file_in_target")"
+pventer -c "$writer" touch "/pantavisor/devmode/$target$file_in_target"
+pvcontrol devmode apply "$target" > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "restart" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }
+echo "present in devmode: $(target_has_file)"
+echo "devmode active: $(pvcontrol devmode status | jq -M '.active' | tr -d '\r')"
+
+echo "== run the committed revision again =="
+pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "leave devmode" "$base_rev" "DONE|UPDATED" >&2 \
+	|| { echo "ERROR: $base_rev did not come back" >&2; exit 1; }
+
+echo "== devmode is off =="
+pvcontrol devmode status | jq -M '{enabled, active, has_containers: has("containers")}' | tr -d '\r'
+echo "present after leaving devmode: $(target_has_file)"
+echo "inlays visible to $writer: $(pventer -c "$writer" ls /pantavisor/devmode 2>/dev/null | wc -l | tr -d ' \r')"
+echo "pantavisor.devmode after leaving: $(pvcontrol devmeta ls | jq -M -r '.["pantavisor.devmode"]' | tr -d '\r')"
+echo "committed revision status: $(pvcontrol steps show-progress "$base_rev" | jq -M -r '.status' | tr -d '\r')"

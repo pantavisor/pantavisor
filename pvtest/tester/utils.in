@@ -226,8 +226,11 @@ wait_for_target_ready() {
 
 	# stage 3: the expected revision is the current one
 	if [ -n "$rev" ]; then
+		# a devmode revision is reported in pantavisor.devmode, not pantavisor.revision
+		local _rev_key="pantavisor.revision"
+		case "$rev" in devmode/*) _rev_key="pantavisor.devmode" ;; esac
 		_target_ready_log INFO "${_l}waiting for $rev to become current..."
-		if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120; then
+		if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"$_rev_key\"]'" "$rev" 120; then
 			_target_ready_log ERROR "${_l}timed out waiting for $rev to become current"
 			return 1
 		fi
