@@ -324,6 +324,16 @@ static int uboot_flush_env(void)
 	return 0;
 }
 
+static int uboot_rearm_try(void)
+{
+	// without the pv-env partition, U-Boot keeps pv_trying where we cannot write
+	if (!single_env && (!pv_env || !strstr(pv_env, "mtd")))
+		pv_log(WARN,
+		       "cannot clear pv_trying; the next boot may fall back");
+
+	return 0;
+}
+
 const struct bl_ops uboot_ops = {
 	.free = uboot_free,
 	.init = uboot_init,
@@ -334,4 +344,5 @@ const struct bl_ops uboot_ops = {
 	.install_update = NULL,
 	.commit_update = NULL,
 	.fail_update = NULL,
+	.rearm_try = uboot_rearm_try,
 };

@@ -680,6 +680,62 @@ out:
 	return ret;
 }
 
+bool pv_storage_is_revision_devmode(const char *rev)
+{
+	if (!rev)
+		return false;
+
+	size_t local_len = strlen(PREFIX_DEVMODE_LOCAL_REV);
+	size_t remote_len = strlen(PREFIX_DEVMODE_REMOTE_REV);
+	const char *suffix;
+	bool remote;
+
+	if (!strncmp(rev, PREFIX_DEVMODE_LOCAL_REV, local_len)) {
+		suffix = rev + local_len;
+		remote = false;
+	} else if (!strncmp(rev, PREFIX_DEVMODE_REMOTE_REV, remote_len)) {
+		suffix = rev + remote_len;
+		remote = true;
+	} else {
+		return false;
+	}
+
+	size_t len = strlen(suffix);
+	if (!len || len > SIZE_LOCAL_REV || suffix[0] == '.' ||
+	    strchr(suffix, '/')) {
+		pv_log(WARN, "bad devmode revision name '%s'", rev);
+		return false;
+	}
+
+	// a devmode revision on top of a Hub revision names its number
+	if (remote && strspn(suffix, "0123456789") != len) {
+		pv_log(WARN, "devmode revision '%s' needs a revision number",
+		       rev);
+		return false;
+	}
+
+	return true;
+}
+
+char *pv_storage_get_devmode_base(const char *rev)
+{
+	if (!pv_storage_is_revision_devmode(rev))
+		return NULL;
+
+	size_t local_len = strlen(PREFIX_DEVMODE_LOCAL_REV);
+	if (!strncmp(rev, PREFIX_DEVMODE_LOCAL_REV, local_len)) {
+		size_t len =
+			strlen(PREFIX_LOCAL_REV) + strlen(rev + local_len) + 1;
+		char *base = calloc(len, sizeof(char));
+		if (base)
+			SNPRINTF_WTRUNC(base, len, "%s%s", PREFIX_LOCAL_REV,
+					rev + local_len);
+		return base;
+	}
+
+	return strdup(rev + strlen(PREFIX_DEVMODE_REMOTE_REV));
+}
+
 static char *pv_storage_get_file_date(const char *path)
 {
 	struct stat st;

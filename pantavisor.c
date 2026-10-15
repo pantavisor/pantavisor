@@ -614,6 +614,13 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			goto out;
 		}
 
+		if (pv_storage_is_revision_devmode(cmd->payload) &&
+		    !pv_config_get_bool(PV_DEVMODE_ALLOWED)) {
+			pv_log(WARN, "ignoring %s: devmode is disabled",
+			       cmd->payload);
+			goto out;
+		}
+
 		pv_log(DEBUG, "install local received. Processing %s json...",
 		       cmd->payload);
 

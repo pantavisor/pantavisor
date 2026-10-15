@@ -51,6 +51,7 @@
 #include "json.h"
 #include "paths.h"
 #include "metadata.h"
+#include "storage.h"
 #include "updater.h"
 
 #include "update/update.h"
@@ -1000,6 +1001,10 @@ bool pv_pantahub_is_progress_queue_empty()
 
 void pv_pantahub_queue_progress(const char *rev, const char *progress)
 {
+	// the Hub does not know devmode revisions
+	if (pv_storage_is_revision_devmode(rev))
+		return;
+
 	if (!pv_pantahub_proto_is_auth()) {
 		pv_log(DEBUG,
 		       "will not try to put progress as session is not opened yet");
