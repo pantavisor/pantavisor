@@ -183,6 +183,7 @@ struct pv_platform {
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
+	bool devmode_inlay; // has a _devmode volume in its rootfs
 	// raw lifecycle_goal value from run.json, resolved against status_goal in pv_state_validate()
 	char *lifecycle_goal_raw;
 	bool std_log;

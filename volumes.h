@@ -62,6 +62,11 @@ int pv_volume_unmount(struct pv_volume *v);
 
 void pv_volumes_empty(struct pv_state *s);
 
+// give every container the _devmode volume if the state is a devmode revision
+void pv_volumes_add_devmode(struct pv_state *s);
+// mount the _devmode volume of every container of the state
+int pv_volumes_mount_devmode(struct pv_state *s);
+
 int pv_volumes_mount_firmware_modules(void);
 int pv_volumes_umount_firmware_modules(void);
 
