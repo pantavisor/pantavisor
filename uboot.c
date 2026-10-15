@@ -37,6 +37,7 @@
 #include "bootloader.h"
 #include "config.h"
 #include "paths.h"
+#include "uboot_env_file.h"
 #include "utils/str.h"
 #include "utils/fs.h"
 
@@ -326,10 +327,18 @@ static int uboot_flush_env(void)
 
 static int uboot_rearm_try(void)
 {
-	// without the pv-env partition, U-Boot keeps pv_trying where we cannot write
-	if (!single_env && (!pv_env || !strstr(pv_env, "mtd")))
-		pv_log(WARN,
-		       "cannot clear pv_trying; the next boot may fall back");
+	// without the pv-env partition, ask for it in uboot.txt, which only the
+	// appengine boot script reads; other U-Boot setups may still fall back
+	if (single_env || (pv_env && strstr(pv_env, "mtd")))
+		return 0;
+
+	// only appengine reads pv_trying from uboot.txt; U-Boot would import it
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		uboot_unset_env_key("pv_trying");
+
+	// the generic boot script keeps pv_trying in pv.env; failing here only
+	// means the device falls back, so the re-arm itself still succeeds
+	pv_uboot_env_file_clear_trying();
 
 	return 0;
 }
