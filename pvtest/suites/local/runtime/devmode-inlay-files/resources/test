@@ -1,0 +1,76 @@
+#!/bin/sh
+#
+# A file written into /pantavisor/devmode/<container> from the mgmt container
+# shows up inside the target container after a restart, at the same path
+# relative to its root. It survives another restart. After
+# `pvcontrol devmode reset <container>` and a restart it is gone.
+#
+# The containers of this test have the system restart policy, so a restart
+# is a reboot into the same devmode revision, and pvcontrol says so.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+target="pv-example-norole"
+writer="pv-example-mgmt"
+file_in_target="/etc/devmode-file"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+# restart the container and wait until the device runs the devmode revision again
+restart_target() {
+	local apply_err apply_out
+	apply_err=$(mktemp)
+	apply_out=$(pvcontrol devmode apply "$target" 2> "$apply_err")
+	echo "apply stdout: $apply_out" | tr -d '\r'
+	echo "apply stderr:"
+	tr -d '\r' < "$apply_err" | grep -v fallbear-cmd
+	rm -f "$apply_err"
+	wait_for_down 30
+	wait_for_target_ready "$1" "$devmode_rev" "UPDATED" >&2 \
+		|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }
+}
+
+target_has_file() {
+	pventer -c "$target" test -e "$file_in_target" && echo yes || echo no
+}
+
+echo "== enable devmode and run a devmode revision =="
+devmode_conf_enable || exit 1
+pvcontrol devmode create > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+echo "devmode active: $(pvcontrol devmode status | jq -M '.active' | tr -d '\r')"
+
+echo "== file is not in $target yet =="
+echo "present: $(target_has_file)"
+
+echo "== write the file from $writer =="
+pventer -c "$writer" mkdir -p "/pantavisor/devmode/$target$(dirname "$file_in_target")"
+pventer -c "$writer" touch "/pantavisor/devmode/$target$file_in_target"
+echo "write exit: $?"
+echo "present before restart: $(target_has_file)"
+
+echo "== restart $target =="
+restart_target "restart 1"
+echo "present after restart: $(target_has_file)"
+
+echo "== restart $target again =="
+restart_target "restart 2"
+echo "present after second restart: $(target_has_file)"
+
+echo "== reset the inlay of $target =="
+pvcontrol devmode reset "$target" > /dev/null 2>&1
+echo "reset exit: $?"
+restart_target "restart 3"
+echo "present after reset and restart: $(target_has_file)"
