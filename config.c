@@ -203,6 +203,8 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_DEBUG_SSH", PV | OEM | RUN, 0, false, .value.b = true },
 	{ STR, "PV_DEBUG_SSH_AUTHORIZED_KEYS", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },
+	{ BOOL, "PV_DEVMODE_ALLOWED", PV | OEM | RUN, 0, false,
+	  .value.b = false },
 	{ STR, "PV_DISK_EXPORTSDIR", PV, 0, false,
 	  .value.s = DISK_EXPORTSDIR_DEF },
 	{ STR, "PV_DISK_VOLDIR", PV, 0, false, .value.s = DISK_VOLDIR_DEF },
