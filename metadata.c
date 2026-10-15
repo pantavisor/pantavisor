@@ -50,6 +50,7 @@
 #include "config_parser.h"
 #include "storage.h"
 #include "platforms.h"
+#include "bootloader.h"
 #include "buffer.h"
 #include "loop.h"
 
@@ -493,7 +494,28 @@ static int pv_devmeta_read_revision(struct pv_devmeta_read *pv_devmeta_read)
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
-	SNPRINTF_WTRUNC(buf, buflen, "%s", pv->state->rev);
+	// a devmode revision is never committed: report the one it falls back to
+	if (pv_storage_is_revision_devmode(pv->state->rev) &&
+	    pv_bootloader_get_done())
+		SNPRINTF_WTRUNC(buf, buflen, "%s", pv_bootloader_get_done());
+	else
+		SNPRINTF_WTRUNC(buf, buflen, "%s", pv->state->rev);
+	return 0;
+}
+
+// only set while a devmode revision runs
+static int pv_devmeta_read_devmode(struct pv_devmeta_read *pv_devmeta_read)
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	if (!pv->state || !pv_storage_is_revision_devmode(pv->state->rev))
+		return -1;
+
+	SNPRINTF_WTRUNC(pv_devmeta_read->buf, pv_devmeta_read->buflen, "%s",
+			pv->state->rev);
 	return 0;
 }
 
@@ -571,6 +593,7 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_DTMODEL, .reader = pv_devmeta_read_dtmodel },
 	{ .key = DEVMETA_KEY_PV_CPUMODEL, .reader = pv_devmeta_read_cpumodel },
 	{ .key = DEVMETA_KEY_PV_REVISION, .reader = pv_devmeta_read_revision },
+	{ .key = DEVMETA_KEY_PV_DEVMODE, .reader = pv_devmeta_read_devmode },
 	{ .key = DEVMETA_KEY_PV_MODE, .reader = pv_devmeta_read_mode },
 	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
 	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
@@ -926,6 +949,11 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 		ret = rk->reader(rk);
 		if (!ret)
 			_pv_metadata_add_devmeta(rk->key, buf, !rk->dynamic);
+		else if (!strcmp(rk->key, DEVMETA_KEY_PV_DEVMODE)) {
+			// drop a copy left by the devmode run before this boot
+			pv_metadata_rm_devmeta(rk->key);
+			pv_storage_rm_devmeta(rk->key);
+		}
 		rk->buf = NULL;
 		rk->buflen = 0;
 	}
