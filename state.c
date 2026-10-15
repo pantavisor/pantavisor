@@ -1117,6 +1117,8 @@ int pv_state_stop_force(struct pv_state *s)
 		ret |= -2;
 	}
 
+	pv_volumes_umount_devmode(s);
+
 	// Platform volumes are unmounted when each platform transitions to
 	// STOPPED (in pv_platform_set_status). Only BSP volumes (plat==NULL)
 	// need explicit unmount here.
@@ -1299,9 +1301,7 @@ int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
 	// the inlay volumes and the mgmt bind mounts are part of the container
 	// start, so entering, leaving or switching devmode revisions restarts
 	// everything
-	if ((pv_storage_is_revision_devmode(current->rev) ||
-	     pv_storage_is_revision_devmode(pending->rev)) &&
-	    strcmp(current->rev, pending->rev)) {
+	if (pv_storage_is_devmode_change(current->rev, pending->rev)) {
 		pv_log(INFO, "devmode revision change requires reboot");
 		return 1;
 	}

@@ -938,6 +938,7 @@ int pv_update_devmode_reboot(void)
 	if (pv_bootloader_rearm_try(pv->state->rev) < 0)
 		return -1;
 
+	pv_log(WALL, "rebooting into %s", pv->state->rev);
 	pv_issue_reboot();
 	return 0;
 }

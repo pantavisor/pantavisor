@@ -118,6 +118,17 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 	evhttp_send_reply(req, code, reason, NULL);
 }
 
+void pv_ctrl_utils_send_reboot(struct evhttp_request *req)
+{
+	char *json = strdup("{\"reboot\":true}");
+	if (!json) {
+		pv_ctrl_utils_send_ok(req);
+		return;
+	}
+
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, json);
+}
+
 void pv_ctrl_utils_send_json_file(struct evhttp_request *req, const char *path)
 {
 	int fd = open(path, O_RDONLY | O_CLOEXEC);

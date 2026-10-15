@@ -59,6 +59,8 @@ bool pv_storage_is_revision_local(const char *rev);
 bool pv_storage_is_revision_devmode(const char *rev);
 // caller owns the returned name of the revision a devmode revision is based on
 char *pv_storage_get_devmode_base(const char *rev);
+// true if going from one revision to the other enters, leaves or switches devmode
+bool pv_storage_is_devmode_change(const char *from, const char *to);
 char *pv_storage_get_revisions_string(void);
 
 int pv_storage_get_subdir(const char *path, const char *prefix,

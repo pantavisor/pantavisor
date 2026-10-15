@@ -756,6 +756,15 @@ bool pv_storage_is_revision_devmode(const char *rev)
 	return true;
 }
 
+bool pv_storage_is_devmode_change(const char *from, const char *to)
+{
+	if (!from || !to || !strcmp(from, to))
+		return false;
+
+	return pv_storage_is_revision_devmode(from) ||
+	       pv_storage_is_revision_devmode(to);
+}
+
 char *pv_storage_get_devmode_base(const char *rev)
 {
 	if (!pv_storage_is_revision_devmode(rev))
