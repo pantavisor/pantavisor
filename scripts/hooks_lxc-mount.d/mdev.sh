@@ -21,5 +21,5 @@ cat $container_mdev \
 	| sed 's/[^[:space:]]*[[:space:]]"//;s/"$//' \
 	> $tmpf
 
-FOLLOW_X_ROOT=$LXC_ROOTFS_MOUNT MDEV_CONF=$tmpf mdev -vvv -S -d >/dev/null 2>&1 </dev/null
+FOLLOW_X_ROOT=$LXC_ROOTFS_MOUNT MDEV_CONF=$tmpf mdev -d >/dev/null 2>&1 </dev/null
 
