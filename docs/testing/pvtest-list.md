@@ -91,6 +91,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/xconnect/dbus` | D-Bus (Policy mediation) | |
 | `local/xconnect/drm` | DRM (Graphics node injection) | |
 | `local/xconnect/wayland` | Wayland (Isolated UI rendering) | |
+| `local/xconnect/stopped-consumer` | A link to a consumer that is not running stays quiet in the log and works once the consumer starts | ✓ |
 
 ### security
 
