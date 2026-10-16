@@ -251,6 +251,26 @@ int pv_bootloader_fail_update()
 	return pv_bootloader_unset_try();
 }
 
+int pv_bootloader_rearm_try(const char *rev)
+{
+	if (!ops || !rev)
+		return -1;
+
+	pv_log(INFO, "arming revision %s to be tried again on next boot", rev);
+
+	if (pv_bootloader_set_try((char *)rev) || ops->flush_env()) {
+		pv_log(ERROR, "could not arm pv_try for %s", rev);
+		return -1;
+	}
+
+	// after setting pv_try: uboot.txt matches keys by prefix, so setting
+	// pv_try would drop a pv_trying written before it
+	if (ops->rearm_try && ops->rearm_try())
+		return -1;
+
+	return 0;
+}
+
 void pv_bootloader_remove()
 {
 	if (ops)

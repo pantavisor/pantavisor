@@ -24,9 +24,10 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, claim, sync, login, wait hub, report, idle, prep download or download) |
 | `pantavisor.arch` | string | CPU architecture |
 | `pantavisor.cpumodel` | string | CPU model name |
+| `pantavisor.devmode` | string | name of the running [devmode](../overview/devmode.md) revision, for example `devmode/r/187`; the key only exists while devmode runs |
 | `pantavisor.dtmodel` | string | Device Tree model name |
 | `pantavisor.mode` | local or remote | [see operation modes](../overview/pantavisor-architecture.md#communication-with-the-outside-world) |
-| `pantavisor.revision` | string | [revision number](../../meta-pantavisor/getting-started/develop/cli-tools/workflows.md) |
+| `pantavisor.revision` | string | during devmode the last committed revision, otherwise the running one: [revision number](../../meta-pantavisor/getting-started/develop/cli-tools/workflows.md) |
 | `pantavisor.status` | string | [revision status](../overview/containers.md#status) |
 | `pantavisor.uname` | json | [uname](https://man7.org/linux/man-pages/man1/uname.1.html) output |
 | `pantavisor.version` | string | Pantavisor build version |

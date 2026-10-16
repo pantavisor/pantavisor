@@ -27,6 +27,7 @@
 #include "ctrl_file.h"
 #include "ctrl_util.h"
 #include "storage.h"
+#include "config.h"
 #include "paths.h"
 #include "update/update.h"
 #include "utils/fs.h"
@@ -113,7 +114,14 @@ static int ctrl_steps_upload_complete(struct pv_ctrl_file *file)
 		pv_log(ERROR, "state verification went wrong");
 		pv_ctrl_utils_send_error(file->req, PV_HTTP_UNPROC_CONTENT,
 					 msg);
-		pv_storage_rm_rev(name);
+		if (pv_storage_is_revision_devmode(name)) {
+			// keep the inlay of a devmode revision that is posted again
+			char trail[PATH_MAX] = { 0 };
+			pv_paths_storage_trail(trail, PATH_MAX, name);
+			pv_fs_path_remove(trail, true);
+		} else {
+			pv_storage_rm_rev(name);
+		}
 		free(name);
 		return -1;
 	}
@@ -139,7 +147,17 @@ static void ctrl_steps_recv(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
-	if (!pv_storage_is_revision_local(name)) {
+	if (pv_storage_is_revision_devmode(name)) {
+		if (!pv_config_get_bool(PV_DEVMODE_ALLOWED)) {
+			pv_log(WARN,
+			       "devmode step %s refused: PV_DEVMODE_ALLOWED=false",
+			       name);
+			pv_ctrl_utils_drain_on_arrive_with_err(
+				req, HTTP_FORBIDDEN,
+				"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config");
+			goto out;
+		}
+	} else if (!pv_storage_is_revision_local(name)) {
 		pv_log(ERROR, "wrong local step name %s", name);
 		pv_ctrl_utils_drain_on_arrive_with_err(
 			req, HTTP_BADREQUEST, "Request has bas step name");
@@ -262,5 +280,21 @@ int pv_ctrl_endpoints_steps_init()
 			     ctrl_steps_commit);
 	pv_ctrl_add_endpoint("/steps/locals/{}/commitmsg", EVHTTP_REQ_PUT, true,
 			     ctrl_steps_commit);
+	pv_ctrl_add_endpoint("/steps/devmode/l/{}", EVHTTP_REQ_GET, true,
+			     ctrl_steps_send);
+	pv_ctrl_add_endpoint("/steps/devmode/l/{}", EVHTTP_REQ_PUT, true,
+			     ctrl_steps_recv);
+	pv_ctrl_add_endpoint("/steps/devmode/l/{}/progress", EVHTTP_REQ_GET,
+			     true, ctrl_steps_progress);
+	pv_ctrl_add_endpoint("/steps/devmode/l/{}/commitmsg", EVHTTP_REQ_PUT,
+			     true, ctrl_steps_commit);
+	pv_ctrl_add_endpoint("/steps/devmode/r/{}", EVHTTP_REQ_GET, true,
+			     ctrl_steps_send);
+	pv_ctrl_add_endpoint("/steps/devmode/r/{}", EVHTTP_REQ_PUT, true,
+			     ctrl_steps_recv);
+	pv_ctrl_add_endpoint("/steps/devmode/r/{}/progress", EVHTTP_REQ_GET,
+			     true, ctrl_steps_progress);
+	pv_ctrl_add_endpoint("/steps/devmode/r/{}/commitmsg", EVHTTP_REQ_PUT,
+			     true, ctrl_steps_commit);
 	return 0;
 }

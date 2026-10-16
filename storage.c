@@ -202,6 +202,8 @@ static int pv_storage_get_revisions(struct dl_list *revisions)
 	pv_paths_storage_trail(path, PATH_MAX, "");
 
 	if (pv_storage_get_subdir(path, "locals/", revisions) ||
+	    pv_storage_get_subdir(path, PREFIX_DEVMODE_LOCAL_REV, revisions) ||
+	    pv_storage_get_subdir(path, PREFIX_DEVMODE_REMOTE_REV, revisions) ||
 	    pv_storage_get_subdir(path, "", revisions))
 		goto out;
 
@@ -209,6 +211,47 @@ static int pv_storage_get_revisions(struct dl_list *revisions)
 
 out:
 	return ret;
+}
+
+// entries of the trails directory that are not revisions
+static bool pv_storage_is_not_revision(const char *path)
+{
+	static const char *names[] = {
+		"..",		".",	       "current",
+		"locals",	"locals/..",   "locals/.",
+		"devmode",	"devmode/l",   "devmode/r",
+		"devmode/l/..", "devmode/l/.", "devmode/r/..",
+		"devmode/r/.",
+	};
+
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+		if (!strcmp(path, names[i]))
+			return true;
+	}
+
+	return false;
+}
+
+// a revision a devmode revision is based on is kept while that exists
+static bool pv_storage_is_devmode_base(struct dl_list *revisions,
+				       const char *path)
+{
+	struct pv_path *r;
+
+	dl_list_for_each(r, revisions, struct pv_path, list)
+	{
+		if (pv_storage_is_not_revision(r->path))
+			continue;
+
+		char *base = pv_storage_get_devmode_base(r->path);
+		bool match = base && !strcmp(base, path);
+
+		free(base);
+		if (match)
+			return true;
+	}
+
+	return false;
 }
 
 struct pv_storage {
@@ -306,12 +349,8 @@ int pv_storage_gc_run()
 	{
 		len = strlen(r->path) + 1;
 		// dont reclaim current, locals, update, last booted up revisions or factory if configured
-		if (!strncmp(r->path, "..", len) ||
-		    !strncmp(r->path, ".", len) ||
-		    !strncmp(r->path, "current", len) ||
-		    !strncmp(r->path, "locals", len) ||
-		    !strncmp(r->path, "locals/..", len) ||
-		    !strncmp(r->path, "locals/.", len) ||
+		if (pv_storage_is_not_revision(r->path) ||
+		    pv_storage_is_devmode_base(&revisions, r->path) ||
 		    (s && !strncmp(r->path, s->rev, len)) ||
 		    (u && !strncmp(r->path, u->rev, len)) ||
 		    !strncmp(r->path, pv_bootloader_get_done(), len) ||
@@ -680,6 +719,62 @@ out:
 	return ret;
 }
 
+bool pv_storage_is_revision_devmode(const char *rev)
+{
+	if (!rev)
+		return false;
+
+	size_t local_len = strlen(PREFIX_DEVMODE_LOCAL_REV);
+	size_t remote_len = strlen(PREFIX_DEVMODE_REMOTE_REV);
+	const char *suffix;
+	bool remote;
+
+	if (!strncmp(rev, PREFIX_DEVMODE_LOCAL_REV, local_len)) {
+		suffix = rev + local_len;
+		remote = false;
+	} else if (!strncmp(rev, PREFIX_DEVMODE_REMOTE_REV, remote_len)) {
+		suffix = rev + remote_len;
+		remote = true;
+	} else {
+		return false;
+	}
+
+	size_t len = strlen(suffix);
+	if (!len || len > SIZE_LOCAL_REV || suffix[0] == '.' ||
+	    strchr(suffix, '/')) {
+		pv_log(WARN, "bad devmode revision name '%s'", rev);
+		return false;
+	}
+
+	// a devmode revision on top of a Hub revision names its number
+	if (remote && strspn(suffix, "0123456789") != len) {
+		pv_log(WARN, "devmode revision '%s' needs a revision number",
+		       rev);
+		return false;
+	}
+
+	return true;
+}
+
+char *pv_storage_get_devmode_base(const char *rev)
+{
+	if (!pv_storage_is_revision_devmode(rev))
+		return NULL;
+
+	size_t local_len = strlen(PREFIX_DEVMODE_LOCAL_REV);
+	if (!strncmp(rev, PREFIX_DEVMODE_LOCAL_REV, local_len)) {
+		size_t len =
+			strlen(PREFIX_LOCAL_REV) + strlen(rev + local_len) + 1;
+		char *base = calloc(len, sizeof(char));
+		if (base)
+			SNPRINTF_WTRUNC(base, len, "%s%s", PREFIX_LOCAL_REV,
+					rev + local_len);
+		return base;
+	}
+
+	return strdup(rev + strlen(PREFIX_DEVMODE_REMOTE_REV));
+}
+
 static char *pv_storage_get_file_date(const char *path)
 {
 	struct stat st;
@@ -721,12 +816,7 @@ char *pv_storage_get_revisions_string()
 	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list)
 	{
 		// dont list current or locals dir
-		if (!strncmp(r->path, "..", strlen("..") + 1) ||
-		    !strncmp(r->path, ".", strlen(".") + 1) ||
-		    !strncmp(r->path, "current", strlen("current") + 1) ||
-		    !strncmp(r->path, "locals", strlen("locals") + 1) ||
-		    !strncmp(r->path, "locals/..", strlen("locals/..") + 1) ||
-		    !strncmp(r->path, "locals/.", strlen("locals/.") + 1))
+		if (pv_storage_is_not_revision(r->path))
 			continue;
 
 		// get revision progress

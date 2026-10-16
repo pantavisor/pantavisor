@@ -29,6 +29,7 @@
 #include <libgen.h>
 
 #include <sys/utsname.h>
+#include <sys/mount.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
@@ -44,6 +45,7 @@
 #include "tsh.h"
 #include "init.h"
 #include "logserver/logserver.h"
+#include "storage.h"
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
@@ -194,6 +196,307 @@ struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
 	}
 
 	return v;
+}
+
+void pv_volumes_add_devmode(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+
+	if (!pv_config_get_bool(PV_DEVMODE_ALLOWED) ||
+	    !pv_storage_is_revision_devmode(s->rev))
+		return;
+
+	dl_list_for_each_safe(p, tmp, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_volume *v;
+
+		if (p->devmode_inlay)
+			continue;
+
+		v = pv_volume_add(s, DEVMODE_INLAY_DNAME);
+		if (!v)
+			continue;
+
+		v->type = VOL_REVISION;
+		v->plat = p;
+		p->devmode_inlay = true;
+	}
+}
+
+static struct pv_volume *pv_volumes_devmode_inlay(struct pv_state *s,
+						  struct pv_platform *p)
+{
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		if (v->plat == p && !strcmp(v->name, DEVMODE_INLAY_DNAME))
+			return v;
+	}
+
+	return NULL;
+}
+
+// <pv dir>/devmode/<name>: where the filesystem of a container is shown to mgmt containers
+static void pv_volumes_devmode_fs_path(char *buf, size_t size, const char *name)
+{
+	char rel[PATH_MAX];
+
+	if (name)
+		snprintf(rel, sizeof(rel), "%s/%s", DEVMODE_DNAME, name);
+	else
+		snprintf(rel, sizeof(rel), "%s", DEVMODE_DNAME);
+	pv_paths_pv_file(buf, size, rel);
+}
+
+// image layers of a container below its inlay, topmost first, joined by ':'
+static int pv_volumes_devmode_lowerdirs(struct pv_state *s,
+					struct pv_platform *p, char *lowers,
+					size_t size)
+{
+	char file[PATH_MAX], name[PATH_MAX], config[PATH_MAX];
+	char line[PATH_MAX * 2], last[PATH_MAX * 2];
+	char *value = NULL, *layer, *next, *save = NULL;
+	FILE *f;
+	size_t len = 0;
+
+	if (!p->configs || !p->configs[0])
+		return -1;
+
+	if (pv_state_spec(s) == SPEC_SYSTEM1)
+		snprintf(name, sizeof(name), "%s/%s", p->name, p->configs[0]);
+	else
+		snprintf(name, sizeof(name), "%s", p->configs[0]);
+	pv_paths_storage_trail_file(file, PATH_MAX, s->rev, name);
+
+	f = fopen(file, "r");
+	if (!f)
+		return -1;
+
+	// the last rootfs path of the file is the one lxc uses
+	while (fgets(line, sizeof(line), f)) {
+		char *key = line + strspn(line, " \t");
+		char *eq;
+
+		if (strncmp(key, "lxc.rootfs.path", 15))
+			continue;
+		eq = strchr(key + 15, '=');
+		if (!eq)
+			continue;
+		eq += 1 + strspn(eq + 1, " \t");
+		eq[strcspn(eq, " \t\r\n")] = 0;
+		snprintf(last, sizeof(last), "%s", eq);
+		value = last;
+	}
+	fclose(f);
+
+	if (!value || strncmp(value, "overlayfs:", 10))
+		return 1;
+
+	lowers[0] = 0;
+
+	// the configs of the revision are the same files pantavisor copies to /configs/<name>
+	// on every start; use them directly so the copy being renewed does not empty the layer
+	pv_paths_storage_trail_config_file(config, PATH_MAX, s->rev, p->name);
+	if (pv_fs_path_exist(config))
+		len = snprintf(lowers, size, "%s", config);
+
+	// everything between "overlayfs:" and the last entry; the last one is the upper
+	layer = strtok_r(value + 10, ":", &save);
+	while (layer) {
+		next = strtok_r(NULL, ":", &save);
+		if (!next)
+			break;
+		len += snprintf(lowers + len, size - len, "%s%s",
+				len ? ":" : "", layer);
+		if (len >= size)
+			return -1;
+		layer = next;
+	}
+
+	return len ? 0 : -1;
+}
+
+// mount the volumes that hold the lower layers, the container mounts the rest when it starts
+static int pv_volumes_devmode_mount_layers(struct pv_state *s,
+					   struct pv_platform *p,
+					   const char *lowers)
+{
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		char mnt[PATH_MAX];
+		const char *name = strchr(v->name, ':');
+		char *copy = strdup(lowers), *layer, *save = NULL;
+		bool used = false;
+
+		if (!copy)
+			return -1;
+		name = name ? name + 1 : v->name;
+		pv_paths_volumes_plat_file(mnt, PATH_MAX, p->name, name);
+		for (layer = strtok_r(copy, ":", &save); layer;
+		     layer = strtok_r(NULL, ":", &save)) {
+			if (!strcmp(layer, mnt))
+				used = true;
+		}
+		free(copy);
+
+		if (v->plat == p && used && !v->mounted && pv_volume_mount(v))
+			return -1;
+	}
+
+	return 0;
+}
+
+static int pv_volumes_devmode_try_overlay(struct pv_state *s,
+					  struct pv_platform *p,
+					  struct pv_volume *inlay,
+					  const char *mnt)
+{
+	char lowers[PATH_MAX], work[PATH_MAX], opts[PATH_MAX * 3];
+	int ret = pv_volumes_devmode_lowerdirs(s, p, lowers, sizeof(lowers));
+
+	// no overlay rootfs: the container has no inlay, so there is nothing to show
+	if (ret > 0)
+		return ret;
+	if (ret || pv_volumes_devmode_mount_layers(s, p, lowers))
+		return -1;
+
+	snprintf(work, sizeof(work), "%s.work", inlay->src);
+	pv_fs_mkdir_p(work, 0755);
+	snprintf(opts, sizeof(opts), "lowerdir=%s,upperdir=%s,workdir=%s",
+		 lowers, inlay->src, work);
+
+	return mount("overlay", mnt, "overlay", 0, opts);
+}
+
+// show the whole filesystem of the container, or only its inlay if no overlay is possible
+int pv_volumes_devmode_fs_mount(struct pv_state *s, struct pv_platform *p)
+{
+	struct pv_volume *inlay = pv_volumes_devmode_inlay(s, p);
+	char mnt[PATH_MAX];
+	int ret;
+
+	if (!inlay || !inlay->src || p->devmode_fs)
+		return 0;
+
+	pv_volumes_devmode_fs_path(mnt, PATH_MAX, p->name);
+	pv_fs_mkdir_p(mnt, 0755);
+
+	ret = pv_volumes_devmode_try_overlay(s, p, inlay, mnt);
+	if (ret > 0)
+		return 0;
+	if (!ret) {
+		p->devmode_fs = DEVMODE_FS_OVERLAY;
+		pv_log(INFO, "devmode filesystem of %s mounted at %s", p->name,
+		       mnt);
+		return 0;
+	}
+
+	pv_log(WARN,
+	       "cannot mount the devmode filesystem of %s (%s); showing only its inlay",
+	       p->name, strerror(errno));
+	if (mount(inlay->src, mnt, NULL, MS_BIND, NULL)) {
+		pv_log(ERROR, "cannot bind the devmode inlay of %s: %s",
+		       p->name, strerror(errno));
+		return -1;
+	}
+	p->devmode_fs = DEVMODE_FS_BIND;
+
+	return 0;
+}
+
+// lazy, so a container still using the folder does not block it
+void pv_volumes_devmode_fs_umount(struct pv_platform *p)
+{
+	char mnt[PATH_MAX];
+
+	if (!p->devmode_fs)
+		return;
+
+	pv_volumes_devmode_fs_path(mnt, PATH_MAX, p->name);
+	if (umount2(mnt, MNT_DETACH))
+		pv_log(WARN, "cannot unmount %s: %s", mnt, strerror(errno));
+	p->devmode_fs = DEVMODE_FS_NONE;
+}
+
+static bool devmode_dir_shared;
+
+// mgmt containers get the folder with rbind, so mounts made here later show up there too
+static void pv_volumes_devmode_dir_setup(void)
+{
+	char dir[PATH_MAX];
+
+	if (devmode_dir_shared)
+		return;
+
+	pv_volumes_devmode_fs_path(dir, PATH_MAX, NULL);
+	pv_fs_mkdir_p(dir, 0755);
+	if (mount(dir, dir, NULL, MS_BIND | MS_REC, NULL) ||
+	    mount(NULL, dir, NULL, MS_SHARED, NULL)) {
+		pv_log(WARN, "cannot share %s: %s", dir, strerror(errno));
+		return;
+	}
+	devmode_dir_shared = true;
+}
+
+void pv_volumes_umount_devmode(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+	char dir[PATH_MAX];
+
+	dl_list_for_each_safe(p, tmp, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_volume *v, *vtmp;
+
+		if (!p->devmode_fs)
+			continue;
+
+		pv_volumes_devmode_fs_umount(p);
+		// layers mounted for the folder of a container that never started
+		dl_list_for_each_safe(v, vtmp, &s->volumes, struct pv_volume,
+				      list)
+		{
+			if (v->plat == p && v->mounted)
+				pv_volume_unmount(v);
+		}
+	}
+
+	if (devmode_dir_shared) {
+		pv_volumes_devmode_fs_path(dir, PATH_MAX, NULL);
+		umount2(dir, MNT_DETACH);
+		devmode_dir_shared = false;
+	}
+}
+
+int pv_volumes_mount_devmode(struct pv_state *s)
+{
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		if (!v->plat || !v->plat->devmode_inlay ||
+		    strcmp(v->name, DEVMODE_INLAY_DNAME))
+			continue;
+
+		if (!v->mounted && pv_volume_mount(v))
+			return -1;
+	}
+
+	pv_volumes_devmode_dir_setup();
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		if (!v->plat || !v->plat->devmode_inlay ||
+		    strcmp(v->name, DEVMODE_INLAY_DNAME))
+			continue;
+
+		// a folder that cannot be shown must not fail the revision
+		pv_volumes_devmode_fs_mount(s, v->plat);
+	}
+
+	return 0;
 }
 
 struct pv_volume *pv_volume_add(struct pv_state *s, char *name)

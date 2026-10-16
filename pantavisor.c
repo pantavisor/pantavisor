@@ -310,6 +310,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		}
 	}
 
+	// the devmode inlays depend on PV_DEVMODE_ALLOWED (pantavisor.config or OEM)
+	pv_volumes_add_devmode(pv->state);
+
 	// trail .pvr/ initialization
 	pv_storage_init_trail_pvr();
 
@@ -611,6 +614,13 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update) {
 			pv_log(WARN,
 			       "ignoring install local command because an update is in progress");
+			goto out;
+		}
+
+		if (pv_storage_is_revision_devmode(cmd->payload) &&
+		    !pv_config_get_bool(PV_DEVMODE_ALLOWED)) {
+			pv_log(WARN, "ignoring %s: devmode is disabled",
+			       cmd->payload);
 			goto out;
 		}
 

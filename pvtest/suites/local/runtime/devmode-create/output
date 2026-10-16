@@ -1,0 +1,30 @@
+== enable devmode through pantavisor.config ==
+{
+  "enabled": true,
+  "active": false
+}
+== create the devmode revision from the running revision ==
+create exit: 0
+== device metadata in devmode ==
+pantavisor.revision is the committed revision: true
+pantavisor.devmode: devmode/l/local_runtime_devmode_create
+== devmode status ==
+{
+  "enabled": true,
+  "active": true,
+  "revision": "devmode/l/local_runtime_devmode_create",
+  "base": "locals/local_runtime_devmode_create",
+  "inlays": [
+    {
+      "name": "pv-example-mgmt",
+      "inlay": "<storage>/disks/rev/devmode/l/local_runtime_devmode_create/pv-example-mgmt/_devmode"
+    },
+    {
+      "name": "pv-example-norole",
+      "inlay": "<storage>/disks/rev/devmode/l/local_runtime_devmode_create/pv-example-norole/_devmode"
+    }
+  ]
+}
+== the committed revision is unchanged ==
+DONE
+UPDATED
