@@ -61,7 +61,7 @@ le32() {
 	done
 }
 
-# struct logserver_msg { int code; int len; char buf[]; } with buf read from stdin
+# struct pv_ls_msg { int code; int len; char buf[]; } with buf read from stdin
 legacy() {
 	cat > "$TMP/buf"
 	le32 "$1"

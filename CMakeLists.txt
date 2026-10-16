@@ -263,12 +263,20 @@ add_executable(pantavisor
 			logger.h
 			logserver/logserver.c
 			logserver/logserver.h
-			logserver/logserver_filetree.c
-			logserver/logserver_filetree.h
-			logserver/logserver_null.c
-			logserver/logserver_null.h
-			logserver/logserver_out.c
-			logserver/logserver_out.h
+			logserver/internal/logserver_rotation.c
+			logserver/internal/logserver_rotation.h
+			logserver/outputs/logserver_filetree.c
+			logserver/outputs/logserver_filetree.h
+			logserver/outputs/logserver_null.c
+			logserver/outputs/logserver_null.h
+			logserver/outputs/logserver_out.c
+			logserver/outputs/logserver_out.h
+			logserver/outputs/logserver_singlefile.c
+			logserver/outputs/logserver_singlefile.h
+			logserver/outputs/logserver_stdout.c
+			logserver/outputs/logserver_stdout.h
+			logserver/outputs/logserver_update.c
+			logserver/outputs/logserver_update.h
 			logserver/proto/logserver_binary.c
 			logserver/proto/logserver_binary.h
 			logserver/proto/logserver_json.c
@@ -281,18 +289,10 @@ add_executable(pantavisor
 			logserver/proto/logserver_rfc.h
 			logserver/proto/logserver_rfc5424.c
 			logserver/proto/logserver_rfc3164.c
-			logserver/logserver_rotation.c
-			logserver/logserver_rotation.h
-			logserver/logserver_singlefile.c
-			logserver/logserver_singlefile.h
-			logserver/logserver_stdout.c
-			logserver/logserver_stdout.h
-			logserver/logserver_timestamp.c
-			logserver/logserver_timestamp.h
-			logserver/logserver_update.c
-			logserver/logserver_update.h
-			logserver/logserver_utils.c
-			logserver/logserver_utils.h
+			logserver/utils/logserver_timestamp.c
+			logserver/utils/logserver_timestamp.h
+			logserver/utils/logserver_utils.c
+			logserver/utils/logserver_utils.h
 			loop.c
 			loop.h
 			metadata.c
