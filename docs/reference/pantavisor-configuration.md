@@ -155,6 +155,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSCTL_*` | string | — | set any kernel sysctl at runtime; key maps to `/proc/sys/` (e.g. `PV_SYSCTL_KERNEL_CORE_PATTERN` → `/proc/sys/kernel/core_pattern`) |
 | `PV_SYSCTL_KERNEL_CORE_PATTERN` | string | `\|/lib/pv/pvcrash --skip` | set kernel core dump pattern |
 | `PV_SYSTEM_APPARMOR_PROFILES` | string | empty | AppArmor profiles to load |
+| `PV_SYSTEM_CGROUP_VERSION` | `1`, `2`, `auto` or `default` | `default`: `1` (`auto` in appengine) | choose the [cgroup version](../overview/cgroups.md) |
 | `PV_SYSTEM_CONFDIR` | path | `/configs` | set directory for system configurations |
 | `PV_SYSTEM_DISKSDIR` | path | `/run/pantavisor/disks` | set system disks directory |
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO` | `0` or `1` | `0` | enable early auto-loading of drivers |
@@ -162,6 +163,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSTEM_ETCPANTAVISORDIR` | path | `/etc/pantavisor` | set Pantavisor etc directory |
 | `PV_SYSTEM_INIT_MODE` | `embedded`, `standalone` or `appengine` | `embedded` | set [system init mode](../overview/init-mode.md) |
 | `PV_SYSTEM_LIBDIR` | path | `/lib` | set system library directory |
+| `PV_SYSTEM_LXCDIR` | path | `/run/pantavisor/lxc` | set directory for the effective container configs; not visible to containers |
 | `PV_SYSTEM_MEDIADIR` | path | `/media` | set system media directory |
 | `PV_SYSTEM_MOUNT_SECURITYFS` | `0` or `1` | `0` | mount securityfs |
 | `PV_SYSTEM_RUNDIR` | path | `/pv` | set system run directory |
@@ -291,6 +293,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_SYSCTL_*`                        | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_SYSCTL_KERNEL_CORE_PATTERN`      | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_SYSTEM_APPARMOR_PROFILES`        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_SYSTEM_CGROUP_VERSION`           | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_CONFDIR`                  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_DISKSDIR`                  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO`  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -298,6 +301,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_SYSTEM_ETCPANTAVISORDIR`         | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_INIT_MODE`                | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_LIBDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_SYSTEM_LXCDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_MEDIADIR`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_MOUNT_SECURITYFS`         | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_RUNDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |

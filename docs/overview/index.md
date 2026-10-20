@@ -40,3 +40,4 @@ page, or start from the [Reference index](../reference/index.md).
 
 15. [Configuration Levels](pantavisor-configuration-levels.md) — the precedence hierarchy across factory, device and container scopes
 16. [Init Mode](init-mode.md) — embedded, standalone and appengine, and when to use each
+17. [Cgroup Version](cgroups.md) — choosing cgroup v1 or v2 and which `lxc.cgroup` lines a container keeps

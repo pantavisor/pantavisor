@@ -96,6 +96,7 @@ Feature overview intended to be read top-to-bottom as a book, versioned with eac
 | **Power and Wakelocks** | [docs/overview/wakelocks.md](docs/overview/wakelocks.md) | Suspend, wakelocks, managed power mode |
 | **Configuration Levels** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
 | **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
+| **Cgroup Version** | [docs/overview/cgroups.md](docs/overview/cgroups.md) | Cgroup v1/v2 choice and container cgroup line filtering |
 
 ## Docs Pipeline
 
