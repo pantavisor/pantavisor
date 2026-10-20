@@ -1,0 +1,13 @@
+== cgroup layout of the device ==
+cgroup2fs
+== revision before the update ==
+revision is the initial one: yes
+== post a revision with pv-example-cgroup-v1 ==
+locals/v1-only: ERROR
+== device went back to the previous revision ==
+revision is the initial one again: yes
+== log names the refused container and the removed lines ==
+logged: container 'pv-example-cgroup-v1': removed 'lxc.cgroup.devices.deny = a'
+logged: container 'pv-example-cgroup-v1': removed 'lxc.cgroup.devices.allow = c 1:3 rwm'
+logged: container 'pv-example-cgroup-v1': removed 'lxc.cgroup.pids.max = 64'
+logged: container 'pv-example-cgroup-v1' has no cgroup v2 lines

@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Containers with lxc.cgroup2 device and pids lines run on cgroup v2, can only use the listed devices and get the pids limit",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-cgroup-v2.pvrexport.tgz",
+				"../../common/tarballs/pv-example-cgroup-dual.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
