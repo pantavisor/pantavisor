@@ -33,7 +33,7 @@ void pv_set_pv_paths_fn(
 	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
 	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
 	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
-	void *fn_pv_paths_lib_lxc_lxcpath);
+	void *fn_pv_paths_lib_lxc_lxcpath, void *fn_pv_paths_lxc_file);
 
 void pv_set_pv_conf_loglevel_fn(int loglevel);
 void pv_set_pv_conf_capture_fn(bool capture);

@@ -430,6 +430,14 @@ void pv_paths_configs_file(char *buf, size_t size, const char *name)
 			pv_config_get_str(PV_SYSTEM_CONFDIR), name);
 }
 
+#define PV_LXC_PATHF "%s/%s.conf"
+
+void pv_paths_lxc_file(char *buf, size_t size, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_LXC_PATHF,
+			pv_config_get_str(PV_SYSTEM_LXCDIR), name);
+}
+
 #define PV_CERT_PATHF "%s/%s"
 
 void pv_paths_cert(char *buf, size_t size, const char *name)
