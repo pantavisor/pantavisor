@@ -45,4 +45,9 @@ char *pv_cgroup_get_process_name(pid_t pid);
 
 void pv_cgroup_destroy(const char *name);
 
+// cgroup v2: 0 when LXC puts the container and its monitor in <base>/lxc itself,
+// 1 when lxc.cgroup.dir.container and lxc.cgroup.dir.monitor were filled in, -1 on error
+int pv_cgroup_v2_lxc_dirs(const char *name, char *container_dir,
+			  char *monitor_dir, size_t len);
+
 #endif /* UTILS_CGROUP_H_ */
