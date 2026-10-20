@@ -59,6 +59,7 @@
 typedef enum {
 	BOOL,
 	BOOTLOADER,
+	CGROUP_VER,
 	DURATION,
 	INIT_MODE,
 	INT,
@@ -295,6 +296,8 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_STORAGE_PHCONFIG_VOL", PV, 0, false, .value.b = false },
 	{ INT, "PV_STORAGE_WAIT", PV, 0, false, .value.i = 5 },
 	{ STR, "PV_SYSTEM_APPARMOR_PROFILES", PV, 0, false, .value.s = NULL },
+	{ CGROUP_VER, "PV_SYSTEM_CGROUP_VERSION", PV, 0, false,
+	  .value.i = CGV_DEFAULT },
 	{ STR, "PV_SYSTEM_CONFDIR", PV, 0, false,
 	  .value.s = SYSTEM_CONFDIR_DEF },
 	{ BOOL, "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO", PV, 0, false,
@@ -819,6 +822,55 @@ static void _set_config_by_entry_secureboot_mode(struct pv_config_entry *entry,
 		pv_log(WARN, "unknown secureboot mode '%s'", value);
 }
 
+cgroup_conf_t pv_config_get_system_cgroup_version()
+{
+	return pv_config_get_int(PV_SYSTEM_CGROUP_VERSION);
+}
+
+static char *_get_system_cgroup_version_str(cgroup_conf_t ver)
+{
+	switch (ver) {
+	case CGV_DEFAULT:
+		return "default";
+	case CGV_1:
+		return "1";
+	case CGV_2:
+		return "2";
+	case CGV_AUTO:
+		return "auto";
+	default:
+		return "unknown";
+	}
+}
+
+char *pv_config_get_system_cgroup_version_str(void)
+{
+	return _get_system_cgroup_version_str(
+		pv_config_get_system_cgroup_version());
+}
+
+static void _set_config_by_entry_cgroup_version(struct pv_config_entry *entry,
+						const char *value)
+{
+	if (!entry)
+		return;
+
+	if (pv_str_matches(value, strlen(value), "1", strlen("1")))
+		entry->value.i = CGV_1;
+	else if (pv_str_matches(value, strlen(value), "2", strlen("2")))
+		entry->value.i = CGV_2;
+	else if (pv_str_matches(value, strlen(value), "auto", strlen("auto")))
+		entry->value.i = CGV_AUTO;
+	else if (pv_str_matches(value, strlen(value), "default",
+				strlen("default")))
+		entry->value.i = CGV_DEFAULT;
+	else {
+		pv_log(WARN, "unknown cgroup version '%s', using the default",
+		       value);
+		entry->value.i = CGV_DEFAULT;
+	}
+}
+
 init_mode_t pv_config_get_system_init_mode()
 {
 	return pv_config_get_int(PV_SYSTEM_INIT_MODE);
@@ -1175,6 +1227,9 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		break;
 	case DURATION:
 		_set_config_by_entry_int(entry, value_int);
+		break;
+	case CGROUP_VER:
+		_set_config_by_entry_cgroup_version(entry, value);
 		break;
 	case INIT_MODE:
 		_set_config_by_entry_init_mode(entry, value);
@@ -1578,6 +1633,7 @@ static void _add_config_entry_alias_json(config_index_t ci,
 		pv_json_ser_bool(js, entries[ci].value.b);
 		break;
 	case BOOTLOADER:
+	case CGROUP_VER:
 	case DURATION:
 	case INIT_MODE:
 	case INT:
@@ -1628,6 +1684,10 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 	case BOOTLOADER:
 		snprintf(out, len, "%s",
 			 _get_bootloader_type_str(entries[ci].value.i));
+		break;
+	case CGROUP_VER:
+		snprintf(out, len, "%s",
+			 _get_system_cgroup_version_str(entries[ci].value.i));
 		break;
 	case DURATION:
 		snprintf(out, len, "%d", entries[ci].value.i);
@@ -1733,6 +1793,11 @@ static void _print_config_entry(config_index_t ci)
 	case BOOTLOADER:
 		pv_log(INFO, "%s = '%s' (%s)", key,
 		       _get_bootloader_type_str(entries[ci].value.i),
+		       _get_mod_level_str(modified));
+		break;
+	case CGROUP_VER:
+		pv_log(INFO, "%s = '%s' (%s)", key,
+		       _get_system_cgroup_version_str(entries[ci].value.i),
 		       _get_mod_level_str(modified));
 		break;
 	case DURATION:
