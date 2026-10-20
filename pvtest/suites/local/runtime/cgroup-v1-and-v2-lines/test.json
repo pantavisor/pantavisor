@@ -1,0 +1,19 @@
+{
+	"#spec": "pv-test@1",
+	"description": "A container with both lxc.cgroup and lxc.cgroup2 device lines starts on cgroup v2 with the lxc.cgroup lines left out",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

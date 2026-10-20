@@ -66,6 +66,9 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/objects-crud` | Object store put/get/verify (pv-ctrl) | ✓ |
 | `local/runtime/steps-rw` | Step read + local revision put (pv-ctrl) | ✓ |
 | `local/runtime/ctrl-empty-object-put` | Bodyless object PUT replies, no hang (pv-ctrl) | ✓ |
+| `local/runtime/cgroup-devices-allow-all` | A container with only `lxc.cgroup.devices.allow = a` starts on cgroup v2 and the log warns the line is not needed | ✓ |
+| `local/runtime/cgroup-v1-devices-refused` | A container with only an `lxc.cgroup` device whitelist is refused on cgroup v2 and the update rolls back | ✓ |
+| `local/runtime/cgroup-v1-and-v2-lines` | A container with `lxc.cgroup` and `lxc.cgroup2` lines starts on cgroup v2 with the `lxc.cgroup` lines left out | ✓ |
 | `local/runtime/invalid-signal-handling` | Invalid Signal Handling | |
 
 ### control

@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# A container whose only cgroup line is lxc.cgroup.devices.allow = a (written by
+# older pvr templates) must still start on cgroup v2. The line is left out and
+# the Pantavisor log warns that it is not needed.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+container=pv-example-app
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+container_status() {
+	pvcontrol containers ls | jq -r --arg n "$container" 'map(select(.name == $n))[0].status'
+}
+
+log_root=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+pantavisor_log="${log_root%/}/current/pantavisor/pantavisor.log"
+
+echo "== cgroup layout of the device =="
+pv_exec stat -fc %T /sys/fs/cgroup | tr -d '\r'
+
+echo "== post a revision with only lxc.cgroup.devices.allow = a =="
+conf="$container/lxc.container.conf"
+grep -vE '^[[:space:]]*lxc\.cgroup2?\.devices\.' "$conf" > "$conf.new"
+mv "$conf.new" "$conf"
+echo "lxc.cgroup.devices.allow = a" >> "$conf"
+pvr add "$conf" > /dev/null 2>&1
+pvr commit -m "only lxc.cgroup.devices.allow = a" > /dev/null 2>&1
+pvr post --rev "locals/devices-allow-all" > /dev/null 2>&1
+wait_for_revision_state "locals/devices-allow-all" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/devices-allow-all to reach UPDATED" >&2; exit 1; }
+echo "locals/devices-allow-all: UPDATED"
+
+echo "== container is running =="
+wait_for_value 'container_status' "STARTED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for $container to reach STARTED" >&2; exit 1; }
+echo "$container: $(container_status)"
+
+echo "== log warns that the line is not needed =="
+pv_fetch_file "$pantavisor_log" "$checkout/pantavisor.log"
+if grep -q "container '$container': 'lxc.cgroup.devices.allow = a' is not needed" "$checkout/pantavisor.log"; then
+	echo "warning logged: yes"
+else
+	echo "warning logged: no"
+fi

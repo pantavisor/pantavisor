@@ -1,0 +1,12 @@
+== cgroup layout of the device ==
+cgroup2fs
+== post a revision with lxc.cgroup and lxc.cgroup2 device lines ==
+locals/v1-and-v2-lines: UPDATED
+== container is running ==
+pv-example-app: STARTED
+== config that LXC reads ==
+lxc.cgroup device lines: 0
+lxc.cgroup2 device lines: 2
+== log names the removed lines ==
+logged: container 'pv-example-app': removed 'lxc.cgroup.devices.deny = a'
+logged: container 'pv-example-app': removed 'lxc.cgroup.devices.allow = c 1:3 rwm'

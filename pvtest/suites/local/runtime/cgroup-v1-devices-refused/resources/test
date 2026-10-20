@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# A container that limits its devices only with lxc.cgroup lines would run
+# without any limit on cgroup v2, so Pantavisor refuses to start it. The update
+# fails and the device goes back to the revision it came from.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+container=pv-example-app
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+log_root=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+log_root="${log_root%/}"
+
+echo "== cgroup layout of the device =="
+pv_exec stat -fc %T /sys/fs/cgroup | tr -d '\r'
+
+echo "== revision before the update =="
+start_rev=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+echo "revision is the initial one: $([ -n "$start_rev" ] && echo yes || echo no)"
+
+echo "== post a revision with only a lxc.cgroup device whitelist =="
+conf="$container/lxc.container.conf"
+grep -vE '^[[:space:]]*lxc\.cgroup2?\.devices\.' "$conf" > "$conf.new"
+mv "$conf.new" "$conf"
+{
+	echo "lxc.cgroup.devices.deny = a"
+	echo "lxc.cgroup.devices.allow = c 1:3 rwm"
+} >> "$conf"
+pvr add "$conf" > /dev/null 2>&1
+pvr commit -m "only a lxc.cgroup device whitelist" > /dev/null 2>&1
+pvr post --rev "locals/v1-devices" > /dev/null 2>&1
+
+wait_for_value "pvcontrol steps show-progress locals/v1-devices | jq -r '.status'" "ERROR" 120 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/v1-devices to fail" >&2; exit 1; }
+echo "locals/v1-devices: ERROR"
+
+echo "== device went back to the previous revision =="
+wait_for_target_ready "after refused update" "$start_rev" > /dev/null \
+	|| { echo "ERROR: device did not come back on $start_rev" >&2; exit 1; }
+echo "revision is the initial one again: $([ "$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')" = "$start_rev" ] && echo yes || echo no)"
+
+echo "== log names the refused container and the removed lines =="
+pv_fetch_file "$log_root/locals/v1-devices/pantavisor/pantavisor.log" "$checkout/pantavisor.log"
+for text in \
+	"container '$container': removed 'lxc.cgroup.devices.deny = a'" \
+	"container '$container': removed 'lxc.cgroup.devices.allow = c 1:3 rwm'" \
+	"container '$container' has no cgroup v2 lines"; do
+	if grep -qF "$text" "$checkout/pantavisor.log"; then
+		echo "logged: $text"
+	else
+		echo "NOT logged: $text"
+	fi
+done

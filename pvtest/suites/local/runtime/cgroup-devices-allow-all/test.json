@@ -1,0 +1,19 @@
+{
+	"#spec": "pv-test@1",
+	"description": "A container with only lxc.cgroup.devices.allow = a starts on cgroup v2 and the log says the line is not needed",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
