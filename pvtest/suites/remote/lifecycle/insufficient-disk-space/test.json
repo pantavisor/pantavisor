@@ -3,7 +3,7 @@
 	"description": "Update with Insufficient Disk Space",
 	"setup": {
 		"config": {
-			"env": "PV_CONTROL_REMOTE=1 PV_STORAGE_GC_RESERVED=100",
+			"env": "PV_CONTROL_REMOTE=1 PV_STORAGE_GC_RESERVED=100 PV_SECUREBOOT_MODE=disabled",
 			"usrmeta": ""
 		},
 		"containers": {
