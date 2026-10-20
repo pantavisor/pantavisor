@@ -1,0 +1,8 @@
+== cgroup layout of the device ==
+cgroup2fs
+== post a revision with only lxc.cgroup.devices.allow = a ==
+locals/devices-allow-all: UPDATED
+== container is running ==
+pv-example-app: STARTED
+== log warns that the line is not needed ==
+warning logged: yes
