@@ -52,6 +52,7 @@
 #include "platforms.h"
 #include "buffer.h"
 #include "loop.h"
+#include "cgroup.h"
 
 #include "pantahub/pantahub.h"
 
@@ -513,6 +514,30 @@ static int pv_devmeta_read_mode(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+static int
+pv_devmeta_read_cgroup_layout(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+	SNPRINTF_WTRUNC(buf, buflen, "%s", pv_cgroup_get_layout_str());
+	return 0;
+}
+
+static int
+pv_devmeta_read_cgroup_version(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+	SNPRINTF_WTRUNC(buf, buflen, "%s", pv_cgroup_get_version_str());
+	return 0;
+}
+
 static int pv_devmeta_read_online(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
@@ -572,6 +597,10 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_CPUMODEL, .reader = pv_devmeta_read_cpumodel },
 	{ .key = DEVMETA_KEY_PV_REVISION, .reader = pv_devmeta_read_revision },
 	{ .key = DEVMETA_KEY_PV_MODE, .reader = pv_devmeta_read_mode },
+	{ .key = DEVMETA_KEY_PV_CGROUP_LAYOUT,
+	  .reader = pv_devmeta_read_cgroup_layout },
+	{ .key = DEVMETA_KEY_PV_CGROUP_VERSION,
+	  .reader = pv_devmeta_read_cgroup_version },
 	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
 	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
 	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname },

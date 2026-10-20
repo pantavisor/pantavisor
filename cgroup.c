@@ -52,26 +52,41 @@
 	     ##__VA_ARGS__)
 #include "log.h"
 
-static const char *pv_cgroup_version_string(cgroup_version_t cgroupv)
+const char *pv_cgroup_get_layout_str(void)
 {
-	switch (cgroupv) {
+	switch (pv_get_instance()->cgroupv) {
 	case CGROUP_LEGACY:
-		return "CGROUP_LEGACY";
+		return "legacy";
 	case CGROUP_HYBRID:
-		return "CGROUP_HYBRID";
+		return "hybrid";
 	case CGROUP_UNIFIED:
-		return "CGROUP_UNIFIED";
+		return "unified";
 	default:
-		return "CGROUP_UNKNOWN";
+		return "unknown";
 	}
-	return "CGROUP_UNKNOWN";
+}
+
+// 1 for hybrid and legacy, the same lines the container cgroup filter keeps
+const char *pv_cgroup_get_version_str(void)
+{
+	switch (pv_get_instance()->cgroupv) {
+	case CGROUP_LEGACY:
+	case CGROUP_HYBRID:
+		return "1";
+	case CGROUP_UNIFIED:
+		return "2";
+	default:
+		return "unknown";
+	}
 }
 
 void pv_cgroup_print()
 {
 	struct pantavisor *pv = pv_get_instance();
-	pv_log(DEBUG, "cgroup version detected '%s'",
-	       pv_cgroup_version_string(pv->cgroupv));
+	pv_log(INFO,
+	       "cgroup layout %s, using cgroup version %s (PV_SYSTEM_CGROUP_VERSION=%s)",
+	       pv_cgroup_get_layout_str(), pv_cgroup_get_version_str(),
+	       pv_config_get_system_cgroup_version_str());
 
 	// logged here because the log server is not up yet in pv_cgroup_init()
 	if (pv->cgroupv != CGROUP_UNIFIED)

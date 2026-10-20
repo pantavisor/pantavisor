@@ -38,6 +38,11 @@ typedef enum {
 
 void pv_cgroup_print(void);
 
+// hybrid, legacy, unified or unknown
+const char *pv_cgroup_get_layout_str(void);
+// 1 or 2, unknown if the layout was not detected
+const char *pv_cgroup_get_version_str(void);
+
 int pv_cgroup_init(void);
 void pv_cgroup_umount(void);
 
