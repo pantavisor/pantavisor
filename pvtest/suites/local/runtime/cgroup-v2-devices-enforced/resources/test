@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# pv-example-cgroup-v2 has only lxc.cgroup2 lines and pv-example-cgroup-dual has
+# both kinds. On cgroup v2 each must run, reach the devices on its list, be
+# refused /dev/full (which is not on the list) and get the pids.max limit.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+container_status() {
+	pvcontrol containers ls | jq -r --arg n "$1" 'map(select(.name == $n))[0].status'
+}
+
+echo "== cgroup layout of the device =="
+pv_exec stat -fc %T /sys/fs/cgroup | tr -d '\r'
+
+for container in pv-example-cgroup-v2 pv-example-cgroup-dual; do
+	echo "== $container is running =="
+	wait_for_value "container_status $container" "STARTED" 60 > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $container to reach STARTED" >&2; exit 1; }
+	echo "$container: $(container_status $container)"
+
+	echo "== $container: /dev/null can be read =="
+	if pventer -c $container cat /dev/null > /dev/null 2>&1; then
+		echo "read /dev/null: ok"
+	else
+		echo "read /dev/null: failed"
+	fi
+
+	echo "== $container: /dev/full cannot be written =="
+	pventer -c $container dd if=/dev/zero of=/dev/full count=1 2>&1 | tr -d '\r' | grep -o "Operation not permitted" | head -n 1
+
+	echo "== $container: pids limit =="
+	pventer -c $container cat /sys/fs/cgroup/pids.max 2>/dev/null | tr -d '\r'
+done

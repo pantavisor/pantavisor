@@ -69,6 +69,8 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/cgroup-devices-allow-all` | A container with only `lxc.cgroup.devices.allow = a` starts on cgroup v2 and the log warns the line is not needed | ✓ |
 | `local/runtime/cgroup-v1-devices-refused` | A container with only an `lxc.cgroup` device whitelist is refused on cgroup v2 and the update rolls back | ✓ |
 | `local/runtime/cgroup-v1-and-v2-lines` | A container with `lxc.cgroup` and `lxc.cgroup2` lines starts on cgroup v2 with the `lxc.cgroup` lines left out | ✓ |
+| `local/runtime/cgroup-v2-devices-enforced` | Containers with `lxc.cgroup2` device and pids lines run on cgroup v2, reach only the listed devices and get `pids.max = 64` | ✓ |
+| `local/runtime/cgroup-v1-only-refused` | A container with only `lxc.cgroup` device and pids lines is refused on cgroup v2 and the update rolls back | ✓ |
 | `local/runtime/invalid-signal-handling` | Invalid Signal Handling | |
 
 ### control

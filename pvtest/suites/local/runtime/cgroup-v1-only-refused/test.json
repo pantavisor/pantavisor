@@ -1,0 +1,19 @@
+{
+	"#spec": "pv-test@1",
+	"description": "A container with only lxc.cgroup lines is refused on cgroup v2 and the revision does not stay",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

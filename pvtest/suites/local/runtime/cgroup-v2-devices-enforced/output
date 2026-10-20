@@ -1,0 +1,18 @@
+== cgroup layout of the device ==
+cgroup2fs
+== pv-example-cgroup-v2 is running ==
+pv-example-cgroup-v2: STARTED
+== pv-example-cgroup-v2: /dev/null can be read ==
+read /dev/null: ok
+== pv-example-cgroup-v2: /dev/full cannot be written ==
+Operation not permitted
+== pv-example-cgroup-v2: pids limit ==
+64
+== pv-example-cgroup-dual is running ==
+pv-example-cgroup-dual: STARTED
+== pv-example-cgroup-dual: /dev/null can be read ==
+read /dev/null: ok
+== pv-example-cgroup-dual: /dev/full cannot be written ==
+Operation not permitted
+== pv-example-cgroup-dual: pids limit ==
+64
