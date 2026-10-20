@@ -132,6 +132,7 @@ typedef enum {
 	PV_STORAGE_PHCONFIG_VOL,
 	PV_STORAGE_WAIT,
 	PV_SYSTEM_APPARMOR_PROFILES,
+	PV_SYSTEM_CGROUP_VERSION,
 	PV_SYSTEM_CONFDIR,
 	PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO,
 	PV_SYSTEM_ETCDIR,
@@ -220,6 +221,13 @@ typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
 init_mode_t pv_config_get_system_init_mode(void);
 char *pv_config_get_system_init_mode_str(void);
 void pv_config_set_system_init_mode(init_mode_t mode);
+
+// SYSTEM CGROUP VERSION
+
+typedef enum { CGV_DEFAULT, CGV_1, CGV_2, CGV_AUTO } cgroup_conf_t;
+
+cgroup_conf_t pv_config_get_system_cgroup_version(void);
+char *pv_config_get_system_cgroup_version_str(void);
 
 // POWER MODE
 
