@@ -765,7 +765,8 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 
 	void (*__pv_paths)(void *, void *, void *, void *, void *, void *,
 			   void *, void *, void *, void *, void *, void *,
-			   void *, void *) = dlsym(lib, "pv_set_pv_paths_fn");
+			   void *, void *, void *) =
+		dlsym(lib, "pv_set_pv_paths_fn");
 	if (__pv_paths)
 		__pv_paths(__log, pv_paths_pv_file, pv_paths_pv_log,
 			   pv_paths_pv_log_plat, pv_paths_pv_log_file,
@@ -775,7 +776,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 			   pv_paths_pv_devmeta_plat_key, pv_paths_lib_hook,
 			   pv_paths_volumes_plat_file, pv_paths_configs_file,
 			   pv_paths_lib_lxc_rootfs_mount,
-			   pv_paths_lib_lxc_lxcpath);
+			   pv_paths_lib_lxc_lxcpath, pv_paths_lxc_file);
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_paths_fn");
 

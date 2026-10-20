@@ -119,6 +119,7 @@ typedef enum {
 #define SYSTEM_MEDIADIR_DEF "/media"
 #define SYSTEM_RUNDIR_DEF "/pv"
 #define SYSTEM_DISKSDIR_DEF "/run/pantavisor/disks"
+#define SYSTEM_LXCDIR_DEF "/run/pantavisor/lxc"
 #define SYSTEM_USRDIR_DEF "/usr"
 
 struct pv_config_entry {
@@ -308,6 +309,7 @@ static struct pv_config_entry entries[] = {
 	{ INIT_MODE, "PV_SYSTEM_INIT_MODE", PV, 0, false,
 	  .value.i = IM_EMBEDDED },
 	{ STR, "PV_SYSTEM_LIBDIR", PV, 0, false, .value.s = SYSTEM_LIBDIR_DEF },
+	{ STR, "PV_SYSTEM_LXCDIR", PV, 0, false, .value.s = SYSTEM_LXCDIR_DEF },
 	{ STR, "PV_SYSTEM_MEDIADIR", PV, 0, false,
 	  .value.s = SYSTEM_MEDIADIR_DEF },
 	{ BOOL, "PV_SYSTEM_MOUNT_SECURITYFS", PV, 0, false, .value.b = false },

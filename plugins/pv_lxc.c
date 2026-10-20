@@ -40,6 +40,7 @@
 #include <stdbool.h>
 
 #include "utils/fs.h"
+#include "cgroup.h"
 #include "pv_lxc.h"
 #include "utils/list.h"
 #include "pvlogger.h"
@@ -96,6 +97,7 @@ void (*__pv_paths_volumes_plat_file)(char *, size_t, const char *,
 void (*__pv_paths_configs_file)(char *, size_t, const char *) = NULL;
 void (*__pv_paths_lib_lxc_rootfs_mount)(char *, size_t) = NULL;
 void (*__pv_paths_lib_lxc_lxcpath)(char *, size_t) = NULL;
+void (*__pv_paths_lxc_file)(char *, size_t, const char *) = NULL;
 
 void pv_set_pv_instance_fn(void *fn_pv_get_instance)
 {
@@ -109,7 +111,7 @@ void pv_set_pv_paths_fn(
 	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
 	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
 	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
-	void *fn_pv_paths_lib_lxc_lxcpath)
+	void *fn_pv_paths_lib_lxc_lxcpath, void *fn_pv_paths_lxc_file)
 {
 	__vlog = fn_vlog;
 	__pv_paths_pv_file = fn_pv_paths_pv_file;
@@ -125,6 +127,7 @@ void pv_set_pv_paths_fn(
 	__pv_paths_configs_file = fn_pv_paths_configs_file;
 	__pv_paths_lib_lxc_rootfs_mount = fn_pv_paths_lib_lxc_rootfs_mount;
 	__pv_paths_lib_lxc_lxcpath = fn_pv_paths_lib_lxc_lxcpath;
+	__pv_paths_lxc_file = fn_pv_paths_lxc_file;
 }
 
 void pv_set_pv_conf_loglevel_fn(int loglevel)
@@ -176,32 +179,168 @@ static int pv_setup_lxc_log(struct pv_log_info *pv_log_i, const char *plat_name,
 	return 0;
 }
 
+// explicit dir keys only when PID 1 is outside the base cgroup; LXC 4+ needs both
 static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 {
+	char container_dir[PATH_MAX], monitor_dir[PATH_MAX];
+	const char *version = lxc_get_version();
+
+	if (pv_get_instance()->cgroupv == CGROUP_UNIFIED && version &&
+	    atoi(version) >= 4) {
+		int ret = pv_cgroup_v2_lxc_dirs(c->name, container_dir,
+						monitor_dir, PATH_MAX);
+
+		if (ret < 0) {
+			pv_log(WARN,
+			       "container '%s': could not work out its cgroup paths",
+			       c->name);
+		} else if (ret > 0) {
+			c->set_config_item(c, "lxc.cgroup.dir.container",
+					   container_dir);
+			c->set_config_item(c, "lxc.cgroup.dir.monitor",
+					   monitor_dir);
+		}
+		return;
+	}
+
 	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
 		c->set_config_item(c, "lxc.cgroup.relative", "1");
 	}
+}
 
-	// only for cgroup unified
-	if (__pv_get_instance()->cgroupv != CGROUP_UNIFIED)
-		return;
+enum cgroup_line_kind {
+	CGROUP_LINE_OTHER,
+	CGROUP_LINE_V1,
+	CGROUP_LINE_V2,
+};
 
-	// XXX: this might change with LXC 5.0, as we might be able to support the original lxc.conf
+static char *pv_trim(char *s)
+{
+	char *end;
 
-	char value[PATH_MAX];
+	while (*s == ' ' || *s == '\t')
+		s++;
+	end = s + strlen(s);
+	while (end > s && (end[-1] == ' ' || end[-1] == '\t' ||
+			   end[-1] == '\n' || end[-1] == '\r'))
+		end--;
+	*end = '\0';
 
-	// remove all ilegacy cgroup allow and deny config
-	while (c->get_config_item(c, "lxc.cgroup.devices.allow", value,
-				  PATH_MAX) > 0) {
-		c->set_config_item(c, "lxc.cgroup.devices.allow", NULL);
+	return s;
+}
+
+// cgroup.dir and cgroup.relative work on both versions, so they are not counted
+static enum cgroup_line_kind pv_cgroup_line_kind(const char *key)
+{
+	const char *rest;
+
+	if (!strncmp(key, "lxc.cgroup2.", strlen("lxc.cgroup2.")))
+		return CGROUP_LINE_V2;
+
+	if (strncmp(key, "lxc.cgroup.", strlen("lxc.cgroup.")))
+		return CGROUP_LINE_OTHER;
+
+	rest = key + strlen("lxc.cgroup.");
+	if (!strcmp(rest, "dir") || !strncmp(rest, "dir.", strlen("dir.")) ||
+	    !strcmp(rest, "relative"))
+		return CGROUP_LINE_OTHER;
+
+	return CGROUP_LINE_V1;
+}
+
+static bool pv_cgroup_line_is_allow_all(const char *key, const char *value)
+{
+	return (!strcmp(key, "lxc.cgroup.devices.allow") ||
+		!strcmp(key, "lxc.cgroup2.devices.allow")) &&
+	       !strcmp(value, "a");
+}
+
+// the signed original stays untouched, LXC loads the filtered copy
+static int pv_filter_cgroup_lines(struct pv_platform *p, const char *conf_file,
+				  char *out, size_t out_size)
+{
+	FILE *in, *outf;
+	char *line = NULL;
+	size_t cap = 0;
+	int removed = 0, kept = 0;
+	enum cgroup_line_kind running;
+	struct pantavisor *pv = __pv_get_instance();
+
+	snprintf(out, out_size, "%s", conf_file);
+
+	if (pv->cgroupv == CGROUP_UNIFIED)
+		running = CGROUP_LINE_V2;
+	else if (pv->cgroupv == CGROUP_LEGACY || pv->cgroupv == CGROUP_HYBRID)
+		running = CGROUP_LINE_V1;
+	else
+		return 0;
+
+	in = fopen(conf_file, "r");
+	if (!in)
+		return 0;
+
+	// no container sees this directory, it only holds effective configs
+	__pv_paths_lxc_file(out, out_size, p->name);
+	char *dir = strdup(out);
+	if (dir) {
+		pv_fs_mkdir_p(dirname(dir), 0700);
+		free(dir);
 	}
-	while (c->get_config_item(c, "lxc.cgroup.devices.deny", value,
-				  PATH_MAX) > 0) {
-		c->set_config_item(c, "lxc.cgroup.devices.deny", NULL);
+	outf = fopen(out, "w");
+	if (!outf) {
+		pv_log(WARN, "could not write %s: %s, using the original", out,
+		       strerror(errno));
+		snprintf(out, out_size, "%s", conf_file);
+		fclose(in);
+		return 0;
 	}
 
-	// substitute it with cgroup2 allow a
-	c->set_config_item(c, "lxc.cgroup2.devices.allow", "a");
+	while (getline(&line, &cap, in) > 0) {
+		char *eq, *key, *value = NULL, *copy = strdup(line);
+		enum cgroup_line_kind kind = CGROUP_LINE_OTHER;
+
+		if (!copy)
+			break;
+		key = pv_trim(copy);
+		eq = (*key == '#') ? NULL : strchr(key, '=');
+		if (eq) {
+			*eq = '\0';
+			value = pv_trim(eq + 1);
+			key = pv_trim(key);
+			kind = pv_cgroup_line_kind(key);
+		}
+
+		if (kind == CGROUP_LINE_OTHER || kind == running) {
+			fputs(line, outf);
+			if (kind == running)
+				kept++;
+		} else if (pv_cgroup_line_is_allow_all(key, value)) {
+			pv_log(WARN,
+			       "container '%s': '%s = a' is not needed and was removed, a container without device lines gets every device its parent allows",
+			       p->name, key);
+		} else {
+			pv_log(INFO,
+			       "container '%s': removed '%s = %s', it is for cgroup %s",
+			       p->name, key, value,
+			       running == CGROUP_LINE_V2 ? "v1" : "v2");
+			removed++;
+		}
+		free(copy);
+	}
+	free(line);
+	fclose(in);
+	fclose(outf);
+
+	if (removed && !kept) {
+		pv_log(ERROR,
+		       "container '%s' has no cgroup %s lines after removing %d cgroup %s lines, refusing to start it without limits",
+		       p->name, running == CGROUP_LINE_V2 ? "v2" : "v1",
+		       removed, running == CGROUP_LINE_V2 ? "v1" : "v2");
+		unlink(out);
+		return -1;
+	}
+
+	return 0;
 }
 
 static char *inschr(char *path, int n, char chr, char *seed)
@@ -774,6 +913,11 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 	pid_t init_pid = -1;
 	pid_t child_pid = -1;
 	sigset_t oldmask;
+	char load_file[PATH_MAX];
+
+	if (pv_filter_cgroup_lines(p, conf_file, load_file, PATH_MAX))
+		return -1;
+
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
 	dname = dirname(dname);
@@ -855,7 +999,7 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 
 		c->clear_config(c);
 
-		if (!c->load_config(c, conf_file)) {
+		if (!c->load_config(c, load_file)) {
 			pv_log(ERROR,
 			       "load config for LXC container '%s' failed",
 			       p->name);

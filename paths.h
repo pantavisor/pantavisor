@@ -166,6 +166,7 @@ void pv_paths_etc_policy_file(char *buf, size_t size, const char *name);
 void pv_paths_etc_ssh_file(char *buf, size_t size, const char *name);
 
 void pv_paths_configs_file(char *buf, size_t size, const char *name);
+void pv_paths_lxc_file(char *buf, size_t size, const char *name);
 
 void pv_paths_cert(char *buf, size_t size, const char *name);
 
