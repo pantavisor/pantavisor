@@ -1,0 +1,6 @@
+== rate limit ==
+burst A: 1 new line(s), (1 times)
+burst B: 0 new line(s)
+burst C: 1 new line(s), (2 times)
+== dmesg ==
+pv-log-server holds /dev/kmsg: yes
