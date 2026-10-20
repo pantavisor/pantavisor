@@ -3,7 +3,7 @@
 	"description": "Update retries when PV crashes",
 	"setup": {
 		"config": {
-			"env": "PV_CONTROL_REMOTE=1 PV_REVISION_RETRIES=3",
+			"env": "PV_CONTROL_REMOTE=1 PV_REVISION_RETRIES=3 PV_SECUREBOOT_MODE=disabled",
 			"usrmeta": ""
 		},
 		"containers": {

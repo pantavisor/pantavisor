@@ -261,6 +261,10 @@ Before committing a new test, always check that it shares these rules:
 21. **Use echo labels between asserts:** Besides the own test assertions, use labels to
     signify what we are doing at every moment (e.g. "== update 3: modify pv-example-app
     again =="). This will ease debugging when a test fails.
+22. **Disable secure boot when posting signed content:** Any test script that modifies
+    a revision and leaves it unsigned must set `PV_SECUREBOOT_MODE=disabled` in
+    `setup.config.env`, so targets can re-type or SKIP accordingly. This doesn't apply
+    to unmodified `pv-example-*` containers, which are signed during build time.
 
 ## Updating expected output for an existing test
 

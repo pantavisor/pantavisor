@@ -3,7 +3,7 @@
 	"description": "STAGED via MOUNTED + lifecycle_goal: stage, API start/stop/start, reject start on plain MOUNTED, unknown lifecycle_goal falls back",
 	"setup": {
 		"config": {
-			"env": "PV_CONTROL_REMOTE=0"
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled"
 		},
 		"containers": {
 			"tarballs": [
