@@ -1,0 +1,93 @@
+#!/bin/sh
+#
+# /dev/kmsg ring buffer overruns under a boot-time log config:
+# docs/reference/logserver-sockets.md
+#
+# The log server is forked before user metadata is applied and never re-reads
+# its config, so every key here comes from test.json's env, not usrmeta:
+#
+#   PV_LOG_CAPTURE_DMESG=1          the log server holds /dev/kmsg open
+#   PV_LOG_LEVEL=5                  keeps the DEBUG overrun line
+#   PV_LOG_SERVER_OUTPUTS=filetree  pantavisor.log is where the line is read
+#
+# Each burst stops pv-log-server, writes more than the kernel ring buffer
+# holds to /dev/kmsg and resumes it, so its next read of /dev/kmsg fails with
+# EPIPE exactly once. The overrun line is logged at most once per 10 s with
+# the number of overruns since the previous one.
+#
+# The kernel ring buffer is shared by every appengine on the host, so a burst
+# wipes the dmesg history of tests running in parallel: no test may assert on
+# dmesg contents.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+RUN="$$$(date +%s)"
+
+CONF=$(pvcontrol conf ls)
+conf_val() { printf '%s' "$CONF" | jq -r --arg k "$1" '.[] | select(.key == $k) | .value'; }
+
+LOGROOT=$(conf_val PV_LOG_DIR); LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+L="$LOGROOT/current"
+PVLOG="$L/pantavisor/pantavisor.log"
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+PID=$(pv_exec sh -c 'for p in /proc/[0-9]*; do [ "$(cat $p/comm 2>/dev/null)" = pv-log-server ] && echo ${p##*/}; done' | tr -d '\r' | head -n1)
+if [ -z "$PID" ]; then
+	echo "ERROR: pv-log-server not found on the target" >&2
+	exit 1
+fi
+
+overruns() { pv_exec sh -c "grep -c 'kernel ring buffer overrun' '$PVLOG'" | tr -d '\r'; }
+last_count() { pv_exec sh -c "grep 'kernel ring buffer overrun' '$PVLOG' | tail -n1" | tr -d '\r' | sed -n 's/.*overrun (\([0-9]*\) times).*/\1/p'; }
+
+# ~8 MiB in 900-byte records, well over any usual ring buffer size; the
+# marker is written after resuming, so once it is in the logs the overrun has
+# been handled
+burst() {
+	pv_exec sh -c "
+		l=\$(printf '%0900d' 0)
+		kill -STOP $PID
+		exec 3> /dev/kmsg
+		i=0
+		while [ \$i -lt 9000 ]; do
+			echo \"pvtest-overrun \$l\" >&3
+			i=\$((i + 1))
+		done
+		exec 3>&-
+		kill -CONT $PID
+		echo 'pvtest-overrun-done-$RUN-$1' > /dev/kmsg
+	" > /dev/null 2>&1
+	if ! wait_for_status "pv_exec grep -rqF -- 'pvtest-overrun-done-$RUN-$1' '$L'" 0 60 > /dev/null 2>&1; then
+		echo "burst $1: marker never reached the logs" >&2
+	fi
+}
+
+report() {
+	n=$(overruns)
+	echo "burst $1: $((n - $2)) new line(s)$( [ "$n" -gt "$2" ] && echo ", ($(last_count) times)")"
+}
+
+# let a window opened by an overrun during boot expire
+sleep 11
+
+echo "== rate limit =="
+before=$(overruns)
+burst A
+report A "$before"
+
+before=$(overruns)
+burst B
+report B "$before"
+
+sleep 11
+before=$(overruns)
+burst C
+report C "$before"
+
+echo "== dmesg =="
+echo "pv-log-server holds /dev/kmsg: $(yesno pv_exec sh -c "ls -l /proc/$PID/fd | grep -q /dev/kmsg")"
