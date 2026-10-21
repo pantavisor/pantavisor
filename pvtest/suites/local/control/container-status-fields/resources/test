@@ -1,0 +1,58 @@
+#!/bin/sh
+#
+# pid, started_at and restarts in GET /containers (pvcontrol containers ls):
+#
+# - a running container has all three; pid is a process of the target and
+#   started_at is a recent time
+# - a restart gives a new pid, a new start and restarts goes up by one
+# - a stopped container has restarts but no pid and no started_at
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+name="pv-example-app"
+
+field() {
+	pvcontrol containers ls | tr -d '\r' | jq -M -r --arg n "$name" --arg f "$1" '.[] | select(.name == $n) | .[$f] // "absent"'
+}
+
+wait_for_status() {
+	local i
+	for i in $(seq 1 60); do
+		[ "$(field status)" = "$1" ] && return 0
+		sleep 1
+	done
+	return 1
+}
+
+echo "== running container =="
+wait_for_status STARTED || wait_for_status READY || { echo "ERROR: $name did not start" >&2; exit 1; }
+pid1=$(field pid)
+started1=$(field started_at)
+now=$(pv_exec date +%s | tr -d '\r')
+echo "pid is a number: $([ "$pid1" -gt 0 ] 2>/dev/null && echo yes || echo no)"
+echo "pid is a process of the target: $(pv_exec test -d "/proc/$pid1" && echo yes || echo no)"
+echo "started_at is a recent time: $([ "$started1" -le "$now" ] && [ $((now - started1)) -lt 600 ] && echo yes || echo no)"
+echo "restarts: $(field restarts)"
+
+echo "== restart =="
+pvcontrol containers restart "$name" > /dev/null 2>&1
+sleep 2
+wait_for_status STARTED || wait_for_status READY || { echo "ERROR: $name did not start again" >&2; exit 1; }
+for i in $(seq 1 30); do
+	[ "$(field restarts)" = "1" ] && break
+	sleep 1
+done
+pid2=$(field pid)
+started2=$(field started_at)
+echo "restarts: $(field restarts)"
+echo "pid changed: $([ "$pid2" != "$pid1" ] && echo yes || echo no)"
+echo "started_at did not go back: $([ "$started2" -ge "$started1" ] && echo yes || echo no)"
+
+echo "== stopped container =="
+pvcontrol containers stop "$name" > /dev/null 2>&1
+wait_for_status STOPPED || { echo "ERROR: $name did not stop" >&2; exit 1; }
+echo "status: $(field status)"
+echo "pid: $(field pid)"
+echo "started_at: $(field started_at)"
+echo "restarts: $(field restarts)"
+pvcontrol containers start "$name" > /dev/null 2>&1

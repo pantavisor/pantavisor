@@ -1,0 +1,154 @@
+#!/bin/sh
+#
+# pvcontrol containers exec <container> -- <command> (POST /containers/<name>/exec)
+# while a devmode revision runs.
+#
+# - the exit code, stdout and stderr of the command come back separately
+# - stdin reaches the command
+# - a command that runs too long is ended after the timeout
+# - output over the limit is cut, and the command still ends
+# - arguments reach the command as they are, with no shell in between
+# - the command runs in the namespaces, the cgroup and the capabilities of the container
+# - a mgmt container can run commands, a container without the role cannot
+# - pantavisor itself (_pv_), an unknown container and a stopped container are refused
+# - at most 4 commands run at the same time
+# - pantavisor.devmode.allowed in the device metadata is 1
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+target="pv-example-norole"
+mgmt="pv-example-mgmt"
+stoppable="pv-example-app"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+# show <exec arguments...>: print stdout, stderr and the exit code on separate lines
+show() {
+	local errfile out
+	errfile=$(mktemp)
+	out=$(pvcontrol containers exec "$@" 2> "$errfile"; echo "exit: $?")
+	echo "stdout: $(echo "$out" | head -n -1 | tr -d '\r')"
+	echo "stderr: $(tr -d '\r' < "$errfile" | grep -v '^/usr/bin/fallbear-cmd')"
+	echo "$out" | tail -n 1
+	rm -f "$errfile"
+}
+
+echo "== enable devmode, no devmode revision yet =="
+devmode_conf_enable || exit 1
+out=$(pvcontrol containers exec "$target" -- echo x 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== run a devmode revision =="
+pvcontrol devmode create > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+echo "pantavisor.devmode.allowed: $(pvcontrol devmeta ls | jq -M -r '.["pantavisor.devmode.allowed"]' | tr -d '\r')"
+
+echo "== stdout =="
+show "$target" -- echo hello
+
+echo "== exit code =="
+show "$target" -- sh -c "exit 7"
+
+echo "== stdout and stderr are separate =="
+show "$target" -- sh -c "echo to-stdout; echo to-stderr >&2"
+
+echo "== stdin =="
+out=$(printf 'from stdin' | pvcontrol containers exec --stdin "$target" -- cat)
+echo "exit: $?"
+echo "stdout: $(echo "$out" | tr -d '\r')"
+
+echo "== command not found =="
+show "$target" -- no-such-command
+
+echo "== arguments are not parsed by a shell =="
+show "$target" -- echo "it's a \"test\" \$HOME * ; (x)"
+show "$target" -- printf '%s|\n' 'one two' '' 'three'
+
+echo "== working directory and environment =="
+show --cwd /tmp "$target" -- pwd
+show --env GREETING=hello "$target" -- printenv GREETING
+
+echo "== timeout =="
+start=$(date +%s)
+show --timeout 2 "$target" -- sleep 30
+echo "ended early: $([ $(($(date +%s) - start)) -lt 15 ] && echo yes || echo no)"
+echo "sleep left behind: $(pvcontrol containers exec "$target" -- sh -c 'ps | grep -c "[s]leep 30"' | tr -d '\r')"
+
+echo "== output limit =="
+echo "bytes kept: $(pvcontrol containers exec --max-output 100 "$target" -- head -c 3000000 /dev/zero | wc -c | tr -d ' ')"
+echo "exit: $?"
+
+echo "== the namespaces, cgroup and capabilities of the container =="
+echo "hostname: $(pvcontrol containers exec "$target" -- hostname | tr -d '\r')"
+echo "pid 1: $(pvcontrol containers exec "$target" -- cat /proc/1/comm | tr -d '\r')"
+echo "container file visible: $(pvcontrol containers exec "$target" -- test -e /usr/bin/pv-app && echo yes || echo no)"
+own_cgroup=$(pvcontrol containers exec "$target" -- cat /proc/self/cgroup | tr -d '\r')
+init_cgroup=$(pvcontrol containers exec "$target" -- cat /proc/1/cgroup | tr -d '\r')
+echo "same cgroup as the container init: $([ "$own_cgroup" = "$init_cgroup" ] && echo yes || echo no)"
+own_caps=$(pvcontrol containers exec "$target" -- grep CapBnd /proc/self/status | tr -d '\r')
+init_caps=$(pvcontrol containers exec "$target" -- grep CapBnd /proc/1/status | tr -d '\r')
+echo "same capability bounding set as the container init: $([ -n "$own_caps" ] && [ "$own_caps" = "$init_caps" ] && echo yes || echo no)"
+
+echo "== from a container with the mgmt role =="
+show_from_mgmt=$(pventer -c "$mgmt" pvcontrol containers exec "$target" -- echo from-mgmt 2>&1 | tr -d '\r' | grep -v '^/usr/bin/fallbear-cmd')
+echo "$show_from_mgmt"
+
+echo "== from a container without the mgmt role =="
+# curl, because pvcurl loses the answer when the call is refused before the body is read
+out=$(pventer -c "$target" curl -s -X POST --data {} -w %{http_code} --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/$mgmt/exec" 2>&1)
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== pantavisor itself and unknown containers are not targets =="
+for name in _pv_ no-such-container; do
+	out=$(pvcontrol containers exec "$name" -- echo x 2>&1)
+	echo "$name exit: $?"
+	echo "$out" | tr -d '\r' | grep '^{'
+done
+
+echo "== a stopped container =="
+pvcontrol containers stop "$stoppable" > /dev/null 2>&1
+for i in $(seq 1 30); do
+	[ "$(pvcontrol containers ls | tr -d '\r' | jq -M -r --arg n "$stoppable" '.[] | select(.name == $n) | .status')" = "STOPPED" ] && break
+	sleep 1
+done
+out=$(pvcontrol containers exec "$stoppable" -- echo x 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+pvcontrol containers start "$stoppable" > /dev/null 2>&1
+
+echo "== bad requests =="
+out=$(pvcontrol containers exec --timeout 0 "$target" -- echo x 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== at most 4 commands at the same time =="
+# one session on the target: many parallel ssh logins are refused
+many=$(mktemp)
+cat > "$many" <<'EOS'
+dir=$(mktemp -d)
+for n in 1 2 3 4 5 6; do
+	( pvcontrol containers exec --timeout 30 "$1" -- sleep 10 > /dev/null 2>&1; echo $? > "$dir/$n" ) &
+done
+wait
+echo "ran: $(cat "$dir"/* | grep -c '^0$')"
+echo "refused as busy: $(cat "$dir"/* | grep -c '^75$')"
+rm -rf "$dir"
+EOS
+many_staged=$(pv_stage_file "$many")
+pv_exec sh "$many_staged" "$target" | tr -d '\r'
+pv_unstage_file "$many_staged"
+rm -f "$many"
+show "$target" -- echo after-the-busy-ones

@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "GET /containers lists pid, started_at and restarts of a running container and drops pid and started_at once it is stopped",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
