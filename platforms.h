@@ -177,6 +177,8 @@ struct pv_platform {
 	char *exec;
 	unsigned long ns_share;
 	pid_t init_pid;
+	time_t started_at; // wall clock time of the last start
+	unsigned int start_count; // starts since the revision was loaded
 	struct pv_platform_log log;
 	struct pv_status status;
 	struct pv_group *group;
