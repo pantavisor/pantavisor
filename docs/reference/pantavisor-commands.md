@@ -29,6 +29,21 @@ Returns all containers with their [status](../overview/containers.md#status), [r
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/containers"
 ```
 
+Each container has these fields, among others. `pid`, `started_at` and `restarts` are only there once the container has been started in the running revision, and `pid` and `started_at` only while it is `STARTED` or `READY`:
+
+| Field | Description |
+|-------|-------------|
+| `name` | container name |
+| `status`, `status_goal` | see [status values](#status-values) |
+| `pid` | process id of the container init, as seen by Pantavisor |
+| `started_at` | start of the container, in seconds since 1970. On a device without a battery-backed clock this is the time of the moment, which can jump when the clock is set |
+| `restarts` | how many times the container was started again since the revision started; `0` after the first start |
+
+```
+$ pvcontrol containers ls | jq '.[] | select(.name == "my-container") | {status, pid, started_at, restarts}'
+{"status":"STARTED","pid":1234,"started_at":1761052800,"restarts":0}
+```
+
 #### Status values
 
 The same values are reported per group by [`/groups`](#groups) and per revision in
@@ -94,6 +109,46 @@ $ curl -X PUT --header "Content-Type: application/json" --data "{\"action\":\"re
 ```
 
 `stop` and `start` of a `system` container stay `403`. The answer to a call with `?reboot=1` that is accepted has the body `{"reboot":true}`: the device reboots right after it.
+
+### Run a command in a container
+
+`POST /containers/{name}/exec` runs a command in a running container and answers when the command ended. It is only available to containers with the `mgmt` role, and only while a [devmode](../overview/devmode.md) revision runs.
+
+```
+$ curl -X POST --header "Content-Type: application/json" --data '{"argv":["cat","/etc/os-release"],"timeout_s":10}' --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-container/exec"
+{"exit_code":0,"signal":null,"timed_out":false,"stdout_b64":"UFJFVFRZ...","stderr_b64":"","truncated":{"stdout":false,"stderr":false},"duration_ms":41}
+```
+
+The request body must have a `Content-Length` and is at most 384 KiB:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `argv` | array of strings | required, 1 to 256 entries of at most 4096 bytes each and 32 KiB together; run as given, without a shell. To use a shell write `["sh","-c","..."]`. `argv[0]` is looked up in the `PATH` of the container |
+| `stdin_b64` | string | base64 of the standard input, at most 256 KiB |
+| `timeout_s` | number | 1 to 600, 30 by default. The command gets `SIGTERM` then, and `SIGKILL` 2 seconds later |
+| `max_output` | number | 1 to 1048576, 16384 by default: bytes kept of each of stdout and stderr. The command is still read to its end, so it never blocks on a full pipe |
+| `cwd` | string | working directory in the container, `/` by default |
+| `env` | object | up to 32 variables added to the environment of the container init |
+
+The answer is `200` also when the command fails. `exit_code` is `null` when a signal ended the command, and `signal` holds the signal number. `stdout_b64` and `stderr_b64` are base64. A command that does not exist ends with `exit_code` `127` (not executable: `126`) and a message in stderr, as a shell would do.
+
+| Status | Condition |
+|--------|-----------|
+| `400` | bad JSON, no `argv`, a limit exceeded or no `Content-Length` |
+| `403` | the caller is not a `mgmt` container, or [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `false` |
+| `404` | the container is not in the running revision, or is `_pv_` (Pantavisor itself is never a target) |
+| `409` | the running revision is not a devmode revision, or the container is not running |
+| `500` | the command could not be started, for example the container cannot be joined |
+| `503` | 4 commands already run; the answer has a `Retry-After` header |
+
+The command runs as root of the container with:
+
+- the namespaces (mount, pid, network, uts, ipc and cgroup) and the cgroups of the container init, so it sees what the container sees and is limited as the container is;
+- the capability bounding set of the container init, so it never has more capabilities than the container;
+- the environment of the container init plus `env`;
+- the AppArmor profile of the container init, when Pantavisor itself runs under a different one.
+
+The seccomp filter of the container is not applied. Every call writes one line to `pantavisor.log` with the caller, the container, `argv[0]`, the exit code and the duration; arguments and output are not logged. Use it from a shell with `pvcontrol containers exec <name> -- <command>`, see [pvcontrol](../tools/pvcontrol.md#run-a-command-in-a-container).
 
 ## /devmode
 

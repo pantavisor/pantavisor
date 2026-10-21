@@ -243,6 +243,35 @@ pvcontrol containers ls | grep my-app     # STOPPED
 pvcontrol containers start my-app
 ```
 
+### Run a command in a container
+
+While a [devmode](../overview/devmode.md) revision runs, a container with the `mgmt` role can run a command in
+another running container. The command gets no shell: each argument after `--` reaches it as it is.
+
+```bash
+pvcontrol containers exec [--stdin] [--timeout <s>] [--max-output <bytes>] [--cwd <dir>] [--env <K=V>] <name> -- <command> [args...]
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--stdin` | send the standard input of `pvcontrol` to the command |
+| `--timeout <s>` | end the command after this many seconds: 30 by default, at most 600 |
+| `--max-output <bytes>` | keep this many bytes of stdout and of stderr, 16384 by default, at most 1 MiB |
+| `--cwd <dir>` | working directory in the container, `/` by default |
+| `--env <K=V>` | environment variable for the command, can be repeated up to 32 times |
+
+`pvcontrol` prints stdout of the command on its own stdout and stderr on its own stderr, and exits with the exit code
+of the command: 124 after a timeout, 128 plus the signal number when a signal ended the command, 75 when 4 commands
+already run, 255 when pantavisor refuses the call.
+
+```bash
+pvcontrol containers exec my-app -- cat /etc/os-release
+echo "hello" | pvcontrol containers exec --stdin my-app -- tr a-z A-Z
+pvcontrol containers exec --timeout 5 my-app -- sh -c "sleep 60"; echo $?     # 124
+```
+
+The raw call and the answers are in the [control socket reference](../reference/pantavisor-commands.md#run-a-command-in-a-container).
+
 ---
 
 ## Daemons
@@ -529,6 +558,7 @@ On a platform without managed drivers these are effectively no-ops returning
 |---------------------|------|----------|
 | `ls` / `containers ls` | GET | `/containers` |
 | `containers start\|stop\|restart <name>` | PUT | `/containers/{name}` |
+| `containers exec <name> -- <command>` | POST | `/containers/{name}/exec` |
 | `groups ls` | GET | `/groups` |
 | `daemons ls` | GET | `/daemons` |
 | `daemons start\|stop\|restart <name>` | PUT | `/daemons/{name}` |

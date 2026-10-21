@@ -185,6 +185,19 @@ curl -X DELETE --unix-socket /pantavisor/pv-ctrl http://localhost/devmode/contai
 
 The first call shows whether devmode is on, the running devmode revision, the revision it is based on and the inlay directory of each container. The second call empties the inlay of one container, including its whiteouts and opaque directories, and the overlay work directory next to it. The image files show again in `/pantavisor/devmode/<container>` right away, and in the container after its next restart.
 
+## Run commands in a container
+
+While a devmode revision runs, a container with the `mgmt` role can run a command in any other running container, with no ssh or shell in between:
+
+```bash
+pvcontrol containers exec my-container -- cat /etc/os-release
+pvcontrol containers exec --timeout 5 my-container -- ls -l /usr/bin
+```
+
+The command runs in the namespaces, cgroups and capabilities of the container. The arguments reach it as you type them, so quotes and `$` need no extra escaping. A command can run for 600 seconds at most, and 4 commands can run at the same time.
+
+The call is refused outside devmode (`403` when `PV_DEVMODE_ALLOWED` is off, `409` when no devmode revision runs), for callers without the `mgmt` role (`403`) and for Pantavisor itself (`404`). The raw call, its limits and all answers are in the [control socket reference](../reference/pantavisor-commands.md#run-a-command-in-a-container). Whether devmode is allowed on a device is also in its device metadata: `pantavisor.devmode.allowed` is `1` or `0`.
+
 ## Fallback to the last commit
 
 A devmode revision is never committed. It is installed as a try, and stays one:
@@ -222,4 +235,4 @@ While `devmode/l/<name>` or `devmode/r/<number>` exists, the revision it is base
 ## Reference
 
 - [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_DEVMODE_ALLOWED`
-- [Control socket](../reference/pantavisor-commands.md#devmode) — `/devmode`, `/steps/devmode/...`, container restart with `?reboot=1`
+- [Control socket](../reference/pantavisor-commands.md#devmode) — `/devmode`, `/steps/devmode/...`, container restart with `?reboot=1`, [`/containers/{name}/exec`](../reference/pantavisor-commands.md#run-a-command-in-a-container)

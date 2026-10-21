@@ -76,6 +76,8 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/devmode-create` | Enable devmode in `pantavisor.config`, create a devmode revision from the running one, list its inlays; the committed revision does not change; create again while it runs changes nothing, `--resume` keeps inlay files, a plain create removes them, an explicit base works, a devmode or unknown base is refused | ✓ |
 | `local/runtime/devmode-inlay-files` | A file written into an inlay shows up after a restart, survives another one and is gone after a reset | ✓ |
 | `local/runtime/devmode-overlay` | `/pantavisor/devmode/<container>` lists the image files; removing a file or recreating a directory there hides it in the container after a restart; a reset brings both back; a file the container wrote itself shows read-only under `/pantavisor/devmode/.container/<container>` | ✓ |
+| `local/runtime/exec-refused` | Running a command in a container is refused while devmode is not allowed and for a container without the mgmt role; `pantavisor.devmode.allowed` is `0` | ✓ |
+| `local/runtime/exec-devmode` | Run commands in containers in devmode: exit code, stdout and stderr, stdin, timeout, output limit, arguments without a shell, namespaces, cgroup and capabilities of the container, mgmt and non-mgmt callers, `_pv_`, unknown and stopped containers, at most 4 at once; `pantavisor.devmode.allowed` is `1` | ✓ |
 | `local/runtime/devmode-leave` | Running the committed revision leaves devmode and no container keeps an inlay | ✓ |
 | `local/runtime/devmode-remove` | `pvcontrol steps rm` refuses the running devmode revision and a revision that is not a devmode revision; it removes a devmode revision that does not run and a second remove is refused | ✓ |
 
@@ -87,6 +89,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 |------|-------------|------|
 | `local/control/basic-endpoints` | Basic Endpoints (Containers, Objects, etc.) | ✓ |
 | `local/control/basic-endpoints-curl` | Basic Endpoints via cURL | ✓ |
+| `local/control/container-status-fields` | `pid`, `started_at` and `restarts` of a container in `GET /containers`, and their absence after a stop | ✓ |
 | `local/control/status-codes` | HTTP status-code contract (commands, signals, drivers, buildinfo) | ✓ |
 | `local/control/staged-start` | STAGED via MOUNTED + lifecycle_goal: stage, API start/stop/start, reject start on plain MOUNTED, unknown lifecycle_goal falls back | ✓ |
 | `local/control/pvcontrol-responsiveness` | pvcontrol responds normally during a time-consuming local operation (e.g. object transfer, sequential update) | |

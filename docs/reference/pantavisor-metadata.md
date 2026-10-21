@@ -26,6 +26,7 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantavisor.cgroup.layout` | `hybrid`, `legacy`, `unified` or `unknown` | cgroup layout of the system (see [checking which version is in use](../overview/cgroups.md#checking-which-version-is-in-use)) |
 | `pantavisor.cgroup.version` | `1` or `2` | cgroup version Pantavisor uses: `2` for `unified`, `1` for `hybrid` and `legacy` |
 | `pantavisor.cpumodel` | string | CPU model name |
+| `pantavisor.devmode.allowed` | 0 or 1 | `1` if [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is set, so [devmode](../overview/devmode.md) revisions can run; read at start, check it with `pvcontrol devmeta ls \| jq '.["pantavisor.devmode.allowed"]'` |
 | `pantavisor.devmode` | string | name of the running [devmode](../overview/devmode.md) revision, for example `devmode/r/187`; the key only exists while devmode runs |
 | `pantavisor.dtmodel` | string | Device Tree model name |
 | `pantavisor.mode` | local or remote | [see operation modes](../overview/pantavisor-architecture.md#communication-with-the-outside-world) |
