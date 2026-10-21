@@ -524,6 +524,17 @@ static int pv_devmeta_read_devmode(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+static int
+pv_devmeta_read_devmode_allowed(struct pv_devmeta_read *pv_devmeta_read)
+{
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	SNPRINTF_WTRUNC(pv_devmeta_read->buf, pv_devmeta_read->buflen, "%s",
+			pv_config_get_bool(PV_DEVMODE_ALLOWED) ? "1" : "0");
+	return 0;
+}
+
 static int pv_devmeta_read_mode(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
@@ -623,6 +634,8 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_CPUMODEL, .reader = pv_devmeta_read_cpumodel },
 	{ .key = DEVMETA_KEY_PV_REVISION, .reader = pv_devmeta_read_revision },
 	{ .key = DEVMETA_KEY_PV_DEVMODE, .reader = pv_devmeta_read_devmode },
+	{ .key = DEVMETA_KEY_PV_DEVMODE_ALLOWED,
+	  .reader = pv_devmeta_read_devmode_allowed },
 	{ .key = DEVMETA_KEY_PV_MODE, .reader = pv_devmeta_read_mode },
 	{ .key = DEVMETA_KEY_PV_CGROUP_LAYOUT,
 	  .reader = pv_devmeta_read_cgroup_layout },
