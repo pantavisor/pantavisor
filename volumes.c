@@ -201,6 +201,12 @@ struct pv_volume *pv_volume_add(struct pv_state *s, char *name)
 	return pv_volume_add_with_disk(s, name, NULL);
 }
 
+bool pv_volumes_handlers_enabled(void)
+{
+	return !getenv("pv_verityoff") &&
+	       pv_config_get_bool(PV_SECUREBOOT_HANDLERS);
+}
+
 int pv_volume_mount(struct pv_volume *v)
 {
 	int ret = -1;
@@ -292,9 +298,7 @@ int pv_volume_mount(struct pv_volume *v)
 			pv_fs_mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, NULL, MS_BIND | MS_REC,
 				    NULL);
-		} else if (handler &&
-			   (!getenv("pv_verityoff") &&
-			    pv_config_get_bool(PV_SECUREBOOT_HANDLERS))) {
+		} else if (handler && pv_volumes_handlers_enabled()) {
 			pv_log(INFO, "with '%s' handler", handler);
 
 			if (!partname) {

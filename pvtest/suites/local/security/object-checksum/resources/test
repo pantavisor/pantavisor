@@ -13,10 +13,19 @@ echo "device.json value validated: $(echo "$LOG" | grep -q 'validating value for
 echo "bsp/run.json value validated: $(echo "$LOG" | grep -q 'validating value for json .*/bsp/run\.json$' && echo yes || echo no)"
 echo "object checksums validated: $(echo "$LOG" | grep -q 'validating checksum for .*/objects/' && echo yes || echo no)"
 echo "bsp/pantavisor checksum skipped: $(echo "$LOG" | grep -q '^skipping validation of object named bsp/pantavisor and id=' && echo yes || echo no)"
-echo "pvr-sdk/root.squashfs checksum skipped: $(echo "$LOG" | grep -q '^skipping validation of object named pvr-sdk/root\.squashfs and id=' && echo yes || echo no)"
+# dm-verity data objects skip the boot checksum only when the dm-verity mount
+# handler runs (PV_SECUREBOOT_HANDLERS=1); otherwise they are checksummed
+HANDLERS=$(pvcontrol conf ls | tr -d '\r' | jq -r '.[] | select(.key == "PV_SECUREBOOT_HANDLERS") | .value')
+case "$HANDLERS" in 1|true) handlers=on ;; *) handlers=off ;; esac
 # unique object *names* skipped, not raw line count: a revision needing a
 # reboot to commit gets checksummed again on the post-reboot boot, doubling
 # every line here without meaning a different object got skipped
 skipped_names=$(echo "$LOG" | sed -n 's/^skipping validation of object named \([^ ]*\) and id=.*/\1/p' | sort -u)
-expected_names=$(printf '%s\n' bsp/pantavisor pvr-sdk/root.squashfs | sort)
-echo "no other objects skipped: $([ "$skipped_names" = "$expected_names" ] && echo yes || echo no)"
+if [ "$handlers" = on ]; then
+	# bsp/pantavisor plus the data devices of dm-verity volumes (squashfs)
+	other=$(echo "$skipped_names" | grep -v '^bsp/pantavisor$' | grep -v '\.squashfs$')
+else
+	# handler off: dm-verity data objects are checksummed like any other object
+	other=$(echo "$skipped_names" | grep -v '^bsp/pantavisor$')
+fi
+echo "no other objects skipped: $([ -z "$other" ] && echo yes || echo no)"
