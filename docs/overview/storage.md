@@ -512,7 +512,7 @@ Pantavisor offers **secureboot**, a security mechanism to ensure integrity of th
 
 Objects belonging to the revision that is about to be run after boot up are checked against the checksums stored in their [state JSON](revisions.md) by default.
 
-As running a full SHA hashsum of all artifacts can be time consuming for low spec targets and thus increase boot up time, a lazy integrity validation on [container storage](containers.md#storage) can be performed using handlers, which are specified at the [state JSON](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson). Handlers are scripts to mount/unmount volumes. The only supported handler so far is [dm-verity](https://www.kernel.org/doc/html/latest/admin-guide/device-mapper/verity.html).
+As running a full SHA hashsum of all artifacts can be time consuming for low spec targets and thus increase boot up time, a lazy integrity validation on [container storage](containers.md#storage) can be performed using handlers, which are specified at the [state JSON](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson). Handlers are scripts to mount/unmount volumes. The only supported handler so far is [dm-verity](https://www.kernel.org/doc/html/latest/admin-guide/device-mapper/verity.html). Volumes protected by dm-verity skip the boot checksum only while the handler runs, which is controlled by `PV_SECUREBOOT_HANDLERS` (`pvcontrol conf ls` shows the effective value); with it set to `0`, they are checksummed like every other object.
 
 Checksum can also be totally disabled at the [configuration level](../reference/pantavisor-configuration.md#summary) if boot up speed needs to be boosted further, with the `PV_SECUREBOOT_CHECKSUM` key.
 

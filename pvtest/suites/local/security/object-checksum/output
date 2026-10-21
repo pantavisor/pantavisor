@@ -3,5 +3,4 @@ device.json value validated: yes
 bsp/run.json value validated: yes
 object checksums validated: yes
 bsp/pantavisor checksum skipped: yes
-pvr-sdk/root.squashfs checksum skipped: yes
 no other objects skipped: yes
