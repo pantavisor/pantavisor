@@ -53,24 +53,35 @@ static bool ctrl_devmode_is_active(struct pantavisor *pv)
 	return pv->state && pv_storage_is_revision_devmode(pv->state->rev);
 }
 
+int pv_ctrl_devmode_check(const char **msg)
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	if (!pv_config_get_bool(PV_DEVMODE_ALLOWED)) {
+		*msg = "Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config";
+		return HTTP_FORBIDDEN;
+	}
+
+	if (!ctrl_devmode_is_active(pv)) {
+		*msg = "Not running a devmode revision";
+		return PV_HTTP_CONFLICT;
+	}
+
+	return 0;
+}
+
 // on failure the error is sent and false returned
 static bool ctrl_devmode_check_active(struct evhttp_request *req,
 				      struct pantavisor *pv)
 {
-	if (!pv_config_get_bool(PV_DEVMODE_ALLOWED)) {
-		pv_ctrl_utils_send_error(
-			req, HTTP_FORBIDDEN,
-			"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config");
-		return false;
-	}
+	const char *msg = NULL;
+	int code = pv_ctrl_devmode_check(&msg);
 
-	if (!ctrl_devmode_is_active(pv)) {
-		pv_ctrl_utils_send_error(req, PV_HTTP_CONFLICT,
-					 "Not running a devmode revision");
-		return false;
-	}
+	(void)pv;
+	if (code)
+		pv_ctrl_utils_send_error(req, code, msg);
 
-	return true;
+	return !code;
 }
 
 static void ctrl_devmode_inlay_path(struct pv_state *s, struct pv_platform *p,

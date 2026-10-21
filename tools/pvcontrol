@@ -143,12 +143,20 @@ usage_graph() {
 }
 
 usage_containers() {
-	echo "Usage: pvcontrol containers <ls|start|stop|restart> [arguments]"
+	echo "Usage: pvcontrol containers <ls|start|stop|restart|exec> [arguments]"
 	echo "Container lifecycle operations"
 	echo "       pvcontrol containers ls               - list all containers and their status"
 	echo "       pvcontrol containers start <name>     - start a stopped container"
 	echo "       pvcontrol containers stop <name>      - stop a running container"
 	echo "       pvcontrol containers restart <name>   - restart a container"
+	echo "       pvcontrol containers exec [options] <name> -- <command> [args...]"
+	echo "                                             - run a command in a running container (devmode only)"
+	echo "         --stdin         send the standard input to the command"
+	echo "         --timeout <s>   end the command after this many seconds (default 30, at most 600)"
+	echo "         --max-output <bytes>  keep this many bytes of each of stdout and stderr (default 16384)"
+	echo "         --cwd <dir>     working directory in the container"
+	echo "         --env <K=V>     environment variable for the command, can be repeated"
+	echo "       the exit code of the command is the exit code of pvcontrol (124 after a timeout)"
 }
 
 usage_devmode() {
@@ -446,6 +454,50 @@ parse_graph_args() {
 }
 
 container_name=''
+exec_stdin=0
+exec_timeout=30
+exec_max_output=
+exec_cwd=
+exec_env=
+exec_argv=
+
+# print the argument as a JSON string
+json_string() {
+	if [ -z "$1" ]; then printf '""'; return; fi
+	printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' -e ':a;N;$!ba;s/\n/\\n/g' | sed -e 's/^/"/' -e 's/$/"/'
+}
+
+parse_containers_exec() {
+	cmd='containerexec'
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--stdin) exec_stdin=1 ;;
+		--timeout) shift; exec_timeout="$1" ;;
+		--max-output) shift; exec_max_output="$1" ;;
+		--cwd) shift; exec_cwd="$1" ;;
+		--env)
+			shift
+			case "$1" in
+			*=*) ;;
+			*) usage_containers; exit 1 ;;
+			esac
+			exec_env="${exec_env}${exec_env:+,}$(json_string "${1%%=*}"):$(json_string "${1#*=}")"
+			;;
+		--) shift; break ;;
+		-*) usage_containers; exit 1 ;;
+		*) break ;;
+		esac
+		shift
+	done
+	if [ -z "$1" ]; then usage_containers; exit 1; fi
+	container_name="$1"
+	shift
+	[ "$1" = "--" ] && shift
+	if [ $# -eq 0 ]; then usage_containers; exit 1; fi
+	for arg in "$@"; do
+		exec_argv="${exec_argv}${exec_argv:+,}$(json_string "$arg")"
+	done
+}
 
 parse_containers_args() {
 	case "$1" in
@@ -620,7 +672,12 @@ parse_args() {
 		parse_ls_args "$2"
 		;;
 	containers)
-		parse_containers_args "$2" "$3"
+		if [ "$2" = "exec" ]; then
+			shift 2
+			parse_containers_exec "$@"
+		else
+			parse_containers_args "$2" "$3"
+		fi
 		;;
 	groups)
 		parse_groups_args "$2"
@@ -762,6 +819,41 @@ install_step() {
 
 	echo "{\"revision\":\"$rev\"}"
 	exit 0
+}
+
+# run the command in the container and exit like the command did
+containers_exec() {
+	body="{\"argv\":[$exec_argv],\"timeout_s\":$exec_timeout"
+	[ -n "$exec_max_output" ] && body="$body,\"max_output\":$exec_max_output"
+	[ -n "$exec_cwd" ] && body="$body,\"cwd\":$(json_string "$exec_cwd")"
+	[ -n "$exec_env" ] && body="$body,\"env\":{$exec_env}"
+	if [ "$exec_stdin" = 1 ]; then
+		body="$body,\"stdin_b64\":\"$(base64 | tr -d '\n')\""
+	fi
+	body="$body}"
+
+	wait_s=$((exec_timeout + 15))
+	response=`$CURL_CMD $noprogress_arg -s -w "\\n%{http_code}" --connect-timeout $wait_s --max-time $wait_s -X POST --header "Content-Type: application/json" --data "$body" --unix-socket "$SOCKET" "http://localhost/containers/$container_name/exec"`
+	http_code=`echo "$response" | tail -n 1`
+	content=`echo "$response" | head -n -1`
+
+	if [ "$http_code" != "200" ]; then
+		echo "$content" 1>&2
+		[ "$http_code" = "503" ] && exit 75
+		exit 255
+	fi
+
+	echo "$content" | sed -n 's/.*"stdout_b64":"\([^"]*\)".*/\1/p' | base64 -d
+	echo "$content" | sed -n 's/.*"stderr_b64":"\([^"]*\)".*/\1/p' | base64 -d 1>&2
+	case "$content" in
+		*'"timed_out":true'*) exit 124 ;;
+	esac
+	code=`echo "$content" | sed -n 's/.*"exit_code":\([0-9]*\).*/\1/p'`
+	if [ -z "$code" ]; then
+		sig=`echo "$content" | sed -n 's/.*"signal":\([0-9]*\).*/\1/p'`
+		exit $((128 + ${sig:-0}))
+	fi
+	exit "$code"
 }
 
 # print one string value of /devmode, empty unless a devmode revision runs
@@ -918,6 +1010,9 @@ exec_cmd() {
 			;;
 		containerstop)
 			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"stop\"}" --unix-socket "$SOCKET" "http://localhost/containers/$container_name"`
+			;;
+		containerexec)
+			containers_exec
 			;;
 		containerrestart)
 			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"restart\"}" --unix-socket "$SOCKET" "http://localhost/containers/$container_name"`
