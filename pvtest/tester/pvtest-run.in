@@ -1364,16 +1364,17 @@ persistent_worker() {
 	# After testing detach 
 	if [ -n "$_ae" ]; then
 		_slot_bind_ae "$_ae"
-		_state=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantahub.state"] // empty')
-		if [ "$_state" = "idle" ]; then
-			_dev_unclaim
-		else
-			_dev_delete_only
-		fi
 
-		# End-of-run courtesy reset
+		# End-of-run courtesy reset, before unclaim as it requires a DONE local revision
 		if [ "$PVTEST_RETYPE" != "container" ]; then
 			_settle_to_factory || pvtest_log WARN "final factory reset failed"
+		fi
+
+		_state=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantahub.state"] // empty')
+		if [ "$_state" = "idle" ]; then
+			_dev_unclaim || _dev_delete_only
+		else
+			_dev_delete_only
 		fi
 
 		pvtest_log INFO "[slot $_slot] SLOT_DETACH ae=$_ae"
