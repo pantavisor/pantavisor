@@ -1104,7 +1104,7 @@ static void exec_finish(struct exec_job *j)
 		if (j->con)
 			evhttp_connection_set_closecb(j->con, NULL, NULL);
 
-		// the default callback wrote "done" while the command was running
+		// drop the "done" the default callback leaves for uploads
 		struct evbuffer *rsp = evhttp_request_get_output_buffer(j->req);
 
 		if (rsp)
