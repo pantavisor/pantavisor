@@ -7,6 +7,8 @@ pantavisor.devmode.allowed: 1
 stdout: hello
 stderr: 
 exit: 0
+== the answer is plain JSON ==
+json: ok
 == exit code ==
 stdout: 
 stderr: 
