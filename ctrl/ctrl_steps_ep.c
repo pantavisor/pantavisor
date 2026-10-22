@@ -26,6 +26,7 @@
 #include "ctrl_upload.h"
 #include "ctrl_file.h"
 #include "ctrl_util.h"
+#include "pantavisor.h"
 #include "storage.h"
 #include "config.h"
 #include "paths.h"
@@ -263,6 +264,49 @@ static void ctrl_steps_commit(struct evhttp_request *req, void *ctx)
 			ctrl_step_commit_cb, req);
 }
 
+// Removing a devmode revision only frees space, so it does not need
+// PV_DEVMODE_ALLOWED like creating one does.
+static void ctrl_steps_devmode_delete(struct evhttp_request *req, void *ctx)
+{
+	struct pantavisor *pv = pv_get_instance();
+	char path[PATH_MAX] = { 0 };
+	char *name;
+
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
+
+	name = ctrl_steps_rev_name(req);
+	if (!name) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Missing revision name");
+		return;
+	}
+
+	if (!pv_storage_is_revision_devmode(name)) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Not a devmode revision");
+	} else if ((pv && pv->state && pv->state->rev &&
+		    !strcmp(pv->state->rev, name)) ||
+		   (pv && pv->update && pv->update->rev &&
+		    !strcmp(pv->update->rev, name))) {
+		pv_ctrl_utils_send_error(
+			req, PV_HTTP_CONFLICT,
+			"Revision is running or being updated");
+	} else {
+		pv_paths_storage_trail(path, PATH_MAX, name);
+		if (!pv_fs_path_exist(path)) {
+			pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
+						 "Revision not found");
+		} else {
+			pv_log(INFO, "removing devmode revision %s", name);
+			pv_storage_rm_rev(name);
+			pv_ctrl_utils_send_ok(req);
+		}
+	}
+
+	free(name);
+}
+
 int pv_ctrl_endpoints_steps_init()
 {
 	pv_ctrl_add_endpoint("/steps", EVHTTP_REQ_GET, true, ctrl_steps_list);
@@ -284,6 +328,8 @@ int pv_ctrl_endpoints_steps_init()
 			     ctrl_steps_send);
 	pv_ctrl_add_endpoint("/steps/devmode/l/{}", EVHTTP_REQ_PUT, true,
 			     ctrl_steps_recv);
+	pv_ctrl_add_endpoint("/steps/devmode/l/{}", EVHTTP_REQ_DELETE, true,
+			     ctrl_steps_devmode_delete);
 	pv_ctrl_add_endpoint("/steps/devmode/l/{}/progress", EVHTTP_REQ_GET,
 			     true, ctrl_steps_progress);
 	pv_ctrl_add_endpoint("/steps/devmode/l/{}/commitmsg", EVHTTP_REQ_PUT,
@@ -292,6 +338,8 @@ int pv_ctrl_endpoints_steps_init()
 			     ctrl_steps_send);
 	pv_ctrl_add_endpoint("/steps/devmode/r/{}", EVHTTP_REQ_PUT, true,
 			     ctrl_steps_recv);
+	pv_ctrl_add_endpoint("/steps/devmode/r/{}", EVHTTP_REQ_DELETE, true,
+			     ctrl_steps_devmode_delete);
 	pv_ctrl_add_endpoint("/steps/devmode/r/{}/progress", EVHTTP_REQ_GET,
 			     true, ctrl_steps_progress);
 	pv_ctrl_add_endpoint("/steps/devmode/r/{}/commitmsg", EVHTTP_REQ_PUT,

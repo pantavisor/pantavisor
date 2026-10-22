@@ -407,6 +407,7 @@ pvcontrol steps ls                              # list revisions on the device
 pvcontrol steps get current                     # state.json of the running revision
 pvcontrol steps get 0                           # state.json of revision 0
 pvcontrol steps show-progress current           # update progress (status: DONE/...)
+pvcontrol steps rm devmode/l/my-rev             # remove a devmode revision that does not run
 
 # Save state.json straight into a new local revision (with commit message)
 pvcontrol -f /tmp/state.json steps get current
@@ -548,6 +549,7 @@ On a platform without managed drivers these are effectively no-ops returning
 | `steps ls` | GET | `/steps` |
 | `steps get\|show-progress <rev>` | GET | `/steps/{rev}` / `/steps/{rev}/progress` |
 | `steps put\|install <path> <rev>` | PUT | `/steps/{rev}` (+ `/commitmsg`) |
+| `steps rm <devmode/l/rev\|devmode/r/number>` | DELETE | `/steps/devmode/l/{rev}` / `/steps/devmode/r/{number}` |
 | `devmode status` | GET | `/devmode` |
 | `devmode create [base] [--resume]` | POST | `/devmode` |
 | `devmode reset <container>` | DELETE | `/devmode/containers/{name}` |

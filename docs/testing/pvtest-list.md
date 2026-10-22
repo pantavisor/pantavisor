@@ -77,6 +77,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/devmode-inlay-files` | A file written into an inlay shows up after a restart, survives another one and is gone after a reset | ✓ |
 | `local/runtime/devmode-overlay` | `/pantavisor/devmode/<container>` lists the image files; removing a file or recreating a directory there hides it in the container after a restart; a reset brings both back | ✓ |
 | `local/runtime/devmode-leave` | Running the committed revision leaves devmode and no container keeps an inlay | ✓ |
+| `local/runtime/devmode-remove` | `pvcontrol steps rm` refuses the running devmode revision and a revision that is not a devmode revision; it removes a devmode revision that does not run and a second remove is refused | |
 
 ### control
 

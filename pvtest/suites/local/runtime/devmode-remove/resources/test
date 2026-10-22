@@ -1,0 +1,63 @@
+#!/bin/sh
+#
+# pvcontrol steps rm devmode/l/<revision> (DELETE /steps/devmode/l/<revision>).
+#
+# - the devmode revision that runs is refused
+# - a devmode revision that does not run is removed and leaves the revision list
+# - a revision that is not a devmode revision and one that is gone are refused
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+# listed: yes when the revision is in the revision list
+listed() {
+	pvcontrol steps ls | tr -d '\r' | jq -M -r '.[].name' | grep -qx "$1" && echo yes || echo no
+}
+
+echo "== enable devmode and run a devmode revision =="
+devmode_conf_enable || exit 1
+pvcontrol devmode create > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+echo "listed: $(listed "$devmode_rev")"
+
+echo "== the running devmode revision is refused =="
+out=$(pvcontrol steps rm "$devmode_rev" 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+echo "listed: $(listed "$devmode_rev")"
+
+echo "== run the committed revision again =="
+pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "leave devmode" "$base_rev" "DONE|UPDATED" >&2 \
+	|| { echo "ERROR: $base_rev did not come back" >&2; exit 1; }
+echo "listed: $(listed "$devmode_rev")"
+
+echo "== a devmode revision that does not run is removed =="
+pvcontrol steps rm "$devmode_rev" > /dev/null 2>&1
+echo "exit: $?"
+echo "listed: $(listed "$devmode_rev")"
+
+echo "== a revision that is gone is refused =="
+out=$(pvcontrol steps rm "$devmode_rev" 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== a revision that is not a devmode revision is refused =="
+out=$(pvcontrol steps rm "$base_rev" 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+echo "listed: $(listed "$base_rev")"

@@ -346,6 +346,13 @@ socket:
 curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/devmode/r/12"
 ```
 
+A devmode revision that does not run can be removed again. It does not need `PV_DEVMODE_ALLOWED`, because it only frees space. The answer is `200` when it is removed, `409` if it is the running revision or the one being updated to, `404` if it does not exist, and `400` if the name is not a devmode revision:
+
+```
+curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/devmode/l/my-rev"
+pvcontrol steps rm devmode/l/my-rev
+```
+
 Finally, you can set a commit message that will be stored along a revision and showed when listing revisions so the user can idendifcate each one of them:
 
 ```

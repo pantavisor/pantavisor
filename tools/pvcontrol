@@ -126,12 +126,13 @@ usage_objects() {
 }
 
 usage_steps() {
-	echo "Usage: pvcontrol steps <install|put|get|show-progress|ls> [path] <[remotes|locals]/branch/rev>"
+	echo "Usage: pvcontrol steps <install|put|get|show-progress|rm|ls> [path] <[remotes|locals]/branch/rev>"
 	echo "Step related operations"
 	echo "       pvcontrol steps install <path> locals/<revision>                 - installs a .tgz compressed tarball step and returns generated name if not specified"
 	echo "       pvcontrol steps put <path> locals/<revision>                     - creates step and puts state json in a given step"
 	echo "       pvcontrol steps get <locals/revision|revision|current>           - returns state json from a given step"
 	echo "       pvcontrol steps show-progress <locals/revision|revision|current> - returns update progress json from a given step"
+	echo "       pvcontrol steps rm <devmode/l/revision|devmode/r/number>         - removes a devmode revision that is not running"
 	echo "       pvcontrol steps ls                                               - lists steps from device"
 }
 
@@ -411,6 +412,11 @@ parse_steps_args() {
 	show-progress)
 		if [ -z "$2" ]; then usage_steps; exit 1; fi
 		cmd='stepprogress'
+		rev="$2"
+		;;
+	rm)
+		if [ -z "$2" ]; then usage_steps; exit 1; fi
+		cmd='steprm'
 		rev="$2"
 		;;
 	ls|list)
@@ -897,6 +903,9 @@ exec_cmd() {
 			;;
 		stepprogress)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps/$rev/progress"`
+			;;
+		steprm)
+			response=`$CURL -X DELETE --unix-socket "$SOCKET" "http://localhost/steps/$rev"`
 			;;
 		steplist)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps"`
