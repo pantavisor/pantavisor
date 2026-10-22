@@ -363,14 +363,14 @@ _stop_appengine() {
 
 # Reboot appengine and boot again with settings from ctrl
 _retype_handle_appengine() {
-	local ctrl="$1" id="$2" S="$3" cfg="$4" stor="$5" rev="$6" seed="$7"
+	local ctrl="$1" id="$2" S="$3" cfg="$4" stor="$5" rev="$6" seed="$7" release="$8"
 	local stf="$ctrl/state/slot${S}.ae" old ae gen
 
 	# Stop appengine and report status down
 	old=$(cat "$stf" 2>/dev/null)
 	[ -n "$old" ] && _stop_appengine "$old"
 	: > "$stf"
-	if [ -z "$cfg" ]; then
+	if [ -n "$release" ]; then
 		_retype_reply "$ctrl" "$id" "status=down"
 		return 0
 	fi

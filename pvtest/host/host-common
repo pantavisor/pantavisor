@@ -310,8 +310,8 @@ _release_device() {
 # Transport: one key=value file per slot, published by rename (.tmp.<id> -> <id>) so a
 # reader never sees it half-written; req/slot<N> in, resp/slot<N> out, one request in
 # flight per slot (the slot number is the address), state/ and seed/ are host-only.
-# Protocol: slot=,cfg=[,storage=,rev=,seed=] -> status=ready|down|failed|unsupported
-# [,ae=,exec=,host=,log=]. Empty cfg releases the slot; ready names the target in ae=
+# Protocol: slot=,cfg=[,storage=,rev=,seed=,release=1] -> status=ready|down|failed|unsupported
+# [,ae=,exec=,host=,log=]. release=1 frees the slot; ready names the target in ae=
 # and says how to reach it in exec=/host=, so the tester never builds that itself.
 
 # Reply tester via ctrl
@@ -326,11 +326,12 @@ _retype_reply() {
 
 # Run the manifest's $3 script (setbootconfig|flash) with settings from ctrl; contracts in docs/testing/device.md
 # flash also takes the revision name $5 and the tarballs the tester staged under ctrl seed/$6
+# $7=1 releases the device
 _retype_handle_device() {
-	local ctrl="$1" id="$2" mech="$3" cfg="$4" rev="$5" seed="$6"
+	local ctrl="$1" id="$2" mech="$3" cfg="$4" rev="$5" seed="$6" release="$7"
 	local script conf tag="$id"
 
-	if [ -z "$cfg" ]; then
+	if [ -n "$release" ]; then
 		_retype_reply "$ctrl" "$id" "status=down"
 		return 0
 	fi
@@ -400,7 +401,7 @@ _retype_handle_device() {
 _retype_service() {
 	local ctrl="$1" mech="$2"
 	mkdir -p "$ctrl/req" "$ctrl/resp" "$ctrl/state"
-	local req id S cfg stor rev seed
+	local req id S cfg stor rev seed release
 	while [ ! -e "$ctrl/stop" ]; do
 		for req in "$ctrl"/req/slot*; do
 			[ -e "$req" ] || continue
@@ -410,6 +411,7 @@ _retype_service() {
 			stor=$(sed -n 's/^storage=//p' "$req")
 			rev=$(sed -n 's/^rev=//p' "$req")
 			seed=$(sed -n 's/^seed=//p' "$req")
+			release=$(sed -n 's/^release=//p' "$req")
 			rm -f "$req"
 			case "$mech" in
 				# only test.docker.sh defines the container handler
@@ -419,9 +421,9 @@ _retype_service() {
 						_retype_reply "$ctrl" "$id" "status=failed"
 						continue
 					fi
-					( _retype_handle_appengine "$ctrl" "$id" "$S" "$cfg" "$stor" "$rev" "$seed" ) & ;;
-				setbootconfig) ( _retype_handle_device "$ctrl" "$id" setbootconfig "$cfg" ) & ;;
-				flash)         ( _retype_handle_device "$ctrl" "$id" flash "$cfg" "$rev" "$seed" ) & ;;
+					( _retype_handle_appengine "$ctrl" "$id" "$S" "$cfg" "$stor" "$rev" "$seed" "$release" ) & ;;
+				setbootconfig) ( _retype_handle_device "$ctrl" "$id" setbootconfig "$cfg" "" "" "$release" ) & ;;
+				flash)         ( _retype_handle_device "$ctrl" "$id" flash "$cfg" "$rev" "$seed" "$release" ) & ;;
 				*)         _retype_reply "$ctrl" "$id" "status=unsupported" ;;
 			esac
 		done

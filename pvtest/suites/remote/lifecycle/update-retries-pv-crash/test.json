@@ -3,8 +3,8 @@
 	"description": "Update retries when PV crashes",
 	"setup": {
 		"config": {
-			"env": "PV_CONTROL_REMOTE=1",
-			"usrmeta": "PV_REVISION_RETRIES=3"
+			"env": "PV_CONTROL_REMOTE=1 PV_REVISION_RETRIES=3",
+			"usrmeta": ""
 		},
 		"containers": {
 			"tarballs": [
