@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Unclaim is rejected unless on a DONE local revision, then re-claim reprocesses revision 1 under a new Hub id",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1 PV_CONTROL_REMOTE_ALWAYS=1 PV_SECUREBOOT_MODE=disabled",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

@@ -1,0 +1,38 @@
+== claim device (first Hub id) ==
+claim
+idle
+== Hub revision 1 (non-reboot) on first Hub id ==
+posted: 1
+UPDATED
+UPDATED
+== unclaim rejected on Hub revision ==
+Cannot do this operation if not running a local revision
+1
+== local revision (non-reboot) ==
+UPDATED
+== unclaim rejected on non-DONE local revision ==
+Cannot do this operation if current revision is not DONE
+1
+== local revision (reboot) ==
+DONE
+== unclaim ==
+unset
+rev 1: removed
+== claim device (second Hub id) ==
+claim
+idle
+device-id: changed
+secret: changed
+== Hub revision 1 (broken) on second Hub id ==
+posted: 1
+{
+  "status": "ERROR",
+  "status-msg": "A container could not be started"
+}
+locals/unclaim-done
+== unclaim ==
+unset
+claim
+== revision 1 per Hub id ==
+first: UPDATED
+second: ERROR
