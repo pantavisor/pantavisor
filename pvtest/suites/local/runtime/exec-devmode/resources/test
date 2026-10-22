@@ -4,6 +4,7 @@
 # while a devmode revision runs.
 #
 # - the exit code, stdout and stderr of the command come back separately
+# - the raw answer of the endpoint is valid JSON
 # - stdin reaches the command
 # - a command that runs too long is ended after the timeout
 # - output over the limit is cut, and the command still ends
@@ -58,6 +59,10 @@ echo "pantavisor.devmode.allowed: $(pvcontrol devmeta ls | jq -M -r '.["pantavis
 
 echo "== stdout =="
 show "$target" -- echo hello
+
+echo "== the answer is plain JSON =="
+raw=$(pvcurl -s -X POST --header "Content-Type: application/json" --data '{"argv":["echo","hi"],"timeout_s":10}' --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/$target/exec" | tr -d '\r')
+echo "$raw" | jq -e '.exit_code == 0' > /dev/null && echo "json: ok" || echo "json: not valid: $raw"
 
 echo "== exit code =="
 show "$target" -- sh -c "exit 7"

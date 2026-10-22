@@ -1104,6 +1104,12 @@ static void exec_finish(struct exec_job *j)
 		if (j->con)
 			evhttp_connection_set_closecb(j->con, NULL, NULL);
 
+		// the default callback wrote "done" while the command was running
+		struct evbuffer *rsp = evhttp_request_get_output_buffer(j->req);
+
+		if (rsp)
+			evbuffer_drain(rsp, evbuffer_get_length(rsp));
+
 		if (j->got_error) {
 			pv_ctrl_utils_send_error(j->req, HTTP_INTERNAL,
 						 j->error);
