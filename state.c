@@ -701,6 +701,9 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 			}
 	}
 
+	// mgmt containers see what the container wrote itself, once its lxc-overlay is mounted
+	pv_volumes_devmode_layer_mount(s, p);
+
 	pv_platform_set_mounted(p);
 
 	if (p->status.goal == PLAT_MOUNTED)

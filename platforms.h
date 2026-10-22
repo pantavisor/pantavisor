@@ -189,6 +189,7 @@ struct pv_platform {
 	bool export;
 	bool devmode_inlay; // has a _devmode volume in its rootfs
 	int devmode_fs; // how the container is shown to mgmt containers
+	bool devmode_layer; // its own writable layer is bound for mgmt containers
 	// raw lifecycle_goal value from run.json, resolved against status_goal in pv_state_validate()
 	char *lifecycle_goal_raw;
 	bool std_log;

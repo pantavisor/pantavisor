@@ -7,6 +7,8 @@
 # - removing an image file hides it in the container after a restart
 # - removing and creating an image directory again leaves it empty in the
 #   container after a restart
+# - a file the container writes itself is listed read-only in
+#   /pantavisor/devmode/.container/<container>
 # - after `pvcontrol devmode reset <container>` and a restart the image files
 #   are back
 #
@@ -66,6 +68,17 @@ echo "== the folder lists the image files =="
 echo "file in folder: $(in_folder "$image_file")"
 echo "directory in folder: $(in_folder "$image_dir_file")"
 echo "file in container: $(in_target "$image_file")"
+
+echo "== a file the container wrote itself =="
+pventer -c "$target" touch /etc/written-by-container
+layer="/pantavisor/devmode/.container/$target"
+echo "file in layer: $(pventer -c "$writer" test -e "$layer/etc/written-by-container" && echo yes || echo no)"
+echo "image file in layer: $(pventer -c "$writer" test -e "$layer$image_file" && echo yes || echo no)"
+pventer -c "$writer" touch "$layer/etc/written-by-folder" > /dev/null 2>&1
+echo "write in layer: $([ $? -eq 0 ] && echo allowed || echo refused)"
+pventer -c "$writer" rm "$layer/etc/written-by-container" > /dev/null 2>&1
+echo "remove in layer: $([ $? -eq 0 ] && echo allowed || echo refused)"
+echo "file in container: $(in_target /etc/written-by-container)"
 
 echo "== remove the file and the directory content in the folder =="
 pventer -c "$writer" rm "$folder$image_file"

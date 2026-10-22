@@ -112,6 +112,25 @@ static const char *ctrl_devmode_storage_rel(const char *inlay)
 	return inlay;
 }
 
+// what the container wrote itself, relative to the devmode folder
+static void ctrl_devmode_layer_fields(struct pv_json_ser *js,
+				      struct pv_state *s, struct pv_platform *p)
+{
+	const char *persistence = NULL;
+	char layer[PATH_MAX];
+
+	if (!pv_volumes_devmode_layer_get(s, p, &persistence))
+		return;
+
+	snprintf(layer, sizeof(layer), ".container/%s", p->name);
+	pv_json_ser_key(js, "container_layer");
+	pv_json_ser_string(js, layer);
+	if (persistence) {
+		pv_json_ser_key(js, "container_layer_persistence");
+		pv_json_ser_string(js, persistence);
+	}
+}
+
 static void ctrl_devmode_get(struct evhttp_request *req, void *ctx)
 {
 	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
@@ -171,6 +190,8 @@ static void ctrl_devmode_get(struct evhttp_request *req, void *ctx)
 							&js,
 							ctrl_devmode_storage_rel(
 								path));
+						ctrl_devmode_layer_fields(
+							&js, pv->state, p);
 						pv_json_ser_object_pop(&js);
 					}
 				}

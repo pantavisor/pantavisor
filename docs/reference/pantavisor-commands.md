@@ -103,10 +103,12 @@ To get the devmode state:
 
 ```
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode"
-{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode","inlay_storage":"disks/rev/devmode/r/12/my-container/_devmode"}]}
+{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode","inlay_storage":"disks/rev/devmode/r/12/my-container/_devmode","container_layer":".container/my-container","container_layer_persistence":"boot"}]}
 ```
 
 `inlay_storage`: the inlay relative to the storage root, which mgmt containers see at `/storage`.
+
+`container_layer`: the files the running container wrote itself (its `lxc-overlay` upper layer), relative to the devmode folder. Mgmt containers see them read-only at `/pantavisor/devmode/<container_layer>`, for example `/pantavisor/devmode/.container/my-container`. `container_layer_persistence` is the `persistence` (`boot`, `revision` or `permanent`) of the container's `lxc-overlay` storage. Both are absent for a container without an overlay root filesystem or without an `lxc-overlay` volume.
 
 `revision`, `base` and `containers` are only present when `active` is `true`, that is, when the running revision is a devmode revision.
 

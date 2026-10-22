@@ -441,6 +441,118 @@ static void pv_volumes_devmode_dir_setup(void)
 	devmode_dir_shared = true;
 }
 
+#define DEVMODE_LAYER_DNAME ".container"
+#define DEVMODE_LAYER_VOLUME "lxc-overlay"
+
+static struct pv_volume *pv_volumes_devmode_layer_volume(struct pv_state *s,
+							 struct pv_platform *p)
+{
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		if (v->plat == p && !strcmp(v->name, DEVMODE_LAYER_VOLUME))
+			return v;
+	}
+
+	return NULL;
+}
+
+// the lxc-overlay of a container with an overlay rootfs, and how long it lives
+bool pv_volumes_devmode_layer_get(struct pv_state *s, struct pv_platform *p,
+				  const char **persistence)
+{
+	struct pv_volume *v = pv_volumes_devmode_layer_volume(s, p);
+	char lowers[PATH_MAX];
+
+	if (!v || !p->devmode_inlay ||
+	    pv_volumes_devmode_lowerdirs(s, p, lowers, sizeof(lowers)) > 0)
+		return false;
+
+	switch (v->type) {
+	case VOL_PERMANENT:
+		*persistence = "permanent";
+		break;
+	case VOL_REVISION:
+		*persistence = "revision";
+		break;
+	case VOL_BOOT:
+		*persistence = "boot";
+		break;
+	default:
+		*persistence = NULL;
+	}
+
+	return true;
+}
+
+// <pv dir>/devmode/.container/<name>: what the container wrote itself, read-only
+static void pv_volumes_devmode_layer_path(char *buf, size_t size,
+					  const char *name)
+{
+	char rel[PATH_MAX];
+
+	snprintf(rel, sizeof(rel), "%s/%s/%s", DEVMODE_DNAME,
+		 DEVMODE_LAYER_DNAME, name);
+	pv_paths_pv_file(buf, size, rel);
+}
+
+// bind the upper layer of the lxc-overlay of a container into the folder mgmt containers see
+void pv_volumes_devmode_layer_mount(struct pv_state *s, struct pv_platform *p)
+{
+	struct pv_volume *v = pv_volumes_devmode_layer_volume(s, p);
+	char upper[PATH_MAX], mnt[PATH_MAX], stage[PATH_MAX], rel[PATH_MAX];
+	const char *persistence;
+
+	if (p->devmode_layer || !v || !v->mounted || !v->dest ||
+	    !pv_volumes_devmode_layer_get(s, p, &persistence))
+		return;
+
+	snprintf(upper, sizeof(upper), "%s/upper", v->dest);
+	pv_fs_mkdir_p(upper, 0755);
+
+	pv_volumes_devmode_dir_setup();
+	pv_volumes_devmode_layer_path(mnt, PATH_MAX, p->name);
+	pv_fs_mkdir_p(mnt, 0755);
+
+	// make it read-only before it reaches the shared folder, so mgmt containers never see it writable
+	snprintf(rel, sizeof(rel), "%s.stage/%s", DEVMODE_DNAME, p->name);
+	pv_paths_pv_file(stage, PATH_MAX, rel);
+	pv_fs_mkdir_p(stage, 0755);
+	if (mount(upper, stage, NULL, MS_BIND, NULL) ||
+	    mount(NULL, stage, NULL, MS_BIND | MS_REMOUNT | MS_RDONLY, NULL)) {
+		pv_log(WARN, "cannot prepare the layer of %s: %s", p->name,
+		       strerror(errno));
+		umount2(stage, MNT_DETACH);
+		return;
+	}
+	if (mount(stage, mnt, NULL, MS_BIND, NULL)) {
+		pv_log(WARN, "cannot mount the layer of %s at %s: %s", p->name,
+		       mnt, strerror(errno));
+		umount2(stage, MNT_DETACH);
+		return;
+	}
+	umount2(stage, MNT_DETACH);
+	rmdir(stage);
+
+	p->devmode_layer = true;
+	pv_log(INFO, "devmode layer of %s mounted at %s", p->name, mnt);
+}
+
+// lazy, so the lxc-overlay volume can be unmounted
+void pv_volumes_devmode_layer_umount(struct pv_platform *p)
+{
+	char mnt[PATH_MAX];
+
+	if (!p->devmode_layer)
+		return;
+
+	pv_volumes_devmode_layer_path(mnt, PATH_MAX, p->name);
+	if (umount2(mnt, MNT_DETACH))
+		pv_log(WARN, "cannot unmount %s: %s", mnt, strerror(errno));
+	p->devmode_layer = false;
+}
+
 void pv_volumes_umount_devmode(struct pv_state *s)
 {
 	struct pv_platform *p, *tmp;
@@ -450,6 +562,7 @@ void pv_volumes_umount_devmode(struct pv_state *s)
 	{
 		struct pv_volume *v, *vtmp;
 
+		pv_volumes_devmode_layer_umount(p);
 		if (!p->devmode_fs)
 			continue;
 
@@ -494,6 +607,7 @@ int pv_volumes_mount_devmode(struct pv_state *s)
 
 		// a folder that cannot be shown must not fail the revision
 		pv_volumes_devmode_fs_mount(s, v->plat);
+		pv_volumes_devmode_layer_mount(s, v->plat);
 	}
 
 	return 0;
@@ -738,6 +852,9 @@ int pv_volume_unmount(struct pv_volume *v)
 
 	if (!v->dest)
 		return ret;
+
+	if (v->plat && !strcmp(v->name, DEVMODE_LAYER_VOLUME))
+		pv_volumes_devmode_layer_umount(v->plat);
 
 	if (v->umount_cmd != NULL) {
 		pv_log(DEBUG, "umounting with handler...");

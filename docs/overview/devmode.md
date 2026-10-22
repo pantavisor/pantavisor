@@ -145,6 +145,16 @@ ls -l /storage/disks/rev/devmode/r/12/my-container/_devmode/etc
 
 If the filesystem of the device cannot hold overlay whiteouts, Pantavisor logs a warning and shows only the inlay in `/pantavisor/devmode/<container>`; files can still be added and changed, but the image files are not listed.
 
+### See what the container wrote itself
+
+The files a running container wrote itself live in its own writable layer, the top layer of the table above, and shadow the same path in the inlay. `/pantavisor/devmode/<container>` does not include that layer. Mgmt containers see it, read-only, at `/pantavisor/devmode/.container/<container>`:
+
+```bash
+ls /pantavisor/devmode/.container/my-container/etc
+```
+
+Writing there fails with a read-only filesystem error. Pantavisor binds it again whenever the container starts, since a layer with `boot` persistence starts empty on every boot. The `GET /devmode` call lists the path as `container_layer`, and the `persistence` of the layer as `container_layer_persistence`; see [/devmode](../reference/pantavisor-commands.md#devmode). This is managed automatically; no action is needed.
+
 ### Containers with the system restart policy
 
 A container with restart policy `system` cannot be restarted through the API. In a devmode revision, restarting it answers `409` (reboot needed). Reboot the device into the devmode revision:
