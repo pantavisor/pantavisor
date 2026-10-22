@@ -286,12 +286,22 @@ _reqcfg_satisfied() {
 	return 0
 }
 
-# If target doesn't satisfy config $1, power off device and return 3 to signal for re-typing
+# KEY=VALUE pairs present in both configs $1 and $2, normalized
+_cfg_intersect() {
+	local _kv _b _out=
+	_b=" $(pvtest_normalize_cfg "$2") "
+	for _kv in $(pvtest_normalize_cfg "$1"); do
+		case "$_b" in *" $_kv "*) _out="$_out $_kv" ;; esac
+	done
+	printf '%s' "${_out# }"
+}
+
+# If config $1 differs from the one the slot was typed with, power off device and return 3
+# to signal for re-typing. Exact match, so no env from a previous test leaks into the next
 _reqcfg_gate() {
 	local _next_cfg="$1"
-	[ -n "$_next_cfg" ] || return 0
 	pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
-	if ! _reqcfg_satisfied "$_next_cfg" "$(_ae_conf_file "$PVTEST_AE")"; then
+	if [ "$(pvtest_normalize_cfg "$_next_cfg")" != "$(cat "$(_slot_cfg_file)" 2>/dev/null)" ]; then
 		if [ "$PVTEST_RETYPE" = "container" ]; then
 			pvtest_log INFO "test needs a different config; powering off..."
 			pv_ctrl cmd poweroff "pvtest: test needs different config" > /dev/null 2>&1 || true
@@ -816,17 +826,19 @@ _install_initial_pvr() {
 }
 
 # ctrl: host<->tester channel, a dir bind-mounted at $PVTEST_CTRL. One key=value file per
-# slot, published by rename: req/slot<N> (slot=,cfg=[,storage=,rev=,seed=]) -> resp/slot<N>
-# (status=ready|down|failed|unsupported[,ae=,exec=,host=,log=]). Empty cfg = release.
+# slot, published by rename: req/slot<N> (slot=,cfg=[,storage=,rev=,seed=,release=1]) -> resp/slot<N>
+# (status=ready|down|failed|unsupported[,ae=,exec=,host=,log=]). release=1 frees the slot.
 
 _slot_bind_file() { printf '/tmp/pvtest_bind.slot%s' "${1:-$PVTEST_SLOT}"; }
+# Config the slot device was last typed with
+_slot_cfg_file() { printf '/tmp/pvtest_cfg.slot%s' "${1:-$PVTEST_SLOT}"; }
 
-# Ask host for slot $1 on config $2 via PVTEST_CTRL
-# $3=persistent storage; $4=revision name; $5=volatile seed
+# Ask host for slot $1 on config $2 (empty boots defaults) via PVTEST_CTRL
+# $3=persistent storage; $4=revision name; $5=volatile seed; $6=1 releases the slot
 # echoes target name
 # rc: 0 ready/released, 1 failed, 2 unsupported (no re-type mechanism)
 _retype_slot() {
-	local _slot="$1" _cfg="$2" _storage="${3:-}" _rev="${4:-}" _seed="${5:-}"
+	local _slot="$1" _cfg="$2" _storage="${3:-}" _rev="${4:-}" _seed="${5:-}" _release="${6:-}"
 	local _req _resp _waited _status _ae
 
 	# Make request to host at this slot
@@ -838,6 +850,7 @@ _retype_slot() {
 		[ -n "$_storage" ] && printf 'storage=%s\n' "$_storage"
 		[ -n "$_rev" ] && printf 'rev=%s\n' "$_rev"
 		[ -n "$_seed" ] && printf 'seed=%s\n' "$_seed"
+		[ -n "$_release" ] && printf 'release=1\n'
 	} > "$PVTEST_CTRL/req/.tmp.slot${_slot}"
 	mv "$PVTEST_CTRL/req/.tmp.slot${_slot}" "$_req"
 
@@ -852,8 +865,9 @@ _retype_slot() {
 	_ae=$(sed -n 's/^ae=//p' "$_resp")
 	if [ "$_status" = ready ]; then
 		sed -n '/^exec=/p; /^host=/p' "$_resp" > "$(_slot_bind_file "$_slot")"
+		pvtest_normalize_cfg "$_cfg" > "$(_slot_cfg_file "$_slot")"
 	else
-		rm -f "$(_slot_bind_file "$_slot")"
+		rm -f "$(_slot_bind_file "$_slot")" "$(_slot_cfg_file "$_slot")"
 	fi
 	rm -f "$_resp"
 	case "$_status" in
@@ -862,6 +876,11 @@ _retype_slot() {
 		unsupported) return 2 ;;
 		*)           return 1 ;;
 	esac
+}
+
+# Free slot $1 via PVTEST_CTRL
+_release_slot() {
+	_retype_slot "$1" "" "" "" "" 1
 }
 
 # Bind PVTEST_EXEC/HOST/AE to slot device $1
@@ -877,12 +896,12 @@ _slot_bind_ae() {
 	export PVTEST_AE="$1"
 }
 
-# Bring the device slot retyped with rev $1 and test.json required env
+# Bring the device slot retyped with config $1 and wait for rev $2 (any if empty) in status $3
 _setup_retype() {
-	local _rev="$1" _old="$PVTEST_AE" _new
+	local _cfg="$1" _rev="$2" _status="$3" _old="$PVTEST_AE" _new
 
-	pvtest_log INFO "re-typing slot ${PVTEST_SLOT} cfg=[$(pvtest_normalize_cfg "$required_env")]"
-	_new=$(_retype_slot "$PVTEST_SLOT" "$required_env" "w${PVTEST_SLOT}")
+	pvtest_log INFO "re-typing slot ${PVTEST_SLOT} cfg=[$(pvtest_normalize_cfg "$_cfg")]"
+	_new=$(_retype_slot "$PVTEST_SLOT" "$_cfg" "w${PVTEST_SLOT}")
 	if [ -z "$_new" ]; then
 		pvtest_log ERROR "re-type failed"
 		export PVTEST_AE=""
@@ -908,7 +927,7 @@ _setup_retype() {
 		fi
 	fi
 
-	if ! wait_for_target_ready "re-type '$_new'" "$_rev" DONE; then
+	if ! wait_for_target_ready "re-type '$_new'" "$_rev" "$_status"; then
 		export PVTEST_AE=""
 		return 1
 	fi
@@ -935,6 +954,27 @@ _install_initial_rev() {
 	wait_for_current_settled \
 		|| pvtest_log WARN "device did not fully settle before initial revision; continuing"
 
+	local _common
+	case "$PVTEST_RETYPE" in
+		container|setbootconfig|hook)
+			# Install with the config shared by the slot and the test, so neither the previous
+			# test config nor this one (e.g. GC reserved, strict secureboot) can break it
+			_common=$(_cfg_intersect "$required_env" "$(cat "$(_slot_cfg_file)" 2>/dev/null)")
+			_reqcfg_gate "$_common"
+			if [ $? = 3 ]; then
+				_setup_retype "$_common" "" "DONE|UPDATED" || return 1
+			fi
+			;;
+		*)
+			# A mismatch that slipped past run_test_attempt SKIP gate directly aborts
+			pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
+			if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
+				pvtest_log ERROR "required config not satisfied and no re-type mechanism: $required_env"
+				return 1
+			fi
+			;;
+	esac
+
 	# Prefer pvtx and fallback on pvr when not available
 	if _have_pvtx; then
 		pvtest_log DEBUG "installing initial revision with pvtx"
@@ -955,18 +995,10 @@ _install_initial_rev() {
 		container|setbootconfig|hook)
 			_reqcfg_gate "$required_env"; _res=$?
 			;;
-		*)
-			# A mismatch that slipped past run_test_attempt SKIP gate directly aborts
-			pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
-			if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
-				pvtest_log ERROR "required config not satisfied and no re-type mechanism: $required_env"
-				return 1
-			fi
-			;;
 	esac
 	if [ "$_res" = 3 ]; then
-		# test.json config not met by device config, so we need to retype
-		_setup_retype "$rev" || return 1
+		# Boot the new revision with the test config, which also commits it
+		_setup_retype "$required_env" "$rev" DONE || return 1
 	elif [ "$_st" = "UPDATED" ] && [ "$commit_initial" = "false" ]; then
 		# nothing to do here if we are in initial revision and we don't care about UPDATED
 		pvtest_log DEBUG "initial revision left UPDATED (commit-initial=false)"
@@ -1347,7 +1379,7 @@ persistent_worker() {
 		pvtest_log INFO "[slot $_slot] SLOT_DETACH ae=$_ae"
 		if [ "$PVTEST_RETYPE" = "container" ]; then
 			pv_ctrl cmd poweroff "pvtest: worker done" > /dev/null 2>&1 || true
-			_retype_slot "$_slot" "" > /dev/null 2>&1 || true
+			_release_slot "$_slot" > /dev/null 2>&1 || true
 		fi
 	fi
 }
@@ -1404,7 +1436,7 @@ volatile_worker() {
 		if [ "$PVTEST_RETYPE" = "container" ]; then
 			pv_ctrl cmd poweroff "pvtest: volatile test done" > /dev/null 2>&1 || true
 		fi
-		_retype_slot "$_slot" "" > /dev/null 2>&1 || true
+		_release_slot "$_slot" > /dev/null 2>&1 || true
 		rm -rf "$_seed"
 	done
 }

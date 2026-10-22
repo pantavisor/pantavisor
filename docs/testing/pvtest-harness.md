@@ -205,10 +205,12 @@ a target re-type into the desired boot configuration:
  ┌────────────────────────────┐
  │  Install initial revision  │◄─────────────────────────────┐
  │  (setup_test)              │                              │
+ │  • re-type to the config   │                              │
+ │    shared with the slot's  │                              │ more tests
  │  • install locals/<test>   │                              │
- │    (pvtx; pvr fallback)    │                              │ more tests
+ │    (pvtx; pvr fallback)    │                              │
  │  • ONE power cycle:        │                              │
- │    re-type (config change) │                              │
+ │    re-type (test config)   │                              │
  │    or reboot (commit)      │                              │
  │  • gc, unclaim, go-remote  │                              │
  │  • claim state, usrmeta    │                              │
@@ -265,4 +267,5 @@ In order to limit the time usage of the CI runners, we run the smallest set of t
 | `pvtest/suites/remote/` | | | ✓ | ✓ |
 | `pvtest/tester`, `pvtest/shared`, `pvtest/host` | ✓ | ✓ | ✓ | ✓ |
 | `pantahub/`, `ph_logger`, `trestclient`, `updater`, `event/event_rest` | | | ✓ | |
+| `config` | ✓ | | ✓ | |
 | any other file outside `docs/` | ✓ | | | |

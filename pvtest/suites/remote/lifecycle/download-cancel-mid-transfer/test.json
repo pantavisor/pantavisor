@@ -3,8 +3,8 @@
 	"description": "Owner cancel from the Hub aborts an update mid-download and keeps the partial object",
 	"setup": {
 		"config": {
-			"env": "PV_CONTROL_REMOTE=1 PH_UPDATER_DOWNLOAD_RATE_LIMIT=1048576",
-			"usrmeta": "PH_UPDATER_INTERVAL=5"
+			"env": "PV_CONTROL_REMOTE=1 PH_UPDATER_DOWNLOAD_RATE_LIMIT=1048576 PH_UPDATER_INTERVAL=5",
+			"usrmeta": ""
 		},
 		"containers": {
 			"tarballs": [
