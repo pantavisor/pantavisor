@@ -1,0 +1,181 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+if [ -z "$PH_USER" ] || [ -z "$PH_TOKEN" ]; then
+    echo "ERROR: PH_USER/PH_TOKEN not set" >&2; exit 1
+fi
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1 \
+    || { echo "ERROR: pvr login failed" >&2; exit 1; }
+
+LOCAL_UPDATED="locals/unclaim-updated"
+LOCAL_DONE="locals/unclaim-done"
+S=$(pv_storage_dir)
+
+devmeta() { pvcontrol devmeta ls | jq -M -r ".[\"$1\"] // \"unset\""; }
+
+# never printed: only compared between the two registrations
+creds_secret() { pvcontrol conf ls | jq -r '.[] | select(.key == "PH_CREDS_SECRET") | .value'; }
+
+hub_status() {
+    pvr stepinfo "$PVTEST_HUB_URL/trails/$1/steps/$2" 2>/dev/null \
+        | sed -n '/^{/,$p' | jq -r '.progress.status // empty'
+}
+
+wait_for_hub_status() {
+    wait_for_value "hub_status $1 $2" "$3" 120 \
+        || { echo "ERROR: timeout waiting for Hub rev $2 to reach $3" >&2; exit 1; }
+}
+
+# Claim the registered device; $1 is the previous device id, which the hint file
+# keeps until the device re-registers. Sets device_id
+claim_device() {
+    wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
+        || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }
+    devmeta pantahub.state
+    wait_for_status "pv_exec test -s /run/pantavisor/pv/challenge" 0 30 \
+        || { echo "ERROR: timeout waiting for challenge hint file" >&2; exit 1; }
+    wait_for_status "[ -n \"\$(pv_exec cat /run/pantavisor/pv/device-id)\" ] && [ \"\$(pv_exec cat /run/pantavisor/pv/device-id)\" != \"$1\" ]" 0 30 \
+        || { echo "ERROR: timeout waiting for a new device-id hint file" >&2; exit 1; }
+    device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+    challenge=$(pv_exec cat /run/pantavisor/pv/challenge)
+    [ -n "$challenge" ] || { echo "ERROR: empty challenge in claim state" >&2; exit 1; }
+    pvr claim -c "$challenge" "$(pvr_device_url "$device_id")" < /dev/null > /dev/null \
+        || { echo "ERROR: pvr claim failed" >&2; exit 1; }
+    wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+        || { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+    devmeta pantahub.state
+    # idle comes before the device posts its current state as the new trail
+    wait_for_value "pvr curl -s -o /dev/null -w '%{http_code}' $PVTEST_HUB_URL/trails/$device_id/steps/0" "200" 120 \
+        || { echo "ERROR: timeout waiting for the Hub trail" >&2; exit 1; }
+}
+
+unclaim_device() {
+    wait_for_current_settled \
+        || { echo "ERROR: device did not settle before unclaim" >&2; exit 1; }
+    pvcontrol cmd unclaim > /dev/null \
+        || { echo "ERROR: pvcontrol cmd unclaim failed" >&2; exit 1; }
+    # the command is processed asynchronously after pvcontrol returns
+    wait_for_value "devmeta pantahub.claimed" "unset" 30 \
+        || { echo "ERROR: timeout waiting for pantahub.claimed to be removed" >&2; exit 1; }
+    devmeta pantahub.claimed
+}
+
+# Unclaim must be rejected synchronously and leave the device claimed
+unclaim_rejected() {
+    local err
+    wait_for_current_settled \
+        || { echo "ERROR: device did not settle before unclaim" >&2; exit 1; }
+    if err=$(pvcontrol cmd unclaim 2>&1 > /dev/null); then
+        echo "ERROR: pvcontrol cmd unclaim was accepted" >&2; exit 1
+    fi
+    echo "$err" | jq -M -r '.Error'
+    devmeta pantahub.claimed
+}
+
+# Post the current device revision with edits applied by $2 to the trail of $1
+post_hub_rev() {
+    local co
+    co="$(mktemp -d)/checkout"
+    pvr_clone_local_or_die "$co"
+    (
+        cd "$co" || exit 1
+        eval "$2"
+        pvr add . > /dev/null 2>&1
+        pvr commit -m "unclaim test" > /dev/null 2>&1
+        pvr_post_rev -m "unclaim test" "$PVTEST_HUB_URL/trails/$1"
+    )
+}
+
+# the framework only knows the last device id; delete both trails' devices even on failure
+cleanup() {
+    for d in $device_a $device_b; do
+        pvr dev delete -y "$(pvr_device_url "$d")" > /dev/null 2>&1
+    done
+}
+trap cleanup EXIT
+
+echo "== claim device (first Hub id) =="
+claim_device ""
+device_a="$device_id"
+secret_a=$(creds_secret)
+
+echo "== Hub revision 1 (non-reboot) on first Hub id =="
+rev=$(post_hub_rev "$device_a" \
+    "sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' pv-example-app/lxc.container.conf")
+echo "posted: $rev"
+[ "$rev" = "1" ] || { echo "ERROR: expected Hub revision 1, got '$rev'" >&2; exit 1; }
+wait_for_revision_state "1" "UPDATED" \
+    || { echo "ERROR: timeout waiting for 1 to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress 1 | jq -M -r '.status'
+wait_for_hub_status "$device_a" 1 UPDATED
+hub_status "$device_a" 1
+
+echo "== unclaim rejected on Hub revision =="
+unclaim_rejected
+
+echo "== local revision (non-reboot) =="
+co_local="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$co_local"
+cd "$co_local"
+mkdir -p _config/pv-example-app
+dd if=/dev/urandom of=_config/pv-example-app/pvtest-unclaim bs=4096 count=1 2>/dev/null
+pvr add . > /dev/null 2>&1
+pvr commit -m "non-reboot update" > /dev/null 2>&1
+pvr post --rev "$LOCAL_UPDATED" > /dev/null 2>&1
+cd - > /dev/null
+wait_for_revision_state "$LOCAL_UPDATED" "UPDATED" \
+    || { echo "ERROR: timeout waiting for $LOCAL_UPDATED to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress "$LOCAL_UPDATED" | jq -M -r '.status'
+
+echo "== unclaim rejected on non-DONE local revision =="
+unclaim_rejected
+
+echo "== local revision (reboot) =="
+cd "$co_local"
+# a platform-less object forces a reboot update
+mkdir -p pvtest-unclaim
+dd if=/dev/urandom of=pvtest-unclaim/random.bin bs=4096 count=1 2>/dev/null
+pvr add . > /dev/null 2>&1
+pvr commit -m "reboot update" > /dev/null 2>&1
+pvr post --rev "$LOCAL_DONE" > /dev/null 2>&1
+cd - > /dev/null
+wait_for_target_ready "" "$LOCAL_DONE" DONE >&2 \
+    || { echo "ERROR: timeout waiting for $LOCAL_DONE to reach DONE" >&2; exit 1; }
+pvcontrol steps show-progress "$LOCAL_DONE" | jq -M -r '.status'
+
+echo "== unclaim =="
+unclaim_device
+if pv_exec ls -d "$S/trails/1" > /dev/null 2>&1; then echo "rev 1: kept"; else echo "rev 1: removed"; fi
+
+echo "== claim device (second Hub id) =="
+claim_device "$device_a"
+device_b="$device_id"
+if [ "$device_b" != "$device_a" ]; then echo "device-id: changed"; else echo "device-id: unchanged"; fi
+secret_b=$(creds_secret)
+[ -n "$secret_a" ] && [ -n "$secret_b" ] \
+    || { echo "ERROR: empty PH_CREDS_SECRET after claim" >&2; exit 1; }
+if [ "$secret_b" != "$secret_a" ]; then echo "secret: changed"; else echo "secret: unchanged"; fi
+
+echo "== Hub revision 1 (broken) on second Hub id =="
+rev=$(post_hub_rev "$device_b" \
+    "sed -i 's|lxc\.init\.cmd = /usr/bin/pv-app|lxc.init.cmd = /nonexistingbin|g' pv-example-app/lxc.container.conf")
+echo "posted: $rev"
+[ "$rev" = "1" ] || { echo "ERROR: expected Hub revision 1, got '$rev'" >&2; exit 1; }
+wait_for_hub_status "$device_b" 1 ERROR
+pvr stepinfo "$PVTEST_HUB_URL/trails/$device_b/steps/1" | sed -n '/^{/,$p' \
+    | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
+wait_for_target_ready "" "$LOCAL_DONE" DONE >&2 \
+    || { echo "ERROR: timeout waiting for rollback to $LOCAL_DONE" >&2; exit 1; }
+devmeta pantavisor.revision
+
+echo "== unclaim =="
+unclaim_device
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }
+devmeta pantahub.state
+
+echo "== revision 1 per Hub id =="
+echo "first: $(hub_status "$device_a" 1)"
+echo "second: $(hub_status "$device_b" 1)"
+
