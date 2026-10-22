@@ -130,6 +130,10 @@ static void ctrl_devmode_get(struct evhttp_request *req, void *ctx)
 		pv_json_ser_bool(&js, active);
 
 		if (active) {
+			// the try is over; until then pv-ctrl refuses reboot and run commands
+			pv_json_ser_key(&js, "ready");
+			pv_json_ser_bool(&js, !pv->update);
+
 			char *base =
 				pv_storage_get_devmode_base(pv->state->rev);
 			struct pv_platform *p, *tmp;

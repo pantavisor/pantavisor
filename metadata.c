@@ -504,7 +504,7 @@ static int pv_devmeta_read_revision(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
-// only set while a devmode revision runs
+// only set while a devmode revision runs and is ready for commands
 static int pv_devmeta_read_devmode(struct pv_devmeta_read *pv_devmeta_read)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -513,6 +513,10 @@ static int pv_devmeta_read_devmode(struct pv_devmeta_read *pv_devmeta_read)
 		return -1;
 
 	if (!pv->state || !pv_storage_is_revision_devmode(pv->state->rev))
+		return -1;
+
+	// still in its try: pv-ctrl refuses commands until the update is over
+	if (pv->update)
 		return -1;
 
 	SNPRINTF_WTRUNC(pv_devmeta_read->buf, pv_devmeta_read->buflen, "%s",

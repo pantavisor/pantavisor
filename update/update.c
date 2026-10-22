@@ -28,6 +28,7 @@
 #include "update/update_struct.h"
 
 #include "bootloader.h"
+#include "metadata.h"
 #include "objects.h"
 #include "paths.h"
 #include "signature.h"
@@ -983,8 +984,15 @@ void pv_update_finish()
 
 	pv_update_progress_reload_logs(&u->progress);
 
+	bool devmode_ready = !pv_update_is_failed() && pv->state &&
+			     pv_storage_is_revision_devmode(pv->state->rev);
+
 	_free_update(u);
 	pv->update = NULL;
+
+	// devmode is only announced once its try is over and commands are accepted
+	if (devmode_ready)
+		pv_metadata_add_devmeta(DEVMETA_KEY_PV_DEVMODE, pv->state->rev);
 }
 
 static bool _progress_has_status(pv_update_progress_status_t status)
