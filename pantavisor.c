@@ -70,6 +70,7 @@
 #include "event/event_socket.h"
 
 #include "pantahub/pantahub.h"
+#include "pantahub/pantahub_proto.h"
 
 #include "parser/parser.h"
 #include "ipam.h"
@@ -696,16 +697,34 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			goto out;
 		}
 
+		if (!pv_storage_is_revision_local(pv->state->rev)) {
+			pv_log(WARN,
+			       "ignoring unclaim command because current revision is not local");
+			goto out;
+		}
+
+		if (!pv_state_is_done(pv->state)) {
+			pv_log(WARN,
+			       "ignoring unclaim command because current revision is not DONE");
+			goto out;
+		}
+
 		pv_log(DEBUG,
 		       "unclaim command received. Removing credentials...");
+		pv_storage_gc_run();
 		pv_config_set_creds_prn("");
-		pv_config_set_creds_id("");
 		pv_config_set_creds_secret("");
-		// still claimed at this point, so this saves to pantahub.config
+		// pantahub.config
 		if (pv_config_save_creds())
 			pv_log(WARN, "could not remove credentials from disk");
 		pv->unclaimed = true;
+		// unclaimed.config
+		if (pv_config_save_creds())
+			pv_log(WARN,
+			       "could not remove unclaimed credentials from disk");
 		pv_pantahub_stop();
+		pv_pantahub_proto_reset_trails_status();
+		pv_trail_remote_remove(pv);
 		pv_metadata_rm_devmeta("pantahub.claimed");
 		break;
 	case CMD_DEFER_REBOOT:
