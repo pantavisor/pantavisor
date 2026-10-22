@@ -103,6 +103,7 @@ static struct timer timer_rollback_remote;
 static struct timer timer_wait_delay;
 static struct timer timer_updater_interval;
 static struct timer timer_commit;
+static bool unclaim_hint_confirming = false;
 
 static const int PV_WAIT_PERIOD = 1;
 
@@ -455,6 +456,76 @@ static pv_state_t pv_wait_update()
 	return PV_STATE_WAIT;
 }
 
+static void pv_unclaim(struct pantavisor *pv)
+{
+	pv_storage_gc_run();
+	pv_config_set_creds_prn("");
+	pv_config_set_creds_secret("");
+	// pantahub.config
+	if (pv_config_save_creds())
+		pv_log(WARN, "could not remove credentials from disk");
+	pv->unclaimed = true;
+	// unclaimed.config
+	if (pv_config_save_creds())
+		pv_log(WARN,
+		       "could not remove unclaimed credentials from disk");
+	pv_pantahub_stop();
+	pv_pantahub_proto_reset_trails_status();
+	pv_trail_remote_remove(pv);
+	pv_metadata_rm_devmeta("pantahub.claimed");
+}
+
+static void pv_wait_unclaim_hint(struct pantavisor *pv)
+{
+	if (!pv_pantahub_proto_is_unclaim_hinted()) {
+		if (pv_pantahub_proto_is_auth())
+			unclaim_hint_confirming = false;
+		return;
+	}
+
+	if (!pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS)) {
+		WARN_ONCE(
+			"ignoring unclaim hint because remote mode is not forced on local revisions");
+		return;
+	}
+
+	if (pv->update) {
+		pv_log(DEBUG,
+		       "ignoring unclaim hint because an update is in progress");
+		return;
+	}
+
+	if (strcmp(pv->state->rev, UNCLAIM_LOCAL_REV)) {
+		pv_log(INFO,
+		       "unclaim hint received. Transferring revision %s to %s",
+		       pv->state->rev, UNCLAIM_LOCAL_REV);
+		if (pv_storage_copy_rev(pv->state->rev, UNCLAIM_LOCAL_REV) <
+		    0) {
+			pv_log(ERROR, "cannot install revision %s",
+			       UNCLAIM_LOCAL_REV);
+			return;
+		}
+		pv_update_run(UNCLAIM_LOCAL_REV);
+		pv_issue_reboot();
+		return;
+	}
+
+	if (!pv_state_is_done(pv->state))
+		return;
+
+	// the hint must be confirmed by a login answered after reaching DONE
+	if (!unclaim_hint_confirming) {
+		pv_log(INFO, "logging in again to confirm unclaim hint");
+		unclaim_hint_confirming = true;
+		pv_pantahub_relogin();
+		return;
+	}
+
+	pv_log(INFO, "unclaim hint confirmed. Removing credentials...");
+	unclaim_hint_confirming = false;
+	pv_unclaim(pv);
+}
+
 static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timer_state tstate;
@@ -533,6 +604,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 				// rest of network wait stuff: connectivity check. update management,
 				// meta data uppload, ph logger push start...
 				next_state = pv_wait_network(pv);
+				if (next_state == PV_STATE_WAIT)
+					pv_wait_unclaim_hint(pv);
 			}
 		}
 		tstate = timer_current_state(&t);
@@ -711,21 +784,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG,
 		       "unclaim command received. Removing credentials...");
-		pv_storage_gc_run();
-		pv_config_set_creds_prn("");
-		pv_config_set_creds_secret("");
-		// pantahub.config
-		if (pv_config_save_creds())
-			pv_log(WARN, "could not remove credentials from disk");
-		pv->unclaimed = true;
-		// unclaimed.config
-		if (pv_config_save_creds())
-			pv_log(WARN,
-			       "could not remove unclaimed credentials from disk");
-		pv_pantahub_stop();
-		pv_pantahub_proto_reset_trails_status();
-		pv_trail_remote_remove(pv);
-		pv_metadata_rm_devmeta("pantahub.claimed");
+		pv_unclaim(pv);
 		break;
 	case CMD_DEFER_REBOOT:
 		if (!pv_config_get_bool(PV_DEBUG_SHELL)) {

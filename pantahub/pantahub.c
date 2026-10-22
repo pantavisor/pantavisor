@@ -971,6 +971,21 @@ void pv_pantahub_evaluate_state()
 	}
 }
 
+void pv_pantahub_relogin()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
+		return;
+
+	if (ph->state == PH_STATE_INIT)
+		return;
+
+	pv_log(DEBUG, "closing session to log in again...");
+
+	pv_pantahub_proto_logout();
+	pv_pantahub_evaluate_state();
+}
+
 bool pv_pantahub_is_reporting()
 {
 	struct pv_pantahub *ph = _get_ph_instance();

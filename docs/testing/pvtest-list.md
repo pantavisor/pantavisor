@@ -188,7 +188,8 @@ Remote experience tests require an active Pantacor Hub connection and exercise t
 |------|-------------|------|
 | `remote/control/manual-claim` | Manual Device Claim | ✓ |
 | `remote/control/auto-claim` | Automatic Device Claim | ✓ |
-| `remote/control/unclaim` | Unclaim is rejected unless on a DONE local revision, then re-claim reprocesses revision 1 under a new Hub id | |
+| `remote/control/cmd-unclaim` | Unclaim is rejected unless on a DONE local revision, then re-claim reprocesses revision 1 under a new Hub id | |
+| `remote/control/hint-unclaim` | Hub identity-locked hint transitions to locals/unclaim, wipes the credentials and the autotok re-claim reprocesses revision 1 under a new Hub id | |
 | `remote/control/always-remote-disabled` | Always Remote Disabled | ✓ |
 | `remote/control/always-remote-enabled` | Always Remote Enabled | ✓ |
 | `remote/control/pvcontrol-responsiveness` | pvcontrol responds normally during a Pantahub download or other expensive remote operation | |

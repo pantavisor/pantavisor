@@ -78,6 +78,27 @@ out:
 	return token;
 }
 
+char *pv_pantahub_msg_parse_session_hint(const char *json)
+{
+	int tokc;
+	jsmntok_t *tokv = NULL;
+	char *hint = NULL;
+
+	if (!json)
+		goto out;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		goto out;
+	}
+
+	hint = pv_json_get_value(json, "hint", tokv, tokc);
+
+out:
+	if (tokv)
+		free(tokv);
+	return hint;
+}
+
 char *pv_pantahub_msg_parse_next_step(const char *json)
 {
 	int tokc, size;

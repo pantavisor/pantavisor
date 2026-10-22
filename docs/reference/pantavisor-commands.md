@@ -255,7 +255,7 @@ To get an existing step json:
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/033e779113f2499a2bfb55c0c374803fba9c820361d71bbda616643007cacd5a"
 ```
 
-To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must not contain any other "/" character. These revisions that are installed using the socket ([locals](../overview/local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](../overview/remote-control.md)), as you will have to manually request the transition to locals using the [run command](#commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued.
+To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must not contain any other "/" character. `locals/unclaim` is reserved for [unclaim from Hub](../overview/remote-control.md#unclaim-from-hub) and is rejected with `409`. These revisions that are installed using the socket ([locals](../overview/local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](../overview/remote-control.md)), as you will have to manually request the transition to locals using the [run command](#commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued.
 
 ```
 curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/locals/example"
