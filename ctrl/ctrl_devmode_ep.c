@@ -444,50 +444,28 @@ out:
 	free(tokv);
 }
 
-static void ctrl_devmode_post_body(struct evbuffer *buf,
-				   const struct evbuffer_cb_info *info,
-				   void *ctx)
+// a path without {} is called once the whole body has arrived
+static void ctrl_devmode_post(struct evhttp_request *req, void *ctx)
 {
-	struct evhttp_request *req = ctx;
-	char *data;
-
-	if (!info->n_added || !pv_ctrl_utils_has_all_data(req))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0) {
+		pv_ctrl_utils_drain_req(req);
 		return;
+	}
 
-	evbuffer_remove_cb(buf, ctrl_devmode_post_body, ctx);
+	if (pv_ctrl_utils_get_content_length(req) > CTRL_DEVMODE_MAX_BODY) {
+		pv_ctrl_utils_drain_req(req);
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "The body is too large");
+		return;
+	}
 
-	data = pv_ctrl_utils_get_data(req, CTRL_DEVMODE_MAX_BODY, NULL);
+	// get_data has answered already when it gives nothing back
+	char *data = pv_ctrl_utils_get_data(req, CTRL_DEVMODE_MAX_BODY, NULL);
 	if (!data)
 		return;
 
 	ctrl_devmode_start(req, data);
 	free(data);
-}
-
-static void ctrl_devmode_post(struct evhttp_request *req, void *ctx)
-{
-	char err[PV_CTRL_MAX_ERR] = { 0 };
-	int code = pv_ctrl_utils_is_req_ok(req, ctx, err);
-	ssize_t cl;
-
-	if (code != 0) {
-		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
-		return;
-	}
-
-	cl = pv_ctrl_utils_get_content_length(req);
-	if (cl > CTRL_DEVMODE_MAX_BODY) {
-		pv_ctrl_utils_drain_on_arrive_with_err(req, HTTP_BADREQUEST,
-						       "The body is too large");
-		return;
-	}
-	if (cl <= 0) {
-		ctrl_devmode_start(req, NULL);
-		return;
-	}
-
-	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
-			ctrl_devmode_post_body, req);
 }
 
 // a path without {} takes one callback, so GET and POST share it
