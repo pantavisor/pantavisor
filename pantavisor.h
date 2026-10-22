@@ -66,6 +66,8 @@ pv_system_transition_t pv_run_update(void);
 
 void pv_issue_nonreboot(void);
 void pv_issue_reboot(void);
+void pv_reset_identity(void);
+void pv_reset_identity_transition(void);
 void pv_issue_poweroff(void);
 
 // Wake the main state machine to run as soon as possible. Idempotent: if a

@@ -906,6 +906,7 @@ static pid_t ph_logger_start_push_service(char *revision)
 		pv_system_set_process_name("pv-phlogger-push");
 		close(ph_logger.epoll_fd);
 		signal(SIGCHLD, SIG_DFL);
+		signal(SIGTERM, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
 			       "Unable to reset sigmask in ph_logger helper child: %s",
@@ -1008,6 +1009,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 	if (range_service == 0) {
 		pv_system_set_process_name("pv-phlogger-range");
 		signal(SIGCHLD, SIG_DFL);
+		signal(SIGTERM, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
 			       "Unable to reset sigmask in ph_logger range service child: %s",

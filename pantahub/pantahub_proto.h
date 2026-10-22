@@ -40,6 +40,8 @@ bool pv_pantahub_proto_is_trails_unsynced(void);
 
 void pv_pantahub_proto_post_auth(void);
 bool pv_pantahub_proto_is_auth(void);
+void pv_pantahub_proto_put_identity_reset_confirm(void);
+void pv_pantahub_proto_logout(void);
 
 void pv_pantahub_proto_get_trails_status(void);
 

@@ -30,6 +30,7 @@
 
 #define PREFIX_LOCAL_REV "locals/"
 #define SIZE_LOCAL_REV 64
+#define IDENTITY_RESET_LOCAL_REV PREFIX_LOCAL_REV "identity-reset"
 
 struct pv_state;
 
@@ -50,6 +51,7 @@ char *pv_storage_get_rev_progress(const char *rev);
 void pv_storage_init_trail_pvr(void);
 void pv_storage_rm_rev(const char *rev);
 void pv_storage_set_active();
+int pv_storage_copy_rev(const char *src, const char *dst);
 int pv_storage_update_factory(const char *rev);
 // caller owns the returned json
 char *pv_storage_get_meta_json(void);

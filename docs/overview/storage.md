@@ -114,7 +114,7 @@ Check out the [list of default user metadata](../reference/pantavisor-metadata.m
 
 ## Config
 
-Stores the `PH_` prefixed keys of the [configuration](../reference/pantavisor-configuration.md#summary). This includes the [Pantacor Hub](remote-control.md#pantacor-hub) client credentials.
+Stores the `PH_` prefixed keys of the [configuration](../reference/pantavisor-configuration.md#summary). This includes the [Pantacor Hub](remote-control.md#pantacor-hub) client credentials. During an [identity reset](remote-control.md#pantacor-hub-client), it also holds `parent.config`, the `PH_` keys of the previous Hub device, until the new one confirms the reset.
 
 These configuration keys are persistent. By default, they are saved in plain text, but this can be changed if set to a [volume](#volumes) assigned to a [crypt disk](#disks).
 
@@ -124,7 +124,7 @@ These credentials are written automatically when the device claims/registers aga
 pvcontrol cmd reset-identity
 ```
 
-The device must be running a `DONE` [local revision](../reference/pantavisor-commands.md#steps). Resetting the identity also runs the [garbage collector](#garbage-collector), so the revisions of the previous Hub device are removed.
+The device must be running a `DONE` [local revision](../reference/pantavisor-commands.md#steps). The device owner can also trigger this from [Pantacor Hub](remote-control.md#pantacor-hub-client). Resetting the identity also runs the [garbage collector](#garbage-collector), so the revisions of the previous Hub device are removed.
 
 See [Commands](../tools/pvcontrol.md#commands).
 

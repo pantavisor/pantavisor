@@ -146,6 +146,13 @@ static void ctrl_steps_recv(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
+	if (!strcmp(name, IDENTITY_RESET_LOCAL_REV)) {
+		pv_log(ERROR, "reserved local step name %s", name);
+		pv_ctrl_utils_drain_on_arrive_with_err(req, PV_HTTP_CONFLICT,
+						       "Step name is reserved");
+		goto out;
+	}
+
 	pv_update_pre_install(name);
 
 	char path[PATH_MAX] = { 0 };
