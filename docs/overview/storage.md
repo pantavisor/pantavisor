@@ -124,6 +124,8 @@ These credentials are written automatically when the device claims/registers aga
 pvcontrol cmd unclaim
 ```
 
+The device must be running a `DONE` [local revision](../reference/pantavisor-commands.md#steps). Unclaim also runs the [garbage collector](#garbage-collector), so the revisions of the previous Hub device are removed.
+
 See [Commands](../tools/pvcontrol.md#commands).
 
 ## Disks
