@@ -20,6 +20,7 @@ current_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d
 # No reset between tests: rollback-point status (DONE) vs UPDATED is position-dependent,
 # so drop status/status-msg and keep only the deterministic progress/retries.
 pvcontrol steps ls | jq -M --arg r "$current_rev" 'map(select(.name == $r) | del(.date) | del(.progress.status, .progress["status-msg"]))' | tr -d '\r'
+echo "dot folders listed: $(pvcontrol steps ls | jq -M 'any(.[]; .name | startswith("."))' | tr -d '\r' | sed 's/true/yes/;s/false/no/')"
 echo "== config =="
 # the full conf dump is target-dependent; assert shape and one universal key
 echo "config entries well-formed: $(pvcontrol conf ls | jq -M 'length > 0 and all(has("key") and has("value") and has("modified"))' | tr -d '\r')"

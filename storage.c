@@ -153,6 +153,12 @@ int pv_storage_get_subdir(const char *path, const char *prefix,
 	while (n--) {
 		char *tmp = dirs[n]->d_name;
 
+		// dot entries (".", "..", ".pv") are never revisions or objects
+		if (tmp[0] == '.') {
+			free(dirs[n]);
+			continue;
+		}
+
 		while (*tmp)
 			tmp++;
 
