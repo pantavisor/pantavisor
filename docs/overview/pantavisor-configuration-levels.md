@@ -125,7 +125,7 @@ These variables need to be set during boot time, and setting them after that wil
 If the [user metadata volume](../reference/pantavisor-state-format-v2.md#4-infrastructure-devicejson) is assigned to a permanent volume, as it is by default, these changes will persist over device reboots.
 :::
 
-[User metadata](storage.md#user-metadata) can be used to override any of the previously presented configuration mechanisms.
+[User metadata](storage.md#user-metadata) overrides all the previously presented configuration mechanisms, but only for the keys allowed at the user metadata level, while the rest will be ignored with a warning in the logs. Our [reference](../reference/pantavisor-configuration.md#levels) contains the list of keys that can be set at this level.
 
 There is a number of ways of setting user metadata, depending on the device management method choice. Go to our [how-to use Pantavisor guide](../../meta-pantavisor/getting-started/operate/device-access/index.md) for more information.
 
