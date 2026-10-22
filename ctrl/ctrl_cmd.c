@@ -25,6 +25,8 @@
 #include "json.h"
 #include "pantavisor.h"
 #include "config.h"
+#include "state.h"
+#include "storage.h"
 
 #include <event2/http.h>
 
@@ -142,6 +144,19 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 	if (pv->unclaimed && cmd->op == CMD_UNCLAIM) {
 		return _cmd_reject(cmd, HTTP_NOCONTENT, -1,
 				   "Device is already unclaimed");
+	}
+
+	if (cmd->op == CMD_UNCLAIM &&
+	    (!pv->state || !pv_storage_is_revision_local(pv->state->rev))) {
+		return _cmd_reject(
+			cmd, PV_HTTP_CONFLICT, -1,
+			"Cannot do this operation if not running a local revision");
+	}
+
+	if (cmd->op == CMD_UNCLAIM && !pv_state_is_done(pv->state)) {
+		return _cmd_reject(
+			cmd, PV_HTTP_CONFLICT, -1,
+			"Cannot do this operation if current revision is not DONE");
 	}
 
 	if (pv->cmd) {
