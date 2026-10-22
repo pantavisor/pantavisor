@@ -5,8 +5,8 @@
 }
 == create the devmode revision from the running revision ==
 create exit: 0
-create stdout: {"reboot":true}
-create stderr: running devmode/l/local_runtime_devmode_create (based on locals/local_runtime_devmode_create); the device reboots now and this connection will drop
+create stdout: {"revision":"devmode/l/local_runtime_devmode_create","base":"locals/local_runtime_devmode_create","resumed":false,"reboot":true}
+create stderr: starting the devmode revision; the device reboots now and this connection will drop
 == device metadata in devmode ==
 pantavisor.revision is the committed revision: true
 pantavisor.devmode: devmode/l/local_runtime_devmode_create
@@ -30,3 +30,25 @@ pantavisor.devmode: devmode/l/local_runtime_devmode_create
 == the committed revision is unchanged ==
 DONE
 UPDATED
+== create while the devmode revision runs changes nothing ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create","base":"locals/local_runtime_devmode_create","resumed":true,"running":true}
+devmode active: true
+== write a file into the inlay of pv-example-norole ==
+file in the inlay: yes
+== create --resume keeps the file ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create","base":"locals/local_runtime_devmode_create","resumed":true,"reboot":true}
+file in the inlay: yes
+== a plain create removes the file ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create","base":"locals/local_runtime_devmode_create","resumed":false,"reboot":true}
+file in the inlay: no
+== an explicit base ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create","base":"locals/local_runtime_devmode_create","resumed":false,"reboot":true}
+== a devmode revision cannot be the base ==
+exit: 255
+{"Error":"a devmode revision cannot be the base of another one"}
+== a base that does not exist ==
+exit: 255
+{"Error":"Revision locals/no-such-revision not found"}
+== a base that is not a revision ==
+exit: 255
+{"Error":"base must be a revision number or locals/<name>"}

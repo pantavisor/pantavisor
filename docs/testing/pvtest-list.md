@@ -73,7 +73,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/cgroup-v1-only-refused` | A container with only `lxc.cgroup` device and pids lines is refused on cgroup v2 and the update rolls back | ✓ |
 | `local/runtime/invalid-signal-handling` | Invalid Signal Handling | |
 | `local/runtime/devmode-refused` | Devmode revisions are refused while `PV_DEVMODE_ALLOWED` is false, also when it is set through user-meta | ✓ |
-| `local/runtime/devmode-create` | Enable devmode in `pantavisor.config`, create a devmode revision from the running one, list its inlays; the committed revision does not change; create again while it runs changes nothing, `--resume` keeps inlay files, a plain create removes them, an explicit base works, a devmode or unknown base is refused | |
+| `local/runtime/devmode-create` | Enable devmode in `pantavisor.config`, create a devmode revision from the running one, list its inlays; the committed revision does not change; create again while it runs changes nothing, `--resume` keeps inlay files, a plain create removes them, an explicit base works, a devmode or unknown base is refused | ✓ |
 | `local/runtime/devmode-inlay-files` | A file written into an inlay shows up after a restart, survives another one and is gone after a reset | ✓ |
 | `local/runtime/devmode-overlay` | `/pantavisor/devmode/<container>` lists the image files; removing a file or recreating a directory there hides it in the container after a restart; a reset brings both back | ✓ |
 | `local/runtime/devmode-leave` | Running the committed revision leaves devmode and no container keeps an inlay | ✓ |
