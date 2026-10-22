@@ -47,3 +47,6 @@ if [ -n "$autotok_id" ]; then
 		-H "Authorization: Bearer $bearer" \
 		"$PVTEST_HUB_URL/devices/tokens/$autotok_id" > /dev/null 2>&1
 fi
+# the revoked autotok would make the next unclaim fail to register
+pv_exec sh -c "for f in /run/pantavisor/pv/phconfig/pantahub.config /run/pantavisor/pv/phconfig/unclaimed.config; do [ -f \$f ] && sed -i '/^PH_FACTORY_AUTOTOK=/d' \$f; done; true" \
+	|| { echo "ERROR: could not remove PH_FACTORY_AUTOTOK" >&2; exit 1; }
