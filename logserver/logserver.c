@@ -24,6 +24,7 @@
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <sys/un.h>
@@ -53,6 +54,7 @@
 #include "utils/list.h"
 #include "utils/socket.h"
 #include "utils/pvsignals.h"
+#include "utils/timer.h"
 #include "pvctl_utils.h"
 #include "config.h"
 
@@ -72,6 +74,11 @@
 #define PV_LS_MAX_EV (5)
 #define PV_LS_MAX_HEADER_LEN (50)
 #define PV_LS_UPDATE_ROTATION_INTERVAL (50)
+
+// /dev/kmsg: memory devices driver, Documentation/admin-guide/devices.txt
+#define PV_LS_KMSG_MAJOR (1)
+#define PV_LS_KMSG_MINOR (11)
+#define PV_LS_KMSG_OVERRUN_INTERVAL (10)
 
 #define MODULE_NAME "logserver"
 
@@ -122,6 +129,10 @@ struct pv_ls {
 	struct dl_list outputs;
 	struct dl_list conninfo;
 	struct dl_list psock;
+	struct {
+		struct timer window;
+		int count;
+	} kmsg_overrun;
 };
 
 static bool pv_ls_ready_sent;
@@ -137,6 +148,7 @@ static struct pv_ls logserver = {
 	.running_rev = NULL,
 	.updated_rev = NULL,
 	.rot = { 0 },
+	.kmsg_overrun = { 0 },
 };
 
 typedef struct pv_ls_out *(*pv_ls_outputs_builder_t)(void);
@@ -250,6 +262,16 @@ static struct pv_ls_fd *pv_ls_fetch_fd_from_list(struct dl_list *l, int fd)
 		}
 	}
 	return NULL;
+}
+
+static bool pv_ls_is_kmsg(int fd)
+{
+	struct stat st;
+	if (fstat(fd, &st) < 0)
+		return false;
+
+	return S_ISCHR(st.st_mode) &&
+	       st.st_rdev == makedev(PV_LS_KMSG_MAJOR, PV_LS_KMSG_MINOR);
 }
 
 static int pv_ls_epoll_command(int fd, int cmd)
@@ -886,6 +908,17 @@ static void pv_ls_consume_fd(int fd)
 		    (!strcmp(d.src, PV_PLATFORM_LXC_LOG) ||
 		     !strcmp(d.src, PV_PLATFORM_LXC_CONSOLE_LOG)))
 			pv_ls_utils_stdout(&d);
+	} else if (errno == EPIPE && pv_ls_is_kmsg(fd)) {
+		logserver.kmsg_overrun.count++;
+		if (timer_current_state(&logserver.kmsg_overrun.window).fin) {
+			pv_log(DEBUG,
+			       "dmesg records lost, kernel ring buffer overrun (%d times)",
+			       logserver.kmsg_overrun.count);
+			logserver.kmsg_overrun.count = 0;
+			timer_start(&logserver.kmsg_overrun.window,
+				    PV_LS_KMSG_OVERRUN_INTERVAL, 0,
+				    RELATIV_TIMER);
+		}
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG,
 		       "dead fd subscribed found (%d) trying to read: %s",
