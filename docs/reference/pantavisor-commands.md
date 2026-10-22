@@ -110,6 +110,20 @@ $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode"
 
 `revision`, `base` and `containers` are only present when `active` is `true`, that is, when the running revision is a devmode revision.
 
+To start a devmode session, copy a base revision into a devmode revision and run it. Both fields are optional:
+
+```
+$ curl -X POST --header "Content-Type: application/json" --data '{"base":"0","resume":false}' --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode"
+{"revision":"devmode/r/0","base":"0","resumed":false,"reboot":true}
+```
+
+| Field | Description |
+|-------|-------------|
+| `base` | revision number or `locals/<name>`; default: the committed revision, as `pantavisor.revision` in the device metadata reports it |
+| `resume` | `true` keeps the files of an earlier devmode revision of the same base; the default removes that revision first, with its logs and inlays, so the session starts clean |
+
+The answer is sent before the device changes revision. `reboot` is `true` when the device reboots to run it. If the devmode revision of that base is already running, nothing changes and the answer is `{"revision":"devmode/r/0","base":"0","resumed":true,"running":true}`.
+
 To empty the inlay of one container:
 
 ```
@@ -119,13 +133,16 @@ $ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/con
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/devmode` | devmode state: `enabled`, `active`, running devmode `revision`, its `base` and the inlay path of each container |
+| `POST` | `/devmode` | start a devmode session: copy `base` into a devmode revision and run it |
 | `DELETE` | `/devmode/containers/{name}` | remove all files from the inlay of a container |
 
 | Status | Condition |
 |--------|-----------|
-| `403` | [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `false` (`DELETE` only) |
-| `404` | `DELETE` for a container that is not in the running revision |
-| `409` | the running revision is not a devmode revision (`DELETE` only) |
+| `400` | `POST`: `base` is a devmode revision ("a devmode revision cannot be the base of another one") or not a revision number or `locals/<name>` |
+| `403` | [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `false` |
+| `404` | `POST`: the base revision does not exist; `DELETE`: a container that is not in the running revision |
+| `409` | `DELETE`: the running revision is not a devmode revision; `POST`: an update or command is in progress |
+| `422` | `POST`: the state of the base does not verify |
 
 ## /daemons
 
