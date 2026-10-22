@@ -30,7 +30,7 @@ trap cleanup EXIT
 restart_target() {
 	local apply_err apply_out
 	apply_err=$(mktemp)
-	apply_out=$(pvcontrol devmode apply "$target" 2> "$apply_err")
+	apply_out=$(pvcontrol devmode apply "$target" --reboot 2> "$apply_err")
 	echo "apply stdout: $apply_out" | tr -d '\r'
 	echo "apply stderr:"
 	tr -d '\r' < "$apply_err" | grep -v fallbear-cmd

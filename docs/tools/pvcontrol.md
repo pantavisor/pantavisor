@@ -482,20 +482,23 @@ pvcontrol devmode status
 pvcontrol devmode create
 pvcontrol devmode create 12
 pvcontrol devmode create locals/my-rev
+pvcontrol devmode create 12 --resume
 pvcontrol devmode reset my-container
 pvcontrol devmode apply my-container
+pvcontrol devmode apply my-system-container --reboot
 ```
 
 | Subcommand | Description |
 |------------|-------------|
 | `status` | Devmode state and the inlay directory of each container. |
-| `create [base]` | Copies the state json of `base` into `devmode/r/<number>` (`base` is a revision number) or `devmode/l/<name>` (`base` is `locals/<name>`), then runs it. Without `base`, the running revision is used; if that is a devmode revision, its own base is used. `-m <message>` sets the commit message. |
+| `create [base] [--resume]` | One `POST /devmode`. Pantavisor copies the state json of `base` into `devmode/r/<number>` (`base` is a revision number) or `devmode/l/<name>` (`base` is `locals/<name>`), then runs it. Without `base`, the committed revision is used. A left-over devmode revision of that base is removed first; `--resume` keeps its files. |
 | `reset <container>` | Removes all files from the inlay of the container. |
-| `apply <container>` | Restarts the container so it sees the inlay files. A container with restart policy `system` reboots the device into the devmode revision instead. |
+| `apply <container> [--reboot]` | Restarts the container so it sees the inlay files. A container with restart policy `system` needs `--reboot`, which reboots the device into the devmode revision. |
 
 ```console
 $ pvcontrol devmode create 12
-running devmode/r/12 (based on 12)
+starting the devmode revision; the device reboots now and this connection will drop
+{"revision":"devmode/r/12","base":"12","resumed":false,"reboot":true}
 $ pvcontrol devmode status
 {"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode"}]}
 ```
@@ -546,9 +549,9 @@ On a platform without managed drivers these are effectively no-ops returning
 | `steps get\|show-progress <rev>` | GET | `/steps/{rev}` / `/steps/{rev}/progress` |
 | `steps put\|install <path> <rev>` | PUT | `/steps/{rev}` (+ `/commitmsg`) |
 | `devmode status` | GET | `/devmode` |
-| `devmode create [base]` | GET, PUT, POST | `/steps/{base}`, `/steps/devmode/...`, `/commands` |
+| `devmode create [base] [--resume]` | POST | `/devmode` |
 | `devmode reset <container>` | DELETE | `/devmode/containers/{name}` |
-| `devmode apply <container>` | PUT | `/containers/{name}` (`?reboot=1` for `system` containers) |
+| `devmode apply <container> [--reboot]` | PUT | `/containers/{name}` (`--reboot` adds `?reboot=1`) |
 
 For the authoritative endpoint contracts (request/response shapes, status
 codes, management-socket requirements), see

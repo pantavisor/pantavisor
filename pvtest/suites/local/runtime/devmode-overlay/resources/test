@@ -36,7 +36,7 @@ trap cleanup EXIT
 
 # restart the container and wait until the device runs the devmode revision again
 restart_target() {
-	pvcontrol devmode apply "$target" > /dev/null 2>&1
+	pvcontrol devmode apply "$target" --reboot > /dev/null 2>&1
 	wait_for_down 30
 	wait_for_target_ready "$1" "$devmode_rev" "UPDATED" >&2 \
 		|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }

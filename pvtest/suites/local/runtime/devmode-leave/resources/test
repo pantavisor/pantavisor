@@ -37,7 +37,7 @@ wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
 echo "== write a file into the inlay of $target and restart it =="
 pventer -c "$writer" mkdir -p "/pantavisor/devmode/$target$(dirname "$file_in_target")"
 pventer -c "$writer" touch "/pantavisor/devmode/$target$file_in_target"
-pvcontrol devmode apply "$target" > /dev/null 2>&1
+pvcontrol devmode apply "$target" --reboot > /dev/null 2>&1
 wait_for_down 30
 wait_for_target_ready "restart" "$devmode_rev" "UPDATED" >&2 \
 	|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }

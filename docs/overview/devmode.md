@@ -31,10 +31,11 @@ With `PV_DEVMODE_ALLOWED=false`, a devmode revision is refused: `PUT /steps/devm
 
 ## Devmode revisions
 
-`pvcontrol devmode create` does the following steps for you; it uses the running revision as base unless you name one:
+`pvcontrol devmode create` asks Pantavisor to do the following steps with one call, `POST /devmode`. The base is the committed revision unless you name one, and a left-over devmode revision of that base is removed first, so the session starts clean. Add `--resume` to keep its files:
 
 ```bash
 pvcontrol devmode create
+pvcontrol devmode create 12 --resume
 ```
 
 By hand:
@@ -69,14 +70,14 @@ Your SSH session drops when the device reboots, so Pantavisor says so before it 
 
   ```
   $ pvcontrol devmode create
-  running devmode/r/187 (based on 187); the device reboots now and this connection will drop
-  {"reboot":true}
+  starting the devmode revision; the device reboots now and this connection will drop
+  {"revision":"devmode/r/187","base":"187","resumed":false,"reboot":true}
   $ pvcontrol cmd run 187
   leaving devmode for 187; the device reboots now and this connection will drop
   {"reboot":true}
   ```
 
-  `pvcontrol cmd reboot` prints `rebooting back into devmode/r/187; the device reboots now ...` and `pvcontrol cmd run devmode/r/188` prints `running devmode/r/188; the device reboots now ...` and `pvcontrol devmode apply <system container>` prints `rebooting into devmode/r/187 to restart <system container>; the device reboots now ...`.
+  `pvcontrol cmd reboot` prints `rebooting back into devmode/r/187; the device reboots now ...` and `pvcontrol cmd run devmode/r/188` prints `running devmode/r/188; the device reboots now ...` and `pvcontrol devmode apply <system container> --reboot` prints `rebooting into the devmode revision to restart <system container>; the device reboots now ...`.
 - the answer of the control socket has the body `{"reboot":true}`, for scripts and tools that call the [API](../reference/pantavisor-commands.md#commands) directly. Calls that do not reboot keep the empty body.
 - Pantavisor logs one line at the `WALL` level right before it reboots, so it reaches `/dev/console` when [`PV_LOG_CONSOLE_ALERTS`](../reference/pantavisor-configuration.md#summary) is set:
 
@@ -86,7 +87,7 @@ Your SSH session drops when the device reboots, so Pantavisor says so before it 
 
   Read it later with `grep -r "rebooting into" /storage/logs/`.
 
-`pvcontrol devmode create` while a devmode revision runs starts again from the revision that devmode revision is based on, as `/devmode` reports in `base`.
+`pvcontrol devmode create` while the devmode revision of that base runs changes nothing: the answer has `"running":true`. To start clean, run the committed revision first (`pvcontrol cmd run <revision>`) and create it again.
 
 ## The inlay
 
@@ -149,10 +150,10 @@ If the filesystem of the device cannot hold overlay whiteouts, Pantavisor logs a
 A container with restart policy `system` cannot be restarted through the API. In a devmode revision, restarting it answers `409` (reboot needed). Reboot the device into the devmode revision:
 
 ```bash
-pvcontrol devmode apply my-system-container
+pvcontrol devmode apply my-system-container --reboot
 ```
 
-For a `system` container this answers the `409` by rebooting into the devmode revision (pvcontrol retries with `?reboot=1`). The raw call is:
+A `system` container needs `--reboot`, which adds `?reboot=1` to the call and reboots the device into the devmode revision. The raw call is:
 
 ```bash
 curl -X PUT --data '{"action":"restart"}' --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-system-container?reboot=1"
