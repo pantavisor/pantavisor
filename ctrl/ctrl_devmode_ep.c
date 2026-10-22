@@ -490,12 +490,19 @@ static void ctrl_devmode_post(struct evhttp_request *req, void *ctx)
 			ctrl_devmode_post_body, req);
 }
 
+// a path without {} takes one callback, so GET and POST share it
+static void ctrl_devmode_cb(struct evhttp_request *req, void *ctx)
+{
+	if (evhttp_request_get_command(req) == EVHTTP_REQ_POST)
+		ctrl_devmode_post(req, ctx);
+	else
+		ctrl_devmode_get(req, ctx);
+}
+
 int pv_ctrl_endpoints_devmode_init()
 {
-	pv_ctrl_add_endpoint("/devmode", EVHTTP_REQ_GET, true,
-			     ctrl_devmode_get);
-	pv_ctrl_add_endpoint("/devmode", EVHTTP_REQ_POST, true,
-			     ctrl_devmode_post);
+	pv_ctrl_add_endpoint("/devmode", EVHTTP_REQ_GET | EVHTTP_REQ_POST, true,
+			     ctrl_devmode_cb);
 	pv_ctrl_add_endpoint("/devmode/containers/{}", EVHTTP_REQ_DELETE, true,
 			     ctrl_devmode_inlay_delete);
 
