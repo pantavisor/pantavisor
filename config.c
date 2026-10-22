@@ -1556,6 +1556,58 @@ int pv_config_save_creds()
 	return 0;
 }
 
+int pv_config_save_parent_creds()
+{
+	char path[PATH_MAX];
+
+	pv_paths_pv_file(path, PATH_MAX, PARENT_FNAME);
+	if (pv_config_save_creds_to_file(path)) {
+		pv_log(ERROR, "cannot save parent creds in %s", path);
+		return -1;
+	}
+
+	return 0;
+}
+
+int pv_config_get_parent_creds_id(char *id, size_t size)
+{
+	char path[PATH_MAX];
+	char *value;
+	int ret = -1;
+	DEFINE_DL_LIST(parent_list);
+
+	pv_paths_pv_file(path, PATH_MAX, PARENT_FNAME);
+	if (!pv_fs_path_exist(path))
+		return -1;
+
+	if (load_key_value_file(path, &parent_list) < 0) {
+		pv_log(WARN, "cannot load parent creds from %s", path);
+		goto out;
+	}
+
+	value = config_get_value(&parent_list, "PH_CREDS_ID");
+	if (!value || !strlen(value))
+		goto out;
+
+	SNPRINTF_WTRUNC(id, size, "%s", value);
+	ret = 0;
+out:
+	config_clear_items(&parent_list);
+	return ret;
+}
+
+void pv_config_remove_parent_creds()
+{
+	char path[PATH_MAX];
+
+	pv_paths_pv_file(path, PATH_MAX, PARENT_FNAME);
+	if (!pv_fs_path_exist(path))
+		return;
+
+	pv_log(DEBUG, "removing parent creds");
+	pv_fs_path_remove(path, false);
+}
+
 void pv_config_override_value(const char *key, const char *value)
 {
 	level_t level = META;

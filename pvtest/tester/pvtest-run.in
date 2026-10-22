@@ -602,6 +602,8 @@ handle_self_claim() {
 		pvtest_log INFO "deleting device $pre_reset_device from Hub"
 		_hub_delete_device "$pre_reset_device"
 		pre_reset_device=
+		# already reset; a second reset-identity would race the first
+		return 0
 	fi
 
 	local device_id

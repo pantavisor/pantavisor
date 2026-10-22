@@ -57,25 +57,24 @@ char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass)
 	return pv_json_ser_str(&js);
 }
 
-char *pv_pantahub_msg_parse_session_token(const char *json)
+void pv_pantahub_msg_parse_session(const char *json, char **token, char **hint)
 {
 	int tokc;
 	jsmntok_t *tokv = NULL;
-	char *token = NULL;
+
+	*token = NULL;
+	*hint = NULL;
 
 	if (!json)
-		goto out;
+		return;
 
-	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		goto out;
-	}
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0)
+		return;
 
-	token = pv_json_get_value(json, "token", tokv, tokc);
+	*token = pv_json_get_value(json, "token", tokv, tokc);
+	*hint = pv_json_get_value_toplevel(json, "hint", tokv, tokc);
 
-out:
-	if (tokv)
-		free(tokv);
-	return token;
+	free(tokv);
 }
 
 char *pv_pantahub_msg_parse_next_step(const char *json)

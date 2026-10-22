@@ -22,6 +22,8 @@
 #ifndef PV_PANTAHUB_STRUCT_H
 #define PV_PANTAHUB_STRUCT_H
 
+#include <stdbool.h>
+
 #include "event/event_periodic.h"
 
 typedef enum {
@@ -30,6 +32,7 @@ typedef enum {
 	PH_STATE_CLAIM,
 	PH_STATE_SYNC,
 	PH_STATE_LOGIN,
+	PH_STATE_RESET_CONFIRM,
 	PH_STATE_WAIT_HUB,
 	PH_STATE_REPORT,
 	PH_STATE_IDLE,
@@ -43,6 +46,7 @@ struct pv_pantahub {
 	struct pv_event_periodic request_timer;
 	struct pv_event_periodic usrmeta_timer;
 	struct pv_event_periodic devmeta_timer;
+	bool identity_reset_deferred;
 };
 
 #endif
