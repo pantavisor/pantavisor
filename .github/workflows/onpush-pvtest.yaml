@@ -7,6 +7,7 @@
 #   pvtest/{tester,shared,host}/              local + remote (volatile + persistent)
 #   pantahub/, ph_logger, trestclient,
 #   updater, event/event_rest                 remote (volatile)
+#   config                                    local + remote (volatile)
 #   anything else but docs/                   local  (volatile)
 # Persistent shares one device across tests, so it runs when tests or the
 # framework change: it catches a test leaking state into the next one, which
@@ -126,6 +127,7 @@ jobs:
                     pvtest/suites/remote/*) rv=1 rp=1 ;;
                     pvtest/*) lv=1 lp=1 rv=1 rp=1 ;;
                     pantahub/*|ph_logger.[ch]|trestclient.[ch]|updater.[ch]|event/event_rest.[ch]) rv=1 ;;
+                    config.[ch]) lv=1 rv=1 ;;
                     *) lv=1 ;;
                   esac
                 done <<< "$files"
