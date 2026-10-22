@@ -87,6 +87,27 @@ static void ctrl_devmode_inlay_path(struct pv_state *s, struct pv_platform *p,
 					DEVMODE_INLAY_DNAME);
 }
 
+// the inlay relative to the storage root, which mgmt containers see at /storage
+static const char *ctrl_devmode_storage_rel(const char *inlay)
+{
+	char root[PATH_MAX] = { 0 };
+	size_t len;
+
+	pv_paths_storage(root, PATH_MAX);
+	len = strlen(root);
+	while (len && root[len - 1] == '/')
+		len--;
+
+	if (!len || strncmp(inlay, root, len) || inlay[len] != '/')
+		return "";
+
+	inlay += len;
+	while (*inlay == '/')
+		inlay++;
+
+	return inlay;
+}
+
 static void ctrl_devmode_get(struct evhttp_request *req, void *ctx)
 {
 	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
@@ -136,6 +157,12 @@ static void ctrl_devmode_get(struct evhttp_request *req, void *ctx)
 								   p->name);
 						pv_json_ser_key(&js, "inlay");
 						pv_json_ser_string(&js, path);
+						pv_json_ser_key(
+							&js, "inlay_storage");
+						pv_json_ser_string(
+							&js,
+							ctrl_devmode_storage_rel(
+								path));
 						pv_json_ser_object_pop(&js);
 					}
 				}

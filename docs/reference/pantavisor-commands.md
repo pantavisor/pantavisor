@@ -103,8 +103,10 @@ To get the devmode state:
 
 ```
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode"
-{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode"}]}
+{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode","inlay_storage":"disks/rev/devmode/r/12/my-container/_devmode"}]}
 ```
+
+`inlay_storage`: the inlay relative to the storage root, which mgmt containers see at `/storage`.
 
 `revision`, `base` and `containers` are only present when `active` is `true`, that is, when the running revision is a devmode revision.
 
