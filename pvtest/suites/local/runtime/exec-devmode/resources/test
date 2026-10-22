@@ -61,7 +61,7 @@ echo "== stdout =="
 show "$target" -- echo hello
 
 echo "== the answer is plain JSON =="
-raw=$(pvcurl -s -X POST --header "Content-Type: application/json" --data '{"argv":["echo","hi"],"timeout_s":10}' --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/$target/exec" | tr -d '\r')
+raw=$(pvcurl -s -X POST --header "Content-Type: application/json" --data '{"argv":["echo","hi"],"timeout_s":10}' --unix-socket /run/pantavisor/pv/pv-ctrl "http://localhost/containers/$target/exec" | tr -d '\r')
 echo "$raw" | jq -e '.exit_code == 0' > /dev/null && echo "json: ok" || echo "json: not valid: $raw"
 
 echo "== exit code =="
