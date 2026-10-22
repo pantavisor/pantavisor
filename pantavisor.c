@@ -455,6 +455,51 @@ static pv_state_t pv_wait_update()
 	return PV_STATE_WAIT;
 }
 
+void pv_reset_identity()
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
+	pv_storage_gc_run();
+	pv_config_set_creds_prn("");
+	pv_config_set_creds_secret("");
+	// pantahub.config
+	if (pv_config_save_creds())
+		pv_log(WARN, "could not remove credentials from disk");
+	pv->unclaimed = true;
+	// unclaimed.config
+	if (pv_config_save_creds())
+		pv_log(WARN,
+		       "could not remove unclaimed credentials from disk");
+	pv_pantahub_stop();
+	ph_logger_stop_lenient();
+	ph_logger_stop_force();
+	pv_pantahub_proto_reset_trails_status();
+	pv_trail_remote_remove(pv);
+	pv_metadata_rm_devmeta("pantahub.claimed");
+	pv_ph_release_client(pv);
+}
+
+void pv_reset_identity_transition()
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
+	if (pv_storage_copy_rev(pv->state->rev, IDENTITY_RESET_LOCAL_REV) < 0) {
+		pv_log(ERROR, "cannot install revision %s",
+		       IDENTITY_RESET_LOCAL_REV);
+		return;
+	}
+
+	pv_update_run(IDENTITY_RESET_LOCAL_REV);
+	if (pv->update && !pv_update_is_final()) {
+		pv_issue_reboot();
+		pv_wake_state_machine();
+	}
+}
+
 static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timer_state tstate;
@@ -711,21 +756,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG,
 		       "reset identity command received. Removing credentials...");
-		pv_storage_gc_run();
-		pv_config_set_creds_prn("");
-		pv_config_set_creds_secret("");
-		// pantahub.config
-		if (pv_config_save_creds())
-			pv_log(WARN, "could not remove credentials from disk");
-		pv->unclaimed = true;
-		// unclaimed.config
-		if (pv_config_save_creds())
-			pv_log(WARN,
-			       "could not remove unclaimed credentials from disk");
-		pv_pantahub_stop();
-		pv_pantahub_proto_reset_trails_status();
-		pv_trail_remote_remove(pv);
-		pv_metadata_rm_devmeta("pantahub.claimed");
+		pv_reset_identity();
 		break;
 	case CMD_DEFER_REBOOT:
 		if (!pv_config_get_bool(PV_DEBUG_SHELL)) {

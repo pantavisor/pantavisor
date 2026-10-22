@@ -626,21 +626,21 @@ void pv_storage_set_active()
 	symlink(pv->state->rev, path);
 }
 
-int pv_storage_update_factory(const char *rev)
+int pv_storage_copy_rev(const char *src, const char *dst)
 {
-	int res = -1, fd_c = -1, fd_f = -1;
+	int res = -1;
 	char dst_path[PATH_MAX], src_path[PATH_MAX];
 
-	// first, remove revision 0 that is going to be substituted
-	pv_storage_rm_rev("0");
+	// first, remove dst revision that is going to be substituted
+	pv_storage_rm_rev(dst);
 
-	// now, create revision 0
-	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, "0", "");
+	// now, create dst revision
+	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, dst, "");
 	pv_fs_mkdir_p(dst_path, 0755);
 
-	// finally, copy revision json to revision 0
-	pv_paths_storage_trail_pvr_file(src_path, PATH_MAX, rev, JSON_FNAME);
-	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, "0", JSON_FNAME);
+	// finally, copy src revision json to dst revision
+	pv_paths_storage_trail_pvr_file(src_path, PATH_MAX, src, JSON_FNAME);
+	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, dst, JSON_FNAME);
 	pv_log(DEBUG, "copying %s to %s", src_path, dst_path);
 	if (pv_fs_file_copy(src_path, dst_path, 0644) < 0) {
 		pv_log(ERROR, "cannot copy %s into %s: %s", src_path, dst_path,
@@ -650,10 +650,12 @@ int pv_storage_update_factory(const char *rev)
 
 	res = 0;
 out:
-	close(fd_c);
-	close(fd_f);
-
 	return res;
+}
+
+int pv_storage_update_factory(const char *rev)
+{
+	return pv_storage_copy_rev(rev, "0");
 }
 
 bool pv_storage_is_revision_local(const char *rev)

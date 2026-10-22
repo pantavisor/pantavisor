@@ -51,6 +51,8 @@
 #include "json.h"
 #include "paths.h"
 #include "metadata.h"
+#include "state.h"
+#include "storage.h"
 #include "updater.h"
 
 #include "update/update.h"
@@ -267,6 +269,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	thttp_response_t *res = 0;
 	jsmntok_t *tokv = NULL;
 	char **headers = NULL;
+	char parent[PV_DEVICE_ID_MAX_LEN], body[128];
 
 	const char **certs = NULL;
 
@@ -299,6 +302,14 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 	req->path = "/devices/";
 	req->body = 0;
+
+	if (!pv_config_get_parent_creds_id(parent, sizeof(parent))) {
+		pv_log(INFO, "registering a new identity with parent device %s",
+		       parent);
+		SNPRINTF_WTRUNC(body, sizeof(body),
+				"{\"parent_device_id\":\"%s\"}", parent);
+		req->body = body;
+	}
 
 	const char *autotok = pv_config_get_str(PH_FACTORY_AUTOTOK);
 	if (autotok && strcmp(autotok, "")) {
@@ -338,6 +349,11 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 		pv_log(WARN,
 		       "HTTP request POST %s returned HTTP error (code=%d; body='%s')",
 		       req->path, res->code, res->body);
+		if (req->body && res->code == THTTP_STATUS_BAD_REQUEST) {
+			pv_log(WARN, "dropping parent device %s refused by Hub",
+			       parent);
+			pv_config_remove_parent_creds();
+		}
 	}
 
 	if (headers) {
@@ -551,6 +567,8 @@ const char *pv_pantahub_state_string(ph_state_t state)
 		return "sync";
 	case PH_STATE_LOGIN:
 		return "login";
+	case PH_STATE_RESET_CONFIRM:
+		return "reset confirm";
 	case PH_STATE_WAIT_HUB:
 		return "wait Hub";
 	case PH_STATE_REPORT:
@@ -698,6 +716,23 @@ static void _run_state_login()
 		return;
 
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _login_cb);
+}
+
+static void _reset_confirm_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_reset_confirm_cb);
+
+	pv_pantahub_proto_put_identity_reset_confirm();
+}
+
+static void _run_state_reset_confirm()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
+		return;
+
+	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
+				_reset_confirm_cb);
 }
 
 static void _wait_hub_cb(evutil_socket_t fd, short event, void *arg)
@@ -867,6 +902,9 @@ static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 	case PH_STATE_LOGIN:
 		_run_state_login();
 		break;
+	case PH_STATE_RESET_CONFIRM:
+		_run_state_reset_confirm();
+		break;
 	case PH_STATE_WAIT_HUB:
 		_run_state_wait_hub();
 		break;
@@ -926,7 +964,8 @@ void pv_pantahub_stop()
 void pv_pantahub_evaluate_state()
 {
 	struct pantavisor *pv = pv_get_instance();
-	if (!pv)
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!pv || !ph)
 		return;
 
 	if (!pv_pantahub_proto_is_auth()) {
@@ -941,6 +980,15 @@ void pv_pantahub_evaluate_state()
 
 	if (pv_pantahub_proto_is_trails_unsynced()) {
 		_next_state(PH_STATE_SYNC);
+		return;
+	}
+
+	// the next login brings the hint back
+	if (!pv->update && ph->identity_reset_deferred) {
+		pv_log(DEBUG, "logging in again to resume identity reset");
+		ph->identity_reset_deferred = false;
+		pv_pantahub_proto_logout();
+		_next_state(PH_STATE_LOGIN);
 		return;
 	}
 
@@ -969,6 +1017,83 @@ void pv_pantahub_evaluate_state()
 		_next_state(PH_STATE_REPORT);
 		return;
 	}
+}
+
+static void _identity_reset_transition_cb(evutil_socket_t fd, short event,
+					  void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p",
+	       (void *)_identity_reset_transition_cb);
+
+	pv_log(INFO, "identity reset requested. Transferring revision to %s",
+	       IDENTITY_RESET_LOCAL_REV);
+	pv_reset_identity_transition();
+}
+
+static void _identity_reset_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_identity_reset_cb);
+
+	if (pv_config_save_parent_creds())
+		return;
+
+	pv_log(INFO,
+	       "identity reset request confirmed. Removing credentials...");
+	pv_reset_identity();
+}
+
+// returns true if the identity reset takes over this login
+static bool _on_identity_reset_requested()
+{
+	struct pantavisor *pv = pv_get_instance();
+	struct pv_pantahub *ph = _get_ph_instance();
+
+	pv_log(INFO, "got identity-reset-requested hint");
+
+	if (!pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS)) {
+		WARN_ONCE(
+			"ignoring identity reset request because remote mode is not forced on local revisions");
+		return false;
+	}
+
+	if (pv->update) {
+		pv_log(DEBUG,
+		       "deferring identity reset request because an update is in progress");
+		ph->identity_reset_deferred = true;
+		return false;
+	}
+
+	if (pv_storage_is_revision_local(pv->state->rev) &&
+	    pv_state_is_done(pv->state)) {
+		// the wipe stops this client, so it cannot run from its callback
+		pv_event_one_shot(_identity_reset_cb);
+		return true;
+	}
+
+	pv_event_one_shot(_identity_reset_transition_cb);
+	return false;
+}
+
+void pv_pantahub_on_login(const char *hint)
+{
+	struct pantavisor *pv = pv_get_instance();
+	char parent[PV_DEVICE_ID_MAX_LEN];
+
+	if (!pv)
+		return;
+
+	if (!pv_config_get_parent_creds_id(parent, sizeof(parent))) {
+		pv_log(INFO, "identity reset of %s pending confirmation",
+		       parent);
+		_next_state(PH_STATE_RESET_CONFIRM);
+		return;
+	}
+
+	if (hint && !strcmp(hint, "identity-reset-requested") &&
+	    _on_identity_reset_requested())
+		return;
+
+	pv_pantahub_evaluate_state();
 }
 
 bool pv_pantahub_is_reporting()

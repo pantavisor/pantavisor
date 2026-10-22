@@ -21,7 +21,7 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantahub.address` | IP:port | Pantacor Hub address the client is communicating with |
 | `pantahub.claimed` | 0 or 1 | `0` while the device is unclaimed, `1` once it has been claimed |
 | `pantahub.online` | 0 or 1 | 1 if connection to Pantacor Hub was established |
-| `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, claim, sync, login, wait hub, report, idle, prep download or download) |
+| `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, claim, sync, login, reset confirm, wait hub, report, idle, prep download or download) |
 | `pantavisor.arch` | string | CPU architecture |
 | `pantavisor.cgroup.layout` | `hybrid`, `legacy`, `unified` or `unknown` | cgroup layout of the system (see [checking which version is in use](../overview/cgroups.md#checking-which-version-is-in-use)) |
 | `pantavisor.cgroup.version` | `1` or `2` | cgroup version Pantavisor uses: `2` for `unified`, `1` for `hybrid` and `legacy` |
