@@ -3,6 +3,12 @@
 file in folder: yes
 directory in folder: yes
 file in container: yes
+== a file the container wrote itself ==
+file in layer: yes
+image file in layer: no
+write in layer: refused
+remove in layer: refused
+file in container: yes
 == remove the file and the directory content in the folder ==
 rm exit: 0
 mkdir exit: 0
