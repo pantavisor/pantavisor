@@ -139,6 +139,10 @@ echo "== a directory with a mode =="
 pvcontrol devmode files put "$target" opt/devmode-dir --type dir --mode 0750 | jq -M -c .
 pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "opt/devmode-dir") | {type, mode}]'
 pvcontrol devmode files rm "$target" opt/devmode-dir > /dev/null
+echo "== a directory without a mode =="
+pvcontrol devmode files put "$target" opt/devmode-plain/sub --type dir | jq -M -c .
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path | startswith("opt/devmode-plain")) | {path, mode}]'
+pvcontrol devmode files rm "$target" opt/devmode-plain --recursive > /dev/null
 
 echo "== from a container with the mgmt role =="
 pventer -c "$mgmt" pvcontrol devmode files ls "$target" 2>&1 | tr -d '\r' | grep '^{' | jq -M -c '[.files[].path]'

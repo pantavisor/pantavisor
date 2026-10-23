@@ -860,17 +860,21 @@ static void dmf_put_other(struct evhttp_request *req, struct dmf_ctx *c,
 	const char *msg = NULL, *target = dmf_query(c, "target");
 	struct pv_json_ser js;
 	int code = 0, fd;
+	bool created = false;
 
 	if (!strcmp(type, "dir")) {
-		if (mkdirat(dirfd, put->leaf, put->mode) && errno != EEXIST)
+		mode_t dmode = dmf_query(c, "mode") ? put->mode : 0755;
+
+		created = !mkdirat(dirfd, put->leaf, dmode);
+		if (!created && errno != EEXIST)
 			code = dmf_errno_code(&msg);
 		else if ((fd = openat(dirfd, put->leaf,
 				      O_RDONLY | O_DIRECTORY | O_NOFOLLOW |
 					      O_CLOEXEC)) < 0)
 			code = dmf_errno_code(&msg);
 		else {
-			if (dmf_query(c, "mode"))
-				fchmod(fd, put->mode);
+			if (created || dmf_query(c, "mode"))
+				fchmod(fd, dmode);
 			if (put->set_owner)
 				fchown(fd, put->uid, put->gid);
 			close(fd);
