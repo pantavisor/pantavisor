@@ -59,6 +59,7 @@ int pv_pantahub_close(void);
 void pv_pantahub_start(void);
 void pv_pantahub_stop(void);
 void pv_pantahub_evaluate_state(void);
+void pv_pantahub_relogin(void);
 
 bool pv_pantahub_is_reporting(void);
 

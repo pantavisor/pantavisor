@@ -91,6 +91,7 @@ typedef enum {
 
 struct pv_pantahub_session {
 	char *token;
+	bool unclaim_hint;
 	bool online;
 	short failed_requests;
 	bool any_failed_request;
@@ -156,6 +157,7 @@ static bool _devmeta_gate_pass(const char *json)
 void pv_pantahub_proto_init()
 {
 	session.token = NULL;
+	session.unclaim_hint = false;
 	session.online = false;
 	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
 	session.any_failed_request = false;
@@ -299,6 +301,7 @@ void _free_token()
 	if (session.token)
 		free(session.token);
 	session.token = NULL;
+	session.unclaim_hint = false;
 
 	// a new session must resync in full: we cannot know what Hub kept
 	_devmeta_gate_reset();
@@ -436,7 +439,7 @@ static int _recv_buffer(struct evhttp_request *req, char **body)
 
 static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
-	char *body = NULL;
+	char *body = NULL, *hint = NULL;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
@@ -455,9 +458,16 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 	if (session.token)
 		pv_log(DEBUG, "got new token");
 
+	hint = pv_pantahub_msg_parse_session_hint(body);
+	session.unclaim_hint = hint && !strcmp(hint, "identity-locked");
+	if (session.unclaim_hint)
+		pv_log(INFO, "got identity-locked hint");
+
 out:
 	if (body)
 		free(body);
+	if (hint)
+		free(hint);
 	pv_pantahub_evaluate_state();
 }
 
@@ -496,6 +506,16 @@ void pv_pantahub_proto_post_auth()
 bool pv_pantahub_proto_is_auth()
 {
 	return session.token;
+}
+
+bool pv_pantahub_proto_is_unclaim_hinted()
+{
+	return session.unclaim_hint;
+}
+
+void pv_pantahub_proto_logout()
+{
+	_free_token();
 }
 
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)

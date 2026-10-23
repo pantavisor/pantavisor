@@ -29,6 +29,16 @@ The main features offered by remote control are:
 * Sending [device metadata](storage.md#device-metadata) and receiving [user metadata](storage.md#user-metadata).
 * Sending logs: sending [stored logs](storage.md#logs) up.
 
+#### Unclaim From Hub
+
+The device owner can lock the identity of a device in Pantacor Hub. While the lock is set, the login answer carries `"hint": "identity-locked"` and the session can reach no other Hub endpoint, and a device with [`PV_CONTROL_REMOTE_ALWAYS`](../reference/pantavisor-configuration.md#summary) set to `1` that is not in the middle of an update:
+
+1. Installs a copy of the running revision as the `locals/unclaim` [local revision](../reference/pantavisor-commands.md#steps) and reboots into it, unless it is already running it.
+2. Waits until `locals/unclaim` is `DONE`, then logs in again.
+3. If the new login answer still carries the hint, runs the [garbage collector](storage.md#garbage-collector), wipes its [Hub credentials](storage.md#config) and goes back to registering, ready to be claimed again with `PH_FACTORY_AUTOTOK` or the device-id/challenge.
+
+With `PV_CONTROL_REMOTE_ALWAYS` set to `0`, the hint is ignored and the device stays cut off from Hub until the owner lifts the lock.
+
 #### State Machine
 
 The client state machine goes through the following stages:
