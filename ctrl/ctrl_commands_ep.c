@@ -25,6 +25,9 @@
 #include "ctrl_cmd.h"
 #include "ctrl_caller.h"
 #include "ctrl_util.h"
+#include "pantavisor.h"
+#include "state.h"
+#include "storage.h"
 
 #include <event2/http.h>
 #include <stdio.h>
@@ -57,10 +60,24 @@ static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
+	// the command is queued and may be gone once added
+	bool reboot = false;
+	struct pantavisor *pv = pv_get_instance();
+	if (cmd->op == CMD_LOCAL_RUN)
+		reboot = pv && pv->state &&
+			 pv_storage_is_devmode_change(pv->state->rev,
+						      cmd->payload);
+	else if (cmd->op == CMD_REBOOT_DEVICE)
+		reboot = pv && pv->state &&
+			 pv_storage_is_revision_devmode(pv->state->rev);
+
 	struct pv_ctrl_cmd_add_result rs = pv_ctrl_cmd_add(cmd);
 
 	if (rs.ok) {
-		pv_ctrl_utils_send_ok(req);
+		if (reboot)
+			pv_ctrl_utils_send_reboot(req);
+		else
+			pv_ctrl_utils_send_ok(req);
 		goto out;
 	}
 
