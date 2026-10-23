@@ -136,7 +136,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../overview/storage.md#artifact-checksum) |
-| `PV_SECUREBOOT_HANDLERS` | `0` or `1` | `1` | enable handlers verification |
+| `PV_SECUREBOOT_HANDLERS` | `0` or `1` | `1` | run the dm-verity mount handler for `dm:` volumes. When on, dm-verity volumes skip the boot [checksum](../overview/storage.md#artifact-checksum) because the handler verifies them; when off they are checksummed like any other object |
 | `PV_SECUREBOOT_MODE` | `disabled`, `audit`, `lenient` or `strict` | `lenient` | set secureboot mode |
 | `PV_SECUREBOOT_OEM_TRUSTSTORE` | truststore name | `ca-oem-certificates` | name of the OEM truststore, resolved to `<PV_SYSTEM_ETCDIR>/pantavisor/pvs/trust/<name>.crt` |
 | `PV_SECUREBOOT_TRUSTSTORE` | truststore name | `ca-certificates` | name of the Pantavisor truststore, resolved to `<PV_SYSTEM_ETCDIR>/pantavisor/pvs/trust/<name>.crt` |

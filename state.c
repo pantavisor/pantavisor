@@ -1643,6 +1643,10 @@ static char *pv_state_get_novalidate_list(struct pv_state *state)
 	char *nv_list =
 		pv_state_get_novalidate_known_obj(&state->objects, &nv_size);
 
+	// dm-verity volumes are only verified when the mount handler runs
+	if (!pv_volumes_handlers_enabled())
+		return nv_list;
+
 	struct pv_json *js, *js_tmp;
 	dl_list_for_each_safe(js, js_tmp, &state->jsons, struct pv_json, list)
 	{

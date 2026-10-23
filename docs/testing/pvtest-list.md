@@ -106,7 +106,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/security/strict-secure-boot` | Strict Secure Boot (Unsigned rejection) | ✓ |
 | `local/security/container-roles` | Container Roles (mgmt vs nobody access) | ✓ |
 | `local/security/oem-secureboot` | OEM Secureboot (OEM key validation) | ✓ |
-| `local/security/object-checksum` | Object Checksum Validation | ✓ |
+| `local/security/object-checksum` | Object Checksum Validation (dm-verity data objects skipped only when the handler is on) | ✓ |
 | `local/security/lenient-secure-boot` | Lenient Secure Boot | |
 | `local/security/encrypted-storage` | Encrypted Storage (LUKS/dm-crypt) | |
 | `local/security/secureboot-sig-0x30` | Secure Boot when signature starts with 0x30 | |
