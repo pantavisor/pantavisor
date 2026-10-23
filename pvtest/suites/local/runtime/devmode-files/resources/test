@@ -1,0 +1,160 @@
+#!/bin/sh
+#
+# pvcontrol devmode files ls|get|put|rm (GET, PUT and DELETE on
+# /devmode/files/<container>[/<path>]).
+#
+# - refused while devmode is not allowed and while no devmode revision runs
+# - a file is stored from standard input or from a file, with a mode
+# - the list shows what was changed, with the sha256 of each file
+# - get returns the file as the container sees it
+# - removing a file of the image is listed as deleted and get does not find it
+# - paths with .. are refused; a symlink in the container cannot lead out of it
+# - a container with the mgmt role can use it, one without the role cannot
+# - after a restart the container sees the files
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+target="pv-example-norole"
+mgmt="pv-example-mgmt"
+image_file="usr/bin/curl"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+work=$(mktemp -d)
+
+cleanup() {
+	rm -rf "$work"
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+# run a command and print its exit code and what it said on stderr
+failing() {
+	local err
+	err=$("$@" 2>&1 > /dev/null)
+	echo "exit: $?"
+	echo "$err" | tr -d '\r' | grep -v '^/usr/bin/fallbear-cmd'
+}
+
+# the list of the container, one line per entry; the sha256 stays out of the
+# paths line so it shows only what changed
+list_paths() {
+	pvcontrol devmode files ls "$target" | jq -M -c '[.files[].path]'
+}
+
+in_target() {
+	pventer -c "$target" "$@" 2>&1 | tr -d '\r' | grep -v '^/usr/bin/fallbear-cmd'
+}
+
+echo "== refused while devmode is not allowed =="
+failing pvcontrol devmode files ls "$target"
+
+echo "== refused while no devmode revision runs =="
+devmode_conf_enable || exit 1
+failing pvcontrol devmode files ls "$target"
+failing pvcontrol devmode files put "$target" etc/x /dev/null
+
+echo "== run a devmode revision =="
+pvcontrol devmode create > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+
+echo "== nothing changed yet =="
+pvcontrol devmode files ls "$target" | jq -M -c .
+
+echo "== put a file from standard input =="
+printf 'hello from devmode\n' | pvcontrol devmode files put "$target" etc/devmode-test.conf - | jq -M -c .
+
+echo "== put a script from a file with a mode, in a directory that is new =="
+printf '#!/bin/sh\necho tool\n' > "$work/tool.sh"
+staged=$(pv_stage_file "$work/tool.sh") || exit 1
+pvcontrol devmode files put "$target" opt/devmode-test/bin/tool.sh "$staged" --mode 0755 | jq -M -c .
+pv_unstage_file "$staged"
+echo "== a file that does not exist is refused =="
+failing pvcontrol devmode files put "$target" etc/x /no/such/file
+
+echo "== replace the first file =="
+printf 'second version\n' | pvcontrol devmode files put "$target" etc/devmode-test.conf - | jq -M -c .
+
+echo "== list =="
+list_paths
+pvcontrol devmode files ls "$target" | jq -M -c '.container, ([.files[] | select(.type == "file")] | sort_by(.path))'
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "opt/devmode-test/bin") | {type, mode}]'
+
+echo "== get =="
+pvcontrol devmode files get "$target" etc/devmode-test.conf
+pvcontrol devmode files get "$target" opt/devmode-test/bin/tool.sh | sha256sum | cut -d' ' -f1
+sha256sum < "$work/tool.sh" | cut -d' ' -f1
+echo "== get a file of the image =="
+pvcontrol devmode files get "$target" "$image_file" > "$work/img"
+echo "get exit: $?"
+inside=$(in_target sha256sum "/$image_file" | cut -d' ' -f1)
+echo "same as in the container: $([ "$(sha256sum < "$work/img" | cut -d' ' -f1)" = "$inside" ] && echo yes || echo no)"
+echo "== get a file that is not there =="
+failing pvcontrol devmode files get "$target" etc/no-such-file
+
+echo "== remove a file of the image =="
+pvcontrol devmode files rm "$target" "$image_file" > /dev/null
+echo "rm exit: $?"
+pvcontrol devmode files ls "$target" | jq -M -c '.files[] | select(.type == "deleted")'
+failing pvcontrol devmode files get "$target" "$image_file"
+echo "== remove a file that is not there =="
+failing pvcontrol devmode files rm "$target" etc/no-such-file
+
+echo "== remove a directory needs --recursive =="
+failing pvcontrol devmode files rm "$target" opt/devmode-test
+pvcontrol devmode files rm "$target" opt/devmode-test --recursive > /dev/null
+echo "rm recursive exit: $?"
+list_paths
+
+echo "== unsafe paths =="
+failing pvcontrol devmode files put "$target" ../escape /dev/null
+failing pvcontrol devmode files put "$target" etc/../../escape /dev/null
+failing pvcontrol devmode files get "$target" ../etc/passwd
+
+echo "== a symlink does not lead out of the container =="
+pvcontrol devmode files put "$target" via-link --type symlink --target /etc | jq -M -c .
+printf 'inside\n' | pvcontrol devmode files put "$target" via-link/devmode-link-test - | jq -M -c '.path'
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "via-link" or .path == "etc/devmode-link-test") | {path, type}]'
+echo "on the device root: $(pv_exec test -e /etc/devmode-link-test && echo yes || echo no)"
+pvcontrol devmode files rm "$target" etc/devmode-link-test > /dev/null
+pvcontrol devmode files rm "$target" via-link > /dev/null
+
+echo "== a path with a space, #, ? and % and a non-ASCII letter =="
+odd='opt/odd dir/a#b?c%d-é.txt'
+printf 'odd\n' | pvcontrol devmode files put "$target" "$odd" - | jq -M -c '.path'
+pvcontrol devmode files get "$target" "$odd"
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.type == "file" and (.path | startswith("opt/odd dir"))) | .path]'
+pvcontrol devmode files put "$target" "opt/odd link" --type symlink --target 'a b#c?d' | jq -M -c .
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "opt/odd link") | .target]'
+pvcontrol devmode files rm "$target" "opt/odd dir" --recursive > /dev/null
+pvcontrol devmode files rm "$target" "opt/odd link" > /dev/null
+
+echo "== a directory with a mode =="
+pvcontrol devmode files put "$target" opt/devmode-dir --type dir --mode 0750 | jq -M -c .
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "opt/devmode-dir") | {type, mode}]'
+pvcontrol devmode files rm "$target" opt/devmode-dir > /dev/null
+
+echo "== from a container with the mgmt role =="
+pventer -c "$mgmt" pvcontrol devmode files ls "$target" 2>&1 | tr -d '\r' | grep '^{' | jq -M -c '[.files[].path]'
+
+echo "== from a container without the mgmt role =="
+out=$(pventer -c "$target" curl -s -w ' %{http_code}' --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/$target" 2>&1 | tr -d '\r' | grep -v '^/usr/bin/fallbear-cmd')
+echo "$out"
+out=$(pventer -c "$target" curl -s -X PUT -w ' %{http_code}' --data x --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/$target/etc/not-allowed" 2>&1 | tr -d '\r' | grep -v '^/usr/bin/fallbear-cmd')
+echo "$out"
+echo "== an unknown container =="
+failing pvcontrol devmode files ls no-such-container
+
+echo "== the container sees the changes after a restart =="
+pvcontrol devmode apply "$target" --reboot > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "restart" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }
+echo "config: $(in_target cat /etc/devmode-test.conf)"
+echo "image file: $(pventer -c "$target" test -e "/$image_file" && echo present || echo gone)"
