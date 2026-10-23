@@ -34,4 +34,9 @@ typedef int (*pv_ctrl_upload_fn)(struct pv_ctrl_file *file);
 int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
 			 pv_ctrl_upload_fn complete_cb);
 
+// like pv_ctrl_upload_start, for a file the caller opened; takes the file over
+int pv_ctrl_upload_start_file(struct evhttp_request *req,
+			      struct pv_ctrl_file *file,
+			      pv_ctrl_upload_fn complete_cb);
+
 #endif

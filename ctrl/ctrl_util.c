@@ -212,7 +212,13 @@ int pv_ctrl_utils_split_path(const char *uri,
 			end++;
 
 		if (end > start) {
-			memccpy(parts[parts_count], start, '\0', (end - start));
+			size_t len = end - start;
+
+			// a longer segment is cut, never written past the array
+			if (len >= NAME_MAX)
+				len = NAME_MAX - 1;
+			memcpy(parts[parts_count], start, len);
+			parts[parts_count][len] = '\0';
 			parts_count++;
 
 			if (parts_count == PV_CTRL_MAX_SPLIT)
