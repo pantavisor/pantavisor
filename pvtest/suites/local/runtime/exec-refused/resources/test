@@ -1,0 +1,34 @@
+#!/bin/sh
+#
+# POST /containers/<name>/exec while PV_DEVMODE_ALLOWED is false (the default):
+#
+# - pantavisor.devmode.allowed in the device metadata is 0
+# - the call is refused with 403 and the devmode message
+# - a container without the mgmt role is refused before anything else
+# - no command ran in the target container
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+target="pv-example-norole"
+mgmt="pv-example-mgmt"
+
+echo "== device metadata =="
+echo "pantavisor.devmode.allowed: $(pvcontrol devmeta ls | jq -M -r '.["pantavisor.devmode.allowed"]' | tr -d '\r')"
+
+echo "== devmode is not allowed =="
+out=$(pvcontrol containers exec "$target" -- touch /tmp/exec-ran 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== from a container with the mgmt role =="
+out=$(pventer -c "$mgmt" pvcontrol containers exec "$target" -- touch /tmp/exec-ran 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== from a container without the mgmt role =="
+# curl, because pvcurl loses the answer when the call is refused before the body is read
+out=$(pventer -c "$target" curl -s -X POST --data {} -w %{http_code} --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/$mgmt/exec" 2>&1)
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== no command ran =="
+echo "file created: $(pventer -c "$target" test -e /tmp/exec-ran && echo yes || echo no)"

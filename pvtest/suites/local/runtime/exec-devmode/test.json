@@ -1,0 +1,22 @@
+{
+	"#spec": "pv-test@1",
+	"description": "run commands in containers through POST /containers/<name>/exec while a devmode revision runs: exit code, output, stdin, timeout, output limit, arguments without a shell, the container's namespaces and capabilities, and the refusals",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-mgmt.pvrexport.tgz",
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz",
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
