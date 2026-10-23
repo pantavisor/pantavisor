@@ -243,6 +243,35 @@ pvcontrol containers ls | grep my-app     # STOPPED
 pvcontrol containers start my-app
 ```
 
+### Run a command in a container
+
+While a [devmode](../overview/devmode.md) revision runs, a container with the `mgmt` role can run a command in
+another running container. The command gets no shell: each argument after `--` reaches it as it is.
+
+```bash
+pvcontrol containers exec [--stdin] [--timeout <s>] [--max-output <bytes>] [--cwd <dir>] [--env <K=V>] <name> -- <command> [args...]
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--stdin` | send the standard input of `pvcontrol` to the command |
+| `--timeout <s>` | end the command after this many seconds: 30 by default, at most 600 |
+| `--max-output <bytes>` | keep this many bytes of stdout and of stderr, 16384 by default, at most 1 MiB |
+| `--cwd <dir>` | working directory in the container, `/` by default |
+| `--env <K=V>` | environment variable for the command, can be repeated up to 32 times |
+
+`pvcontrol` prints stdout of the command on its own stdout and stderr on its own stderr, and exits with the exit code
+of the command: 124 after a timeout, 128 plus the signal number when a signal ended the command, 75 when 4 commands
+already run, 255 when pantavisor refuses the call.
+
+```bash
+pvcontrol containers exec my-app -- cat /etc/os-release
+echo "hello" | pvcontrol containers exec --stdin my-app -- tr a-z A-Z
+pvcontrol containers exec --timeout 5 my-app -- sh -c "sleep 60"; echo $?     # 124
+```
+
+The raw call and the answers are in the [control socket reference](../reference/pantavisor-commands.md#run-a-command-in-a-container).
+
 ---
 
 ## Daemons
@@ -407,6 +436,7 @@ pvcontrol steps ls                              # list revisions on the device
 pvcontrol steps get current                     # state.json of the running revision
 pvcontrol steps get 0                           # state.json of revision 0
 pvcontrol steps show-progress current           # update progress (status: DONE/...)
+pvcontrol steps rm devmode/l/my-rev             # remove a devmode revision that does not run
 
 # Save state.json straight into a new local revision (with commit message)
 pvcontrol -f /tmp/state.json steps get current
@@ -469,6 +499,40 @@ To activate an installed local revision, follow with `pvcontrol cmd run` /
 
 ---
 
+## Devmode
+
+[Devmode](../overview/devmode.md) needs
+[`PV_DEVMODE_ALLOWED`](../reference/pantavisor-configuration.md#summary) set to
+`true` in `pantavisor.config` or in the OEM config of the revision (see
+[Enable devmode](../overview/devmode.md#enable-devmode)); user metadata cannot
+set it. All subcommands need the `mgmt` role.
+
+```bash
+pvcontrol devmode status
+pvcontrol devmode create
+pvcontrol devmode create 12
+pvcontrol devmode create locals/my-rev
+pvcontrol devmode create 12 --resume
+pvcontrol devmode reset my-container
+pvcontrol devmode apply my-container
+pvcontrol devmode apply my-system-container --reboot
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `status` | Devmode state and the inlay directory of each container. |
+| `create [base] [--resume]` | One `POST /devmode`. Pantavisor copies the state json of `base` into `devmode/r/<number>` (`base` is a revision number) or `devmode/l/<name>` (`base` is `locals/<name>`), then runs it. Without `base`, the committed revision is used. A left-over devmode revision of that base is removed first; `--resume` keeps its files. |
+| `reset <container>` | Removes all files from the inlay of the container. |
+| `apply <container> [--reboot]` | Restarts the container so it sees the inlay files. A container with restart policy `system` needs `--reboot`, which reboots the device into the devmode revision. |
+
+```console
+$ pvcontrol devmode create 12
+starting the devmode revision; the device reboots now and this connection will drop
+{"revision":"devmode/r/12","base":"12","resumed":false,"reboot":true}
+$ pvcontrol devmode status
+{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode"}]}
+```
+
 ## Drivers
 
 `pvcontrol` does not wrap the `/drivers` endpoints; use raw `pvcurl`:
@@ -494,6 +558,7 @@ On a platform without managed drivers these are effectively no-ops returning
 |---------------------|------|----------|
 | `ls` / `containers ls` | GET | `/containers` |
 | `containers start\|stop\|restart <name>` | PUT | `/containers/{name}` |
+| `containers exec <name> -- <command>` | POST | `/containers/{name}/exec` |
 | `groups ls` | GET | `/groups` |
 | `daemons ls` | GET | `/daemons` |
 | `daemons start\|stop\|restart <name>` | PUT | `/daemons/{name}` |
@@ -514,6 +579,11 @@ On a platform without managed drivers these are effectively no-ops returning
 | `steps ls` | GET | `/steps` |
 | `steps get\|show-progress <rev>` | GET | `/steps/{rev}` / `/steps/{rev}/progress` |
 | `steps put\|install <path> <rev>` | PUT | `/steps/{rev}` (+ `/commitmsg`) |
+| `steps rm <devmode/l/rev\|devmode/r/number>` | DELETE | `/steps/devmode/l/{rev}` / `/steps/devmode/r/{number}` |
+| `devmode status` | GET | `/devmode` |
+| `devmode create [base] [--resume]` | POST | `/devmode` |
+| `devmode reset <container>` | DELETE | `/devmode/containers/{name}` |
+| `devmode apply <container> [--reboot]` | PUT | `/containers/{name}` (`--reboot` adds `?reboot=1`) |
 
 For the authoritative endpoint contracts (request/response shapes, status
 codes, management-socket requirements), see

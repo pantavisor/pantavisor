@@ -42,3 +42,7 @@ page, or start from the [Reference index](../reference/index.md).
 16. [Init Mode](init-mode.md) — embedded, standalone and appengine, and when to use each
 17. [Cgroup Version](cgroups.md) — choosing cgroup v1 or v2 and which `lxc.cgroup` lines a container keeps
 18. [Certificate Denylist](certificate-denylist.md) — blocking certificates by public key on devices without a reliable clock
+
+## Development
+
+19. [Devmode](devmode.md) — a fast edit loop on a device: write files into a running container without building a new revision
