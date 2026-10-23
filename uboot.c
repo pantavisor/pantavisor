@@ -37,6 +37,7 @@
 #include "bootloader.h"
 #include "config.h"
 #include "paths.h"
+#include "uboot_env_file.h"
 #include "utils/str.h"
 #include "utils/fs.h"
 
@@ -324,6 +325,24 @@ static int uboot_flush_env(void)
 	return 0;
 }
 
+static int uboot_rearm_try(void)
+{
+	// without the pv-env partition, ask for it in uboot.txt, which only the
+	// appengine boot script reads; other U-Boot setups may still fall back
+	if (single_env || (pv_env && strstr(pv_env, "mtd")))
+		return 0;
+
+	// only appengine reads pv_trying from uboot.txt; U-Boot would import it
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		uboot_unset_env_key("pv_trying");
+
+	// the generic boot script keeps pv_trying in pv.env; failing here only
+	// means the device falls back, so the re-arm itself still succeeds
+	pv_uboot_env_file_clear_trying();
+
+	return 0;
+}
+
 const struct bl_ops uboot_ops = {
 	.free = uboot_free,
 	.init = uboot_init,
@@ -334,4 +353,5 @@ const struct bl_ops uboot_ops = {
 	.install_update = NULL,
 	.commit_update = NULL,
 	.fail_update = NULL,
+	.rearm_try = uboot_rearm_try,
 };
