@@ -166,6 +166,10 @@ struct pv_platform_log {
 struct pv_platform;
 typedef void (*pv_platform_stopped_cb)(struct pv_platform *p, void *opaque);
 
+#define DEVMODE_FS_NONE 0
+#define DEVMODE_FS_OVERLAY 1
+#define DEVMODE_FS_BIND 2
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -183,6 +187,9 @@ struct pv_platform {
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
+	bool devmode_inlay; // has a _devmode volume in its rootfs
+	int devmode_fs; // how the container is shown to mgmt containers
+	bool devmode_layer; // its own writable layer is bound for mgmt containers
 	// raw lifecycle_goal value from run.json, resolved against status_goal in pv_state_validate()
 	char *lifecycle_goal_raw;
 	bool std_log;
