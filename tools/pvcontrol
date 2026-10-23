@@ -160,12 +160,19 @@ usage_containers() {
 }
 
 usage_devmode() {
-	echo "Usage: pvcontrol devmode <status|create|reset|apply> [arguments]"
+	echo "Usage: pvcontrol devmode <status|create|reset|apply|files> [arguments]"
 	echo "Devmode operations (needs PV_DEVMODE_ALLOWED=true in pantavisor.config or the OEM config)"
 	echo "       pvcontrol devmode status                    - show devmode state and the inlay directory of each container"
 	echo "       pvcontrol devmode create [base] [--resume]  - copy base (a revision number or locals/<name>, default: committed revision) into a devmode revision and run it; a left-over devmode revision of that base is removed first unless --resume"
 	echo "       pvcontrol devmode reset <container>         - empty the inlay of a container"
 	echo "       pvcontrol devmode apply <container> [--reboot] - restart a container so it sees the inlay files; --reboot is needed for a system container and reboots the device"
+	echo "       pvcontrol devmode files ls <container>      - list what devmode changed in a container, as JSON"
+	echo "       pvcontrol devmode files get <container> <path>"
+	echo "                                                   - write a file of the container, as the container sees it, to stdout"
+	echo "       pvcontrol devmode files put <container> <path> [<file>|-] [--mode <octal>] [--uid <n>] [--gid <n>] [--type file|dir|symlink] [--target <path>]"
+	echo "                                                   - store a file (from <file> or stdin) in the container; the path is relative to the container root"
+	echo "       pvcontrol devmode files rm <container> <path> [--recursive]"
+	echo "                                                   - remove a file or directory from the container"
 }
 
 usage_daemons() {
@@ -528,6 +535,19 @@ parse_containers_args() {
 	esac
 }
 
+# percent-encode every byte that is not a plain url character, so a path or
+# value can hold spaces, # ? % & = and non-ASCII bytes
+devmode_urlencode() {
+	for devmode_hex in `printf '%s' "$1" | od -An -v -tx1`; do
+		case "$devmode_hex" in
+		2d|2e|2f|5f|7e|3[0-9]|4[1-9a-f]|5[0-9a]|6[1-9a-f]|7[0-9a])
+			printf "\\$(printf '%03o' "0x$devmode_hex")" ;;
+		*)
+			printf '%%%s' "$devmode_hex" ;;
+		esac
+	done
+}
+
 parse_devmode_args() {
 	case "$1" in
 	status)
@@ -559,6 +579,60 @@ parse_devmode_args() {
 		;;
 	--help)
 		usage_devmode; exit 0
+		;;
+	*)
+		usage_devmode; exit 1
+		;;
+	esac
+}
+
+parse_devmode_files_args() {
+	devmode_files_op="$1"
+	case "$devmode_files_op" in
+	ls)
+		if [ -z "$2" ]; then usage_devmode; exit 1; fi
+		cmd='devmodefilesls'
+		container_name="$2"
+		;;
+	get)
+		if [ -z "$2" ] || [ -z "$3" ]; then usage_devmode; exit 1; fi
+		cmd='devmodefilesget'
+		container_name="$2"
+		devmode_path="$3"
+		;;
+	put|rm)
+		if [ -z "$2" ] || [ -z "$3" ]; then usage_devmode; exit 1; fi
+		cmd="devmodefiles$devmode_files_op"
+		container_name="$2"
+		devmode_path="$3"
+		devmode_src="-"
+		devmode_type="file"
+		devmode_query=""
+		shift 3
+		while [ $# -gt 0 ]; do
+			case "$1" in
+			--mode|--uid|--gid|--type|--target)
+				if [ $# -lt 2 ]; then usage_devmode; exit 1; fi
+				devmode_query="$devmode_query&${1#--}=$(devmode_urlencode "$2")"
+				[ "$1" = "--type" ] && devmode_type="$2"
+				shift
+				;;
+			--recursive)
+				devmode_query="$devmode_query&recursive=1"
+				;;
+			-)
+				devmode_src="-"
+				;;
+			-*)
+				usage_devmode; exit 1
+				;;
+			*)
+				devmode_src="$1"
+				;;
+			esac
+			shift
+		done
+		devmode_query="${devmode_query#&}"
 		;;
 	*)
 		usage_devmode; exit 1
@@ -719,7 +793,12 @@ parse_args() {
 		parse_daemons_args "$2" "$3"
 		;;
 	devmode)
-		parse_devmode_args "$2" "$3" "$4"
+		if [ "$2" = "files" ]; then
+			shift 2
+			parse_devmode_files_args "$@"
+		else
+			parse_devmode_args "$2" "$3" "$4"
+		fi
 		;;
 	storage)
 		parse_storage_args "$2"
@@ -896,6 +975,30 @@ devmode_apply() {
 	fi
 }
 
+devmode_files_url() {
+	devmode_url="http://localhost/devmode/files/$container_name"
+	if [ -n "$devmode_path" ]; then
+		devmode_url="$devmode_url/$(devmode_urlencode "$devmode_path")"
+	fi
+	[ -n "$devmode_query" ] && devmode_url="$devmode_url?$devmode_query"
+	return 0
+}
+
+# the file goes to stdout as it is; an error answer goes to stderr
+devmode_files_get() {
+	devmode_files_url
+	devmode_tmp=`mktemp`
+	devmode_code=`$CURL_RAW -s -o "$devmode_tmp" -w "%{http_code}" -X GET --unix-socket "$SOCKET" "$devmode_url"`
+	if [ "$devmode_code" = "200" ]; then
+		cat "$devmode_tmp"
+		rm -f "$devmode_tmp"
+		exit 0
+	fi
+	cat "$devmode_tmp" 1>&2
+	rm -f "$devmode_tmp"
+	exit 255
+}
+
 exec_cmd() {
 	case "$cmd" in
 		listcontainers)
@@ -1056,6 +1159,30 @@ exec_cmd() {
 			;;
 		devmodeapply)
 			devmode_apply
+			;;
+		devmodefilesls)
+			devmode_files_url
+			response=`$CURL -X GET --unix-socket "$SOCKET" "$devmode_url"`
+			;;
+		devmodefilesget)
+			devmode_files_get
+			;;
+		devmodefilesput)
+			devmode_files_url
+			if [ "$devmode_type" != "file" ]; then
+				# a directory or a symlink has no content
+				response=`$CURL -X PUT --unix-socket "$SOCKET" "$devmode_url"`
+			elif [ "$devmode_src" != "-" ] && [ ! -r "$devmode_src" ]; then
+				echo "ERROR: cannot read $devmode_src" 1>&2; exit 1
+			elif [ "$devmode_src" = "-" ]; then
+				response=`$CURL -X PUT --upload-file - --unix-socket "$SOCKET" "$devmode_url"`
+			else
+				response=`$CURL -X PUT --upload-file "$devmode_src" --unix-socket "$SOCKET" "$devmode_url"`
+			fi
+			;;
+		devmodefilesrm)
+			devmode_files_url
+			response=`$CURL -X DELETE --unix-socket "$SOCKET" "$devmode_url"`
 			;;
 		*)
 			echo "ERROR: unknown operation"; exit 1
