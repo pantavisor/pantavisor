@@ -84,8 +84,8 @@ static bool ctrl_devmode_check_active(struct evhttp_request *req,
 	return !code;
 }
 
-static void ctrl_devmode_inlay_path(struct pv_state *s, struct pv_platform *p,
-				    char *buf, size_t size)
+void pv_ctrl_devmode_inlay_path(struct pv_state *s, struct pv_platform *p,
+				char *buf, size_t size)
 {
 	struct pv_volume *v, *tmp;
 
@@ -186,8 +186,8 @@ static void ctrl_devmode_get(struct evhttp_request *req, void *ctx)
 					if (!p->devmode_inlay)
 						continue;
 
-					ctrl_devmode_inlay_path(pv->state, p,
-								path, PATH_MAX);
+					pv_ctrl_devmode_inlay_path(
+						pv->state, p, path, PATH_MAX);
 					pv_json_ser_object(&js);
 					{
 						pv_json_ser_key(&js, "name");
@@ -259,7 +259,7 @@ static void ctrl_devmode_inlay_delete(struct evhttp_request *req, void *ctx)
 	}
 
 	char path[PATH_MAX] = { 0 }, work[PATH_MAX] = { 0 };
-	ctrl_devmode_inlay_path(pv->state, p, path, PATH_MAX);
+	pv_ctrl_devmode_inlay_path(pv->state, p, path, PATH_MAX);
 	pv_log(INFO, "emptying devmode inlay of %s: %s", p->name, path);
 	// the folder is an overlay of the inlay: take it away, clear the inlay
 	// with its whiteouts and the overlay work directory, and mount it again
@@ -519,6 +519,7 @@ int pv_ctrl_endpoints_devmode_init()
 			     ctrl_devmode_cb);
 	pv_ctrl_add_endpoint("/devmode/containers/{}", EVHTTP_REQ_DELETE, true,
 			     ctrl_devmode_inlay_delete);
+	pv_ctrl_endpoints_devmode_files_init();
 
 	return 0;
 }

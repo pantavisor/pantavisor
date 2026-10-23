@@ -407,6 +407,16 @@ int pv_volumes_devmode_fs_mount(struct pv_state *s, struct pv_platform *p)
 	return 0;
 }
 
+int pv_volumes_devmode_fs_root(struct pv_platform *p, char *buf, size_t size)
+{
+	if (!p->devmode_fs)
+		return -1;
+
+	pv_volumes_devmode_fs_path(buf, size, p->name);
+
+	return 0;
+}
+
 // lazy, so a container still using the folder does not block it
 void pv_volumes_devmode_fs_umount(struct pv_platform *p)
 {
