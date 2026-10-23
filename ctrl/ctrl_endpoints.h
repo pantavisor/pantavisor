@@ -38,5 +38,9 @@ int pv_ctrl_endpoints_xconnect_graph_init(void);
 int pv_ctrl_endpoints_daemons_init(void);
 int pv_ctrl_endpoints_storage_init(void);
 int pv_ctrl_endpoints_wakelock_init(void);
+int pv_ctrl_endpoints_devmode_init(void);
+
+// 0 while a devmode revision runs and devmode is allowed, else an HTTP code and a message
+int pv_ctrl_devmode_check(const char **msg);
 
 #endif
