@@ -67,6 +67,19 @@ if ! echo "$HEADERS" | grep -qi "Content-Type:"; then
     HEADERS="${HEADERS}Content-Type: application/json\r\n"
 fi
 
+# "-T -" sends standard input; its length is needed for the request, so it is
+# kept in a file first (the file is not copied again into the request)
+if [ "$UPLOAD_FILE" = "-" ]; then
+    cat > "$TMPFILE_BASE".body || { rm -f "$TMPFILE_BASE".body; exit 1; }
+    UPLOAD_FILE="$TMPFILE_BASE".body
+fi
+
+if [ -n "$UPLOAD_FILE" ] && [ ! -r "$UPLOAD_FILE" ]; then
+    log_err "Error: cannot read $UPLOAD_FILE"
+    rm -f "$TMPFILE_BASE".body
+    exit 26
+fi
+
 {
     printf "%s %s HTTP/1.0\r\n" "$METHOD" "$URL"
     printf "Host: localhost\r\n"
@@ -77,7 +90,6 @@ fi
             FILE_SIZE=$(ls -l "$UPLOAD_FILE" | awk '{print $5}')
         fi
         printf "Content-Length: %s\r\n\r\n" "$FILE_SIZE"
-        cat "$UPLOAD_FILE"
     elif [ -n "$DATA" ]; then
         printf "Content-Length: %s\r\n\r\n" "${#DATA}"
         printf "%s" "$DATA"
@@ -91,19 +103,28 @@ log_verbose() { [ "$VERBOSE" = true ] && echo "* $@" >&2; }
 log_verbose "Connecting to $SOCKET..."
 log_verbose "> $METHOD $URL HTTP/1.0"
 
+# the request is the header file followed by the upload file, if any
+send_request() {
+    if [ -n "$UPLOAD_FILE" ]; then
+        cat "$TMPFILE_BASE".req "$UPLOAD_FILE" | nc "$@"
+    else
+        nc "$@" < "$TMPFILE_BASE".req
+    fi
+}
+
 NC_EXIT=0
 # Use -N (close write on stdin EOF) for non-streaming requests.
 # For GET downloads, omit -N to keep the connection alive while the server
 # streams the response body.
 if [ -n "$OUTPUT_FILE" ] || [ "$METHOD" = "GET" ]; then
-    nc -w "$CONNECT_TIMEOUT" -U "$SOCKET" < "$TMPFILE_BASE".req > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
+    send_request -w "$CONNECT_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
 else
-    nc -N -w "$CONNECT_TIMEOUT" -U "$SOCKET" < "$TMPFILE_BASE".req > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
+    send_request -N -w "$CONNECT_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
 fi
 
 if [ "$NC_EXIT" -ne 0 ]; then
     [ "$SILENT" = false ] && [ -f "$TMPFILE_BASE".err ] && cat "$TMPFILE_BASE".err >&2
-    rm -f "$TMPFILE_BASE".req "$TMPFILE_BASE".res "$TMPFILE_BASE".err
+    rm -f "$TMPFILE_BASE".req "$TMPFILE_BASE".body "$TMPFILE_BASE".res "$TMPFILE_BASE".err
     exit "$NC_EXIT"
 fi
 
@@ -141,4 +162,4 @@ if [ -n "$WRITE_OUT" ]; then
     printf "%b" "$OUT_STR"
 fi
 
-rm -f "$TMPFILE_BASE".req "$TMPFILE_BASE".res "$TMPFILE_BASE".err
+rm -f "$TMPFILE_BASE".req "$TMPFILE_BASE".body "$TMPFILE_BASE".res "$TMPFILE_BASE".err
