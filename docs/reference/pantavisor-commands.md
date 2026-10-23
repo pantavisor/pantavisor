@@ -229,7 +229,7 @@ $ curl -X PUT --data-binary @my-app.conf --unix-socket /pantavisor/pv-ctrl "http
 
 | Query | Description |
 |-------|-------------|
-| `mode` | permissions in octal, default `0644` |
+| `mode` | permissions in octal, default `0644` for a file and `0755` for a directory |
 | `uid`, `gid` | owner; the file keeps the owner of Pantavisor (root) when not given |
 | `type` | `file` (default, the body is the content), `dir` (creates a directory, no body) or `symlink` (needs `target`, no body) |
 | `target` | where a `symlink` points |
