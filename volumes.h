@@ -71,6 +71,8 @@ void pv_volumes_umount_devmode(struct pv_state *s);
 // mount or unmount the filesystem of one container at <pv dir>/devmode/<name>
 int pv_volumes_devmode_fs_mount(struct pv_state *s, struct pv_platform *p);
 void pv_volumes_devmode_fs_umount(struct pv_platform *p);
+// where pantavisor has the filesystem of a container mounted, -1 if it is not
+int pv_volumes_devmode_fs_root(struct pv_platform *p, char *buf, size_t size);
 // bind or unbind what the container wrote itself at <pv dir>/devmode/.container/<name>, read-only
 void pv_volumes_devmode_layer_mount(struct pv_state *s, struct pv_platform *p);
 void pv_volumes_devmode_layer_umount(struct pv_platform *p);
