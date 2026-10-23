@@ -44,6 +44,9 @@
 
 struct ctrl_run_req {
 	struct evhttp_request *req;
+	// set when the router refused the request; answered once it is read
+	int err_code;
+	const char *err_msg;
 	struct dl_list lst;
 };
 
@@ -110,11 +113,6 @@ static struct ctrl_run_req *ctrl_get_run_req(struct evhttp_request *req)
 	return NULL;
 }
 
-static bool ctrl_is_running_req(struct evhttp_request *req)
-{
-	return ctrl_get_run_req(req) != NULL;
-}
-
 static void ctrl_remove_req(struct evhttp_request *req)
 {
 	struct ctrl_run_req *runq = ctrl_get_run_req(req);
@@ -130,12 +128,12 @@ static void ctrl_auto_remove_req(struct evhttp_request *req, void *ctx)
 	ctrl_remove_req(req);
 }
 
-static void crtl_add_request(struct evhttp_request *req)
+static struct ctrl_run_req *crtl_add_request(struct evhttp_request *req)
 {
 	struct ctrl_run_req *runq = calloc(1, sizeof(struct ctrl_run_req));
 	if (!runq) {
 		pv_log(DEBUG, "couldn't add request to the running list");
-		return;
+		return NULL;
 	}
 
 	evhttp_request_set_on_complete_cb(req, ctrl_auto_remove_req, NULL);
@@ -143,6 +141,21 @@ static void crtl_add_request(struct evhttp_request *req)
 
 	dl_list_init(&runq->lst);
 	dl_list_add(&pvctrl.request, &runq->lst);
+	return runq;
+}
+
+// answering from the header callback and again from the default callback
+// drops the connection, so a refusal waits for the default callback
+static void ctrl_refuse_later(struct evhttp_request *req, int code,
+			      const char *msg)
+{
+	struct ctrl_run_req *runq = crtl_add_request(req);
+	if (!runq) {
+		pv_ctrl_utils_send_error(req, code, msg);
+		return;
+	}
+	runq->err_code = code;
+	runq->err_msg = msg;
 }
 
 static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
@@ -167,9 +180,8 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 		struct pv_ctrl_caller caller = { 0 };
 		if (pv_ctrl_caller_init(&caller, req) != 0) {
 			pv_log(WARN, "couldn't get caller info");
-			pv_ctrl_utils_send_error(
-				req, HTTP_INTERNAL,
-				"Internal error, unknown caller");
+			ctrl_refuse_later(req, HTTP_INTERNAL,
+					  "Internal error, unknown caller");
 			return 0;
 		}
 
@@ -191,13 +203,12 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 
 	if (err == 1) {
 		pv_log(WARN, "HTTP method not supported for this endpoint");
-		pv_ctrl_utils_send_error(
-			req, HTTP_BADREQUEST,
-			"Method not supported for this endpoint");
+		ctrl_refuse_later(req, HTTP_BADREQUEST,
+				  "Method not supported for this endpoint");
 	} else if (err == 2) {
 		pv_log(WARN, "request not sent from mgmt platform");
-		pv_ctrl_utils_send_error(req, HTTP_FORBIDDEN,
-					 "Request not sent from mgmt platform");
+		ctrl_refuse_later(req, HTTP_FORBIDDEN,
+				  "Request not sent from mgmt platform");
 	}
 
 	return 0;
@@ -258,7 +269,16 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 {
 	(void)ctx;
 
-	if (ctrl_is_running_req(req)) {
+	struct ctrl_run_req *runq = ctrl_get_run_req(req);
+	if (runq) {
+		if (runq->err_code) {
+			pv_ctrl_utils_drain_req(req);
+			pv_ctrl_utils_send_error(req, runq->err_code,
+						 runq->err_msg);
+			return;
+		}
+		// tells uploads that the body is read (ctrl_upload.c watches the
+		// output buffer); an endpoint that answers later drains it first
 		evbuffer_add_printf(evhttp_request_get_output_buffer(req),
 				    "done");
 		return;
