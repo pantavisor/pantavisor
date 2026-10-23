@@ -137,7 +137,7 @@ Waiting for all containers to become stable |
 
 ### UPDATED
 
-The revision is stable, but the update did not need a board reboot, so the rollback point is not set until you [force a reboot](../reference/pantavisor-commands.md#commands).
+The revision is stable, but the update did not need a board reboot, so the rollback point is not set until you [force a reboot](../reference/pantavisor-commands.md#commands). A [devmode](devmode.md#fallback-to-the-last-commit) revision stays in this state: it is never set as rollback point.
 
 | Messages |
 | ---------|

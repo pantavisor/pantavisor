@@ -1,0 +1,78 @@
+== enable devmode, no devmode revision yet ==
+exit: 255
+{"Error":"Not running a devmode revision"}
+== run a devmode revision ==
+pantavisor.devmode.allowed: 1
+== stdout ==
+stdout: hello
+stderr: 
+exit: 0
+== the answer is plain JSON ==
+json: ok
+== exit code ==
+stdout: 
+stderr: 
+exit: 7
+== stdout and stderr are separate ==
+stdout: to-stdout
+stderr: to-stderr
+exit: 0
+== stdin ==
+exit: 0
+stdout: from stdin
+== command not found ==
+stdout: 
+stderr: exec no-such-command: No such file or directory
+exit: 127
+== arguments are not parsed by a shell ==
+stdout: it's a "test" $HOME * ; (x)
+stderr: 
+exit: 0
+stdout: one two|
+|
+three|
+stderr: 
+exit: 0
+== working directory and environment ==
+stdout: /tmp
+stderr: 
+exit: 0
+stdout: hello
+stderr: 
+exit: 0
+== timeout ==
+stdout: 
+stderr: 
+exit: 124
+ended early: yes
+sleep left behind: 0
+== output limit ==
+bytes kept: 100
+exit: 0
+== the namespaces, cgroup and capabilities of the container ==
+hostname: pv-example-norole
+pid 1: pv-app
+container file visible: yes
+same cgroup as the container init: yes
+same capability bounding set as the container init: yes
+== from a container with the mgmt role ==
+from-mgmt
+== from a container without the mgmt role ==
+{"Error":"Request not sent from mgmt platform"}403
+== pantavisor itself and unknown containers are not targets ==
+_pv_ exit: 255
+{"Error":"Container not found"}
+no-such-container exit: 255
+{"Error":"Container not found"}
+== a stopped container ==
+exit: 255
+{"Error":"Container is not running"}
+== bad requests ==
+exit: 255
+{"Error":"'timeout_s' must be a number between 1 and 600"}
+== at most 4 commands at the same time ==
+ran: 4
+refused as busy: 2
+stdout: after-the-busy-ones
+stderr: 
+exit: 0

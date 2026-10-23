@@ -118,6 +118,17 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 	evhttp_send_reply(req, code, reason, NULL);
 }
 
+void pv_ctrl_utils_send_reboot(struct evhttp_request *req)
+{
+	char *json = strdup("{\"reboot\":true}");
+	if (!json) {
+		pv_ctrl_utils_send_ok(req);
+		return;
+	}
+
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, json);
+}
+
 void pv_ctrl_utils_send_json_file(struct evhttp_request *req, const char *path)
 {
 	int fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -201,7 +212,13 @@ int pv_ctrl_utils_split_path(const char *uri,
 			end++;
 
 		if (end > start) {
-			memccpy(parts[parts_count], start, '\0', (end - start));
+			size_t len = end - start;
+
+			// a longer segment is cut, never written past the array
+			if (len >= NAME_MAX)
+				len = NAME_MAX - 1;
+			memcpy(parts[parts_count], start, len);
+			parts[parts_count][len] = '\0';
 			parts_count++;
 
 			if (parts_count == PV_CTRL_MAX_SPLIT)

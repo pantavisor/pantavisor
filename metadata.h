@@ -39,6 +39,8 @@
 #define DEVMETA_KEY_PV_CGROUP_LAYOUT "pantavisor.cgroup.layout"
 #define DEVMETA_KEY_PV_CGROUP_VERSION "pantavisor.cgroup.version"
 #define DEVMETA_KEY_PV_REVISION "pantavisor.revision"
+#define DEVMETA_KEY_PV_DEVMODE "pantavisor.devmode"
+#define DEVMETA_KEY_PV_DEVMODE_ALLOWED "pantavisor.devmode.allowed"
 #define DEVMETA_KEY_PV_VERSION "pantavisor.version"
 #define DEVMETA_KEY_PH_ADDRESS "pantahub.address"
 #define DEVMETA_KEY_PV_UNAME "pantavisor.uname"

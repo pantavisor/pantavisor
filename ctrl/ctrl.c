@@ -44,6 +44,9 @@
 
 struct ctrl_run_req {
 	struct evhttp_request *req;
+	// set when the router refused the request; answered once it is read
+	int err_code;
+	const char *err_msg;
 	struct dl_list lst;
 };
 
@@ -77,13 +80,28 @@ static int ctrl_error_cb(struct evhttp_request *req, struct evbuffer *buf,
 	return 0;
 }
 
+// "{}" matches one segment of the path, a last "{*}" matches one or more
+// segments; the query string is not part of the path
 static bool ctrl_uri_equals(const char *uri1, const char *uri2)
 {
 	char split1[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	int size1 = pv_ctrl_utils_split_path(uri1, split1);
+	char *query;
+
+	// the query string sits in the last segment of the request
+	query = size1 ? strchr(split1[size1 - 1], '?') : NULL;
+	if (query)
+		*query = '\0';
 
 	char split2[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	int size2 = pv_ctrl_utils_split_path(uri2, split2);
+
+	if (size2 && !strcmp(split2[size2 - 1], "{*}")) {
+		if (size1 < size2)
+			return false;
+		size1 = size2 - 1;
+		size2--;
+	}
 
 	if (size1 != size2)
 		return false;
@@ -110,11 +128,6 @@ static struct ctrl_run_req *ctrl_get_run_req(struct evhttp_request *req)
 	return NULL;
 }
 
-static bool ctrl_is_running_req(struct evhttp_request *req)
-{
-	return ctrl_get_run_req(req) != NULL;
-}
-
 static void ctrl_remove_req(struct evhttp_request *req)
 {
 	struct ctrl_run_req *runq = ctrl_get_run_req(req);
@@ -130,12 +143,12 @@ static void ctrl_auto_remove_req(struct evhttp_request *req, void *ctx)
 	ctrl_remove_req(req);
 }
 
-static void crtl_add_request(struct evhttp_request *req)
+static struct ctrl_run_req *crtl_add_request(struct evhttp_request *req)
 {
 	struct ctrl_run_req *runq = calloc(1, sizeof(struct ctrl_run_req));
 	if (!runq) {
 		pv_log(DEBUG, "couldn't add request to the running list");
-		return;
+		return NULL;
 	}
 
 	evhttp_request_set_on_complete_cb(req, ctrl_auto_remove_req, NULL);
@@ -143,6 +156,21 @@ static void crtl_add_request(struct evhttp_request *req)
 
 	dl_list_init(&runq->lst);
 	dl_list_add(&pvctrl.request, &runq->lst);
+	return runq;
+}
+
+// answering from the header callback and again from the default callback
+// drops the connection, so a refusal waits for the default callback
+static void ctrl_refuse_later(struct evhttp_request *req, int code,
+			      const char *msg)
+{
+	struct ctrl_run_req *runq = crtl_add_request(req);
+	if (!runq) {
+		pv_ctrl_utils_send_error(req, code, msg);
+		return;
+	}
+	runq->err_code = code;
+	runq->err_msg = msg;
 }
 
 static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
@@ -167,14 +195,15 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 		struct pv_ctrl_caller caller = { 0 };
 		if (pv_ctrl_caller_init(&caller, req) != 0) {
 			pv_log(WARN, "couldn't get caller info");
-			pv_ctrl_utils_send_error(
-				req, HTTP_INTERNAL,
-				"Internal error, unknown caller");
+			ctrl_refuse_later(req, HTTP_INTERNAL,
+					  "Internal error, unknown caller");
 			return 0;
 		}
 
 		if (!(caller.method & it->methods)) {
-			err = 1;
+			// a refusal for the role is the better answer
+			if (!err)
+				err = 1;
 			continue;
 		}
 
@@ -191,13 +220,12 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 
 	if (err == 1) {
 		pv_log(WARN, "HTTP method not supported for this endpoint");
-		pv_ctrl_utils_send_error(
-			req, HTTP_BADREQUEST,
-			"Method not supported for this endpoint");
+		ctrl_refuse_later(req, HTTP_BADREQUEST,
+				  "Method not supported for this endpoint");
 	} else if (err == 2) {
 		pv_log(WARN, "request not sent from mgmt platform");
-		pv_ctrl_utils_send_error(req, HTTP_FORBIDDEN,
-					 "Request not sent from mgmt platform");
+		ctrl_refuse_later(req, HTTP_FORBIDDEN,
+				  "Request not sent from mgmt platform");
 	}
 
 	return 0;
@@ -238,7 +266,8 @@ int pv_ctrl_add_endpoint(const char *path, const int methods, bool mgmt,
 	int size = pv_ctrl_utils_split_path(path, path_split);
 
 	for (int i = 0; i < size; i++) {
-		if (!strcmp(path_split[i], "{}")) {
+		if (!strcmp(path_split[i], "{}") ||
+		    !strcmp(path_split[i], "{*}")) {
 			return ctrl_add_custom(path, methods, mgmt, fn);
 		}
 	}
@@ -258,7 +287,16 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 {
 	(void)ctx;
 
-	if (ctrl_is_running_req(req)) {
+	struct ctrl_run_req *runq = ctrl_get_run_req(req);
+	if (runq) {
+		if (runq->err_code) {
+			pv_ctrl_utils_drain_req(req);
+			pv_ctrl_utils_send_error(req, runq->err_code,
+						 runq->err_msg);
+			return;
+		}
+		// tells uploads that the body is read (ctrl_upload.c watches the
+		// output buffer); an endpoint that answers later drains it first
 		evbuffer_add_printf(evhttp_request_get_output_buffer(req),
 				    "done");
 		return;
@@ -290,6 +328,8 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_daemons_init();
 	pv_ctrl_endpoints_storage_init();
 	pv_ctrl_endpoints_wakelock_init();
+	pv_ctrl_endpoints_devmode_init();
+	pv_ctrl_endpoints_exec_init();
 }
 
 int pv_ctrl_start()

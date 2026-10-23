@@ -29,6 +29,21 @@ Returns all containers with their [status](../overview/containers.md#status), [r
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/containers"
 ```
 
+Each container has these fields, among others. `pid`, `started_at` and `restarts` are only there once the container has been started in the running revision, and `pid` and `started_at` only while it is `STARTED` or `READY`:
+
+| Field | Description |
+|-------|-------------|
+| `name` | container name |
+| `status`, `status_goal` | see [status values](#status-values) |
+| `pid` | process id of the container init, as seen by Pantavisor |
+| `started_at` | start of the container, in seconds since 1970. On a device without a battery-backed clock this is the time of the moment, which can jump when the clock is set |
+| `restarts` | how many times the container was started again since the revision started; `0` after the first start |
+
+```
+$ pvcontrol containers ls | jq '.[] | select(.name == "my-container") | {status, pid, started_at, restarts}'
+{"status":"STARTED","pid":1234,"started_at":1761052800,"restarts":0}
+```
+
 #### Status values
 
 The same values are reported per group by [`/groups`](#groups) and per revision in
@@ -53,7 +68,7 @@ The same values are reported per group by [`/groups`](#groups) and per revision 
 
 ### Lifecycle control
 
-Containers with `restart_policy: "container"` can be stopped, started, and restarted via the API. Containers with `restart_policy: "system"` are protected and will return HTTP 403.
+Containers with `restart_policy: "container"` can be stopped, started, and restarted via the API. Containers with `restart_policy: "system"` are protected and will return HTTP 403, except for `restart` during [devmode](#devmode).
 
 To stop a container:
 
@@ -86,6 +101,162 @@ Restart force-stops the container and resets the retry counter to zero. For cont
 | start (from STAGED) | STAGED → INSTALLED → start | unaffected (was never running) |
 | restart (with recovery) | Running → STOPPED → recovery engine restarts | Retry counter reset to 0 |
 | restart (no recovery) | Running → STOPPED → INSTALLED → start | Direct restart |
+
+While a [devmode](../overview/devmode.md) revision runs, a `system` container answers `restart` with `409` (reboot needed). Add `?reboot=1` to reboot the device into the devmode revision instead:
+
+```
+$ curl -X PUT --header "Content-Type: application/json" --data "{\"action\":\"restart\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-system-container?reboot=1"
+```
+
+`stop` and `start` of a `system` container stay `403`. The answer to a call with `?reboot=1` that is accepted has the body `{"reboot":true}`: the device reboots right after it.
+
+### Run a command in a container
+
+`POST /containers/{name}/exec` runs a command in a running container and answers when the command ended. It is only available to containers with the `mgmt` role, and only while a [devmode](../overview/devmode.md) revision runs.
+
+```
+$ curl -X POST --header "Content-Type: application/json" --data '{"argv":["cat","/etc/os-release"],"timeout_s":10}' --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-container/exec"
+{"exit_code":0,"signal":null,"timed_out":false,"stdout_b64":"UFJFVFRZ...","stderr_b64":"","truncated":{"stdout":false,"stderr":false},"duration_ms":41}
+```
+
+The request body must have a `Content-Length` and is at most 384 KiB:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `argv` | array of strings | required, 1 to 256 entries of at most 4096 bytes each and 32 KiB together; run as given, without a shell. To use a shell write `["sh","-c","..."]`. `argv[0]` is looked up in the `PATH` of the container |
+| `stdin_b64` | string | base64 of the standard input, at most 256 KiB |
+| `timeout_s` | number | 1 to 600, 30 by default. The command gets `SIGTERM` then, and `SIGKILL` 2 seconds later |
+| `max_output` | number | 1 to 1048576, 16384 by default: bytes kept of each of stdout and stderr. The command is still read to its end, so it never blocks on a full pipe |
+| `cwd` | string | working directory in the container, `/` by default |
+| `env` | object | up to 32 variables added to the environment of the container init |
+
+The answer is `200` also when the command fails. `exit_code` is `null` when a signal ended the command, and `signal` holds the signal number. `stdout_b64` and `stderr_b64` are base64. A command that does not exist ends with `exit_code` `127` (not executable: `126`) and a message in stderr, as a shell would do.
+
+| Status | Condition |
+|--------|-----------|
+| `400` | bad JSON, no `argv`, a limit exceeded or no `Content-Length` |
+| `403` | the caller is not a `mgmt` container, or [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `false` |
+| `404` | the container is not in the running revision, or is `_pv_` (Pantavisor itself is never a target) |
+| `409` | the running revision is not a devmode revision, or the container is not running |
+| `500` | the command could not be started, for example the container cannot be joined |
+| `503` | 4 commands already run; the answer has a `Retry-After` header |
+
+The command runs as root of the container with:
+
+- the namespaces (mount, pid, network, uts, ipc and cgroup) and the cgroups of the container init, so it sees what the container sees and is limited as the container is;
+- the capability bounding set of the container init, so it never has more capabilities than the container;
+- the environment of the container init plus `env`;
+- the AppArmor profile of the container init, when Pantavisor itself runs under a different one.
+
+The seccomp filter of the container is not applied. Every call writes one line to `pantavisor.log` with the caller, the container, `argv[0]`, the exit code and the duration; arguments and output are not logged. Use it from a shell with `pvcontrol containers exec <name> -- <command>`, see [pvcontrol](../tools/pvcontrol.md#run-a-command-in-a-container).
+
+## /devmode
+
+This endpoint reports the state of [devmode](../overview/devmode.md) and manages the per-container inlay. It is only available to containers with the `mgmt` role.
+
+To get the devmode state:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode"
+{"enabled":true,"active":true,"revision":"devmode/r/12","base":"12","containers":[{"name":"my-container","inlay":"/storage/disks/rev/devmode/r/12/my-container/_devmode","inlay_storage":"disks/rev/devmode/r/12/my-container/_devmode","container_layer":".container/my-container","container_layer_persistence":"boot"}]}
+```
+
+`inlay_storage`: the inlay relative to the storage root, which mgmt containers see at `/storage`.
+
+`container_layer`: the files the running container wrote itself (its `lxc-overlay` upper layer), relative to the devmode folder. Mgmt containers see them read-only at `/pantavisor/devmode/<container_layer>`, for example `/pantavisor/devmode/.container/my-container`. `container_layer_persistence` is the `persistence` (`boot`, `revision` or `permanent`) of the container's `lxc-overlay` storage. Both are absent for a container without an overlay root filesystem or without an `lxc-overlay` volume.
+
+`revision`, `base` and `containers` are only present when `active` is `true`, that is, when the running revision is a devmode revision.
+
+To start a devmode session, copy a base revision into a devmode revision and run it. Both fields are optional:
+
+```
+$ curl -X POST --header "Content-Type: application/json" --data '{"base":"0","resume":false}' --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode"
+{"revision":"devmode/r/0","base":"0","resumed":false,"reboot":true}
+```
+
+| Field | Description |
+|-------|-------------|
+| `base` | revision number or `locals/<name>`; default: the committed revision, as `pantavisor.revision` in the device metadata reports it |
+| `resume` | `true` keeps the files of an earlier devmode revision of the same base; the default removes that revision first, with its logs and inlays, so the session starts clean |
+
+The answer is sent before the device changes revision. `reboot` is `true` when the device reboots to run it. If the devmode revision of that base is already running, nothing changes and the answer is `{"revision":"devmode/r/0","base":"0","resumed":true,"running":true}`.
+
+To empty the inlay of one container (a fresh inlay replaces it and the old one is removed when the container starts again):
+
+```
+$ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/containers/my-container"
+```
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/devmode` | devmode state: `enabled`, `active`, running devmode `revision`, its `base` and the inlay path of each container |
+| `POST` | `/devmode` | start a devmode session: copy `base` into a devmode revision and run it |
+| `DELETE` | `/devmode/containers/{name}` | remove all files from the inlay of a container |
+
+| Status | Condition |
+|--------|-----------|
+| `400` | `POST`: `base` is a devmode revision ("a devmode revision cannot be the base of another one") or not a revision number or `locals/<name>` |
+| `403` | [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `false` |
+| `404` | `POST`: the base revision does not exist; `DELETE`: a container that is not in the running revision |
+| `409` | `DELETE`: the running revision is not a devmode revision; `POST`: an update or command is in progress |
+| `422` | `POST`: the state of the base does not verify |
+
+## /devmode/files
+
+These endpoints copy files into and out of a container while a [devmode](../overview/devmode.md) revision runs. They need `PV_DEVMODE_ALLOWED` and a running devmode revision, and are only available to containers with the `mgmt` role and to the `_pv_` shell of the host. The path after the container name is relative to the root of the container and percent-encoded; Pantavisor decodes it, and the `target` query value, before it checks them; `..` is refused with `400`, and a symlink in the container can only lead to something inside it.
+
+To list what devmode changed in a container, that is the content of its inlay:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container"
+{"container":"my-container","files":[{"path":"etc","type":"dir","mode":"0755","uid":0,"gid":0},{"path":"etc/my-app.conf","type":"file","size":19,"mode":"0644","uid":0,"gid":0,"sha256":"..."},{"path":"etc/motd","type":"deleted"}]}
+```
+
+`type` is `file`, `dir`, `symlink` (with `target`), `deleted` for a file of the image that was removed, or `special`. Entries are sorted by path, a directory before its content.
+
+To read a file as the container sees it, the inlay on top of the image:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/os-release"
+```
+
+To store a file, send its content as the body. Missing parent directories are created. The body is written to a temporary file next to the target and renamed over it when it is complete, so a file is replaced in one step:
+
+```
+$ curl -X PUT --data-binary @my-app.conf --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/my-app.conf?mode=0644"
+{"path":"etc/my-app.conf","sha256":"...","size":19}
+```
+
+| Query | Description |
+|-------|-------------|
+| `mode` | permissions in octal, default `0644` for a file and `0755` for a directory |
+| `uid`, `gid` | owner; the file keeps the owner of Pantavisor (root) when not given |
+| `type` | `file` (default, the body is the content), `dir` (creates a directory, no body) or `symlink` (needs `target`, no body) |
+| `target` | where a `symlink` points |
+
+To remove a file or an empty directory from the view of the container:
+
+```
+$ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/motd"
+$ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/opt/my-app?recursive=1"
+```
+
+Changes are made through the overlay that Pantavisor mounts at `/pantavisor/devmode/<container>`, so removing a file of the image leaves a delete marker in the inlay, like `rm` in that folder. They reach the running container after [`pvcontrol devmode apply`](../tools/pvcontrol.md#devmode), the same as files changed in the folder.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/devmode/files/{name}` | manifest of the inlay of a container |
+| `GET` | `/devmode/files/{name}/{path}` | content of a file |
+| `PUT` | `/devmode/files/{name}/{path}` | store a file, a directory or a symlink |
+| `DELETE` | `/devmode/files/{name}/{path}` | remove a file, a directory (`?recursive=1` for one with content) or a symlink |
+
+| Status | Condition |
+|--------|-----------|
+| `400` | the path contains `..`, a bad `mode`, `uid`, `gid` or `type`, `GET` of something that is not a regular file |
+| `403` | `PV_DEVMODE_ALLOWED` is `false`, or the caller has no `mgmt` role |
+| `404` | the container or the path does not exist |
+| `409` | the running revision is not a devmode revision, a directory is in the way, `DELETE` of a directory with content without `recursive`, or the container has no devmode filesystem |
+| `507` | not enough disk space |
 
 ## /daemons
 
@@ -203,8 +374,17 @@ A command is not always accepted. These are the non-`200` responses and what cau
 | `409` | — | `DEFER_REBOOT` | the [debug shell](pantavisor-configuration.md#summary) is not active |
 | `409` | — | `UNCLAIM` | the running revision is not a [local revision](#steps) |
 | `409` | — | `UNCLAIM` | the running revision is not `DONE` |
+| `403` | — | `LOCAL_RUN`, `LOCAL_RUN_COMMIT` | the payload is a [devmode](../overview/devmode.md) revision and [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary) is `0` |
+| `409` | — | `LOCAL_RUN_COMMIT` | the payload is a devmode revision, which is never committed |
 | `503` | `Retry-After: 600` | `REBOOT_DEVICE`, `POWEROFF_DEVICE`, `LOCAL_RUN`, `LOCAL_RUN_COMMIT`, `MAKE_FACTORY`, `UNCLAIM` | an [update](../overview/updates.md) is ongoing |
 | `503` | `Retry-After: 120` | any | another command is still pending |
+
+A `LOCAL_RUN` that is accepted answers `200` with an empty body. When it enters, switches or leaves [devmode](../overview/devmode.md), the device reboots and the body is `{"reboot":true}` instead. So does a `REBOOT_DEVICE` sent while a devmode revision runs; that reboot comes back into the devmode revision:
+
+```
+$ curl -X POST --header "Content-Type: application/json" --data '{"op":"LOCAL_RUN","payload":"devmode/r/12"}' --unix-socket /pantavisor/pv-ctrl http://localhost/commands
+{"reboot":true}
+```
 
 ## /storage
 
@@ -275,6 +455,19 @@ socket:
 | `GET` | `/steps/locals/{name}` | read back a local revision's state json |
 | `GET` | `/steps/locals/{name}/progress` | update progress of a local revision |
 | `PUT` | `/steps/locals/{name}/commitmsg` | set the commit message of a local revision |
+
+[Devmode](../overview/devmode.md) revisions are sent the same way, under `devmode/l/{name}` (based on the local revision `locals/{name}`) or `devmode/r/{number}` (based on the Hub revision `{number}`, digits only). They need [`PV_DEVMODE_ALLOWED`](pantavisor-configuration.md#summary)`=1`, set in `pantavisor.config` or the OEM config (user metadata cannot set it); otherwise the `PUT` answers `403`. Every `locals/{name}` route above also exists as `devmode/l/{name}` and `devmode/r/{number}`.
+
+```
+curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/devmode/r/12"
+```
+
+A devmode revision that does not run can be removed again. It does not need `PV_DEVMODE_ALLOWED`, because it only frees space. The answer is `200` when it is removed, `409` if it is the running revision or the one being updated to, `404` if it does not exist, and `400` if the name is not a devmode revision:
+
+```
+curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/devmode/l/my-rev"
+pvcontrol steps rm devmode/l/my-rev
+```
 
 Finally, you can set a commit message that will be stored along a revision and showed when listing revisions so the user can idendifcate each one of them:
 

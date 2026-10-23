@@ -1,0 +1,23 @@
+== enable devmode and run a devmode revision ==
+devmode active: true
+== file is not in pv-example-norole yet ==
+present: no
+== write the file from pv-example-mgmt ==
+write exit: 0
+present before restart: no
+== restart pv-example-norole ==
+apply stdout: {"reboot":true}
+apply stderr:
+rebooting into the devmode revision to restart pv-example-norole; the device reboots now and this connection will drop
+present after restart: yes
+== restart pv-example-norole again ==
+apply stdout: {"reboot":true}
+apply stderr:
+rebooting into the devmode revision to restart pv-example-norole; the device reboots now and this connection will drop
+present after second restart: yes
+== reset the inlay of pv-example-norole ==
+reset exit: 0
+apply stdout: {"reboot":true}
+apply stderr:
+rebooting into the devmode revision to restart pv-example-norole; the device reboots now and this connection will drop
+present after reset and restart: no

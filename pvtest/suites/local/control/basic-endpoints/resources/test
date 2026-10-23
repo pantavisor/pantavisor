@@ -3,7 +3,7 @@
 echo "== containers (test-owned) =="
 # the device baseline containers differ per target; keep the listing
 # device-agnostic by reporting only the container this test installs
-pvcontrol ls | jq -M 'map(select(.name == "pv-example-app"))' | tr -d '\r'
+pvcontrol ls | jq -M 'map(select(.name == "pv-example-app") | del(.pid, .started_at, .restarts))' | tr -d '\r'
 echo "== groups (built-in) =="
 # custom groups and per-group tuning (e.g. auto_recovery) are device policy;
 # report only the built-in groups' universal fields

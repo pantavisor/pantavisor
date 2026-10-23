@@ -1,0 +1,107 @@
+#!/bin/sh
+#
+# /pantavisor/devmode/<container>, seen from a mgmt container, is the whole
+# filesystem of the container: the image files plus the inlay.
+#
+# - the image files are listed there
+# - removing an image file hides it in the container after a restart
+# - removing and creating an image directory again leaves it empty in the
+#   container after a restart
+# - a file the container writes itself is listed read-only in
+#   /pantavisor/devmode/.container/<container>
+# - after `pvcontrol devmode reset <container>` and a restart the image files
+#   are back
+#
+# The containers of this test have the system restart policy, so a restart
+# is a reboot into the same devmode revision.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+target="pv-example-norole"
+writer="pv-example-mgmt"
+folder="/pantavisor/devmode/$target"
+image_file="/usr/bin/curl"
+image_dir="/usr/lib/coreutils"
+image_dir_file="/usr/lib/coreutils/libstdbuf.so"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+# restart the container and wait until the device runs the devmode revision again
+restart_target() {
+	pvcontrol devmode apply "$target" --reboot > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "$1" "$devmode_rev" "UPDATED" >&2 \
+		|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }
+}
+
+in_target() {
+	pventer -c "$target" test -e "$1" && echo yes || echo no
+}
+
+in_folder() {
+	pventer -c "$writer" test -e "$folder$1" && echo yes || echo no
+}
+
+# number of entries of a directory of the container, counted by the container
+count_in_target() {
+	pventer -c "$target" ls -A "$1" 2>/dev/null | wc -l | tr -d ' \r'
+}
+
+echo "== enable devmode and run a devmode revision =="
+devmode_conf_enable || exit 1
+pvcontrol devmode create > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+
+echo "== the folder lists the image files =="
+echo "file in folder: $(in_folder "$image_file")"
+echo "directory in folder: $(in_folder "$image_dir_file")"
+echo "file in container: $(in_target "$image_file")"
+
+echo "== a file the container wrote itself =="
+pventer -c "$target" touch /etc/written-by-container
+layer="/pantavisor/devmode/.container/$target"
+echo "file in layer: $(pventer -c "$writer" test -e "$layer/etc/written-by-container" && echo yes || echo no)"
+echo "image file in layer: $(pventer -c "$writer" test -e "$layer$image_file" && echo yes || echo no)"
+pventer -c "$writer" touch "$layer/etc/written-by-folder" > /dev/null 2>&1
+echo "write in layer: $([ $? -eq 0 ] && echo allowed || echo refused)"
+pventer -c "$writer" rm "$layer/etc/written-by-container" > /dev/null 2>&1
+echo "remove in layer: $([ $? -eq 0 ] && echo allowed || echo refused)"
+echo "file in container: $(in_target /etc/written-by-container)"
+
+echo "== remove the file and the directory content in the folder =="
+pventer -c "$writer" rm "$folder$image_file"
+echo "rm exit: $?"
+pventer -c "$writer" rm -rf "$folder$image_dir"
+pventer -c "$writer" mkdir "$folder$image_dir"
+echo "mkdir exit: $?"
+echo "file in folder: $(in_folder "$image_file")"
+echo "directory file in folder: $(in_folder "$image_dir_file")"
+echo "file in container before restart: $(in_target "$image_file")"
+
+echo "== restart $target =="
+restart_target "restart 1"
+echo "file in container: $(in_target "$image_file")"
+echo "directory exists in container: $(in_target "$image_dir")"
+echo "entries of the directory in container: $(count_in_target "$image_dir")"
+echo "file in folder after restart: $(in_folder "$image_file")"
+
+echo "== reset the inlay of $target =="
+pvcontrol devmode reset "$target" > /dev/null 2>&1
+echo "reset exit: $?"
+echo "file in folder after reset: $(in_folder "$image_file")"
+echo "directory file in folder after reset: $(in_folder "$image_dir_file")"
+restart_target "restart 2"
+echo "file in container after reset and restart: $(in_target "$image_file")"
+echo "directory file in container after reset and restart: $(in_target "$image_dir_file")"

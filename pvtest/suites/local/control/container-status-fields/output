@@ -1,0 +1,14 @@
+== running container ==
+pid is a number: yes
+pid is a process of the target: yes
+started_at is a recent time: yes
+restarts: 0
+== restart ==
+restarts: 1
+pid changed: yes
+started_at did not go back: yes
+== stopped container ==
+status: STOPPED
+pid: absent
+started_at: absent
+restarts: 1

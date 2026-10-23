@@ -97,6 +97,7 @@ Feature overview intended to be read top-to-bottom as a book, versioned with eac
 | **Configuration Levels** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
 | **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
 | **Cgroup Version** | [docs/overview/cgroups.md](docs/overview/cgroups.md) | Cgroup v1/v2 choice and container cgroup line filtering |
+| **Devmode** | [docs/overview/devmode.md](docs/overview/devmode.md) | Fast edit loop: inlay layer per container, never-committed devmode revisions |
 
 ## Docs Pipeline
 

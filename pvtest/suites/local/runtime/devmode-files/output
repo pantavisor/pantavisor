@@ -1,0 +1,95 @@
+== refused while devmode is not allowed ==
+exit: 255
+{"Error":"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config"}
+== refused while no devmode revision runs ==
+exit: 255
+{"Error":"Not running a devmode revision"}
+exit: 255
+{"Error":"Not running a devmode revision"}
+== run a devmode revision ==
+== nothing changed yet ==
+{"container":"pv-example-norole","files":[]}
+== put a file from standard input ==
+{"path":"etc/devmode-test.conf","sha256":"d4a0bc9ed3e7d0c4483d989f62878165ffd22fc1d9b1111966187c41ce3d1ff6","size":19}
+== put a script from a file with a mode, in a directory that is new ==
+{"path":"opt/devmode-test/bin/tool.sh","sha256":"bf664cf84f00f6ed76164c8457fdeaf8e4dee547226e9ffcf8274e2d2246fed9","size":20}
+== a file that does not exist is refused ==
+exit: 1
+ERROR: cannot read /no/such/file
+== replace the first file ==
+{"path":"etc/devmode-test.conf","sha256":"66ed1142ab3b2f1cdb29e8b81c9471444a5d9e6fb657a54d089073ab8bd34e27","size":15}
+== list ==
+["etc","etc/devmode-test.conf","opt","opt/devmode-test","opt/devmode-test/bin","opt/devmode-test/bin/tool.sh"]
+"pv-example-norole"
+[{"path":"etc/devmode-test.conf","type":"file","size":15,"mode":"0644","uid":0,"gid":0,"sha256":"66ed1142ab3b2f1cdb29e8b81c9471444a5d9e6fb657a54d089073ab8bd34e27"},{"path":"opt/devmode-test/bin/tool.sh","type":"file","size":20,"mode":"0755","uid":0,"gid":0,"sha256":"bf664cf84f00f6ed76164c8457fdeaf8e4dee547226e9ffcf8274e2d2246fed9"}]
+[{"type":"dir","mode":"0755"}]
+== get ==
+second version
+bf664cf84f00f6ed76164c8457fdeaf8e4dee547226e9ffcf8274e2d2246fed9
+bf664cf84f00f6ed76164c8457fdeaf8e4dee547226e9ffcf8274e2d2246fed9
+== get a file of the image ==
+get exit: 0
+same as in the container: yes
+== get a file that is not there ==
+exit: 255
+{"Error":"Not found"}
+== remove a file of the image ==
+rm exit: 0
+{"path":"usr/bin/curl","type":"deleted"}
+exit: 255
+{"Error":"Not found"}
+== remove a file that is not there ==
+exit: 255
+{"Error":"Not found"}
+== remove a directory needs --recursive ==
+exit: 255
+{"Error":"A directory is in the way, or the path is not a directory"}
+rm recursive exit: 0
+["etc","etc/devmode-test.conf","opt","usr","usr/bin","usr/bin/curl"]
+== unsafe paths ==
+exit: 255
+{"Error":"The path must be relative to the container root and cannot contain .."}
+exit: 255
+{"Error":"The path must be relative to the container root and cannot contain .."}
+exit: 255
+{"Error":"The path must be relative to the container root and cannot contain .."}
+== a symlink does not lead out of the container ==
+{"path":"via-link","type":"symlink"}
+"via-link/devmode-link-test"
+[{"path":"etc/devmode-link-test","type":"file"},{"path":"via-link","type":"symlink"}]
+on the device root: no
+== a path with a space, #, ? and % and a non-ASCII letter ==
+"opt/odd dir/a#b?c%d-é.txt"
+odd
+["opt/odd dir/a#b?c%d-é.txt"]
+{"path":"opt/odd link","type":"symlink"}
+["a b#c?d"]
+== a directory with a mode ==
+{"path":"opt/devmode-dir","type":"dir"}
+[{"type":"dir","mode":"0750"}]
+== a directory without a mode ==
+{"path":"opt/devmode-plain/sub","type":"dir"}
+[{"path":"opt/devmode-plain","mode":"0755"},{"path":"opt/devmode-plain/sub","mode":"0755"}]
+== from a container with the mgmt role ==
+["etc","etc/devmode-test.conf","opt","usr","usr/bin","usr/bin/curl"]
+== from a container without the mgmt role ==
+{"Error":"Request not sent from mgmt platform"}403
+{"Error":"Request not sent from mgmt platform"}403
+== an unknown container ==
+exit: 255
+{"Error":"Container not found"}
+== the container sees the changes after a restart ==
+config: second version
+image file: gone
+== reset swaps in an empty inlay ==
+"etc/devmode-reset.conf"
+reset exit: 0
+{"container":"pv-example-norole","files":[]}
+old inlays before the restart: 1
+1
+"etc/devmode-after-reset.conf"
+config: gone
+reset file: gone
+file put after the reset: present
+image file: present
+old inlays after the restart: 0

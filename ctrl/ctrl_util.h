@@ -51,6 +51,9 @@ void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 
 void pv_ctrl_utils_send_ok(struct evhttp_request *req);
 
+// like send_ok, but the body tells the caller that the device reboots now
+void pv_ctrl_utils_send_reboot(struct evhttp_request *req);
+
 int pv_ctrl_utils_split_path(const char *uri,
 			     char parts[PV_CTRL_MAX_SPLIT][NAME_MAX]);
 

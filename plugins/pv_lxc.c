@@ -647,6 +647,20 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		       path);
 	}
 
+	if (p->devmode_inlay && !strncmp(path, "overlayfs:", 10)) {
+		__pv_paths_volumes_plat_file(seed, PATH_MAX, p->name,
+					     DEVMODE_INLAY_DNAME);
+		if (!inschr(path, PATH_MAX, ':', seed)) {
+			pv_log(WARN, "failed to add devmode inlay %s to %s",
+			       seed, path);
+		} else {
+			c->set_config_item(c, "lxc.rootfs.path", path);
+		}
+	} else if (p->devmode_inlay) {
+		pv_log(WARN, "rootfs of %s is not an overlay; no devmode inlay",
+		       p->name);
+	}
+
 	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
 		snprintf(log_level, sizeof(log_level), "%d", pv_conf.loglevel);
 		c->set_config_item(c, "lxc.log.level", log_level);
@@ -677,6 +691,22 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			 "%s %s none bind,ro,create=dir 0 0", path,
 			 PLATFORM_DEVICE_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
+
+		// rslave: filesystems mounted in the shared folder later show up
+		// here too, nothing mounted here goes back; the pv directory is
+		// read-only inside, so the target must exist
+		if (p->devmode_inlay) {
+			char host_dir[PATH_MAX];
+
+			snprintf(entry, sizeof(entry), "%s", DEVMODE_DNAME);
+			__pv_paths_pv_file(host_dir, PATH_MAX, entry);
+			pv_fs_mkdir_p(host_dir, 0755);
+
+			snprintf(entry, sizeof(entry),
+				 "%s %s none rbind,rw,rslave 0 0", host_dir,
+				 PLATFORM_DEVMODE_PATH + 1);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+		}
 	} else {
 		__pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
 		snprintf(entry, sizeof(entry),

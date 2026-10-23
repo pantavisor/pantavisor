@@ -604,6 +604,19 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 			}
 		}
 
+		if (p->start_count && p->init_pid > 0 &&
+		    (pv_platform_is_started(p) || pv_platform_is_ready(p))) {
+			pv_json_ser_key(js, "pid");
+			pv_json_ser_number(js, p->init_pid);
+			pv_json_ser_key(js, "started_at");
+			pv_json_ser_number(js, (double)p->started_at);
+		}
+
+		if (p->start_count) {
+			pv_json_ser_key(js, "restarts");
+			pv_json_ser_number(js, p->start_count - 1);
+		}
+
 		if (p->restart_policy == RESTART_CONTAINER) {
 			pv_json_ser_key(js, "user_stopped");
 			pv_json_ser_string(js, p->auto_recovery.user_stopped ?
@@ -1149,6 +1162,8 @@ static void _read_platform_pipefd_cb(int fd, short event, void *arg)
 
 	pv_log(DEBUG, "started platform '%s' with pid %d", p->name,
 	       p->init_pid);
+	p->started_at = time(NULL);
+	p->start_count++;
 	pv_platform_set_status(p, PLAT_STARTED);
 }
 

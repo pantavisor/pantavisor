@@ -827,7 +827,7 @@ int pv_pantahub_proto_get_step_status(void)
 	}
 
 	rev = pv_update_get_rev();
-	if (!rev)
+	if (!rev || pv_storage_is_revision_devmode(rev))
 		return -1;
 
 	char uri[256];
