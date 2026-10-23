@@ -80,13 +80,28 @@ static int ctrl_error_cb(struct evhttp_request *req, struct evbuffer *buf,
 	return 0;
 }
 
+// "{}" matches one segment of the path, a last "{*}" matches one or more
+// segments; the query string is not part of the path
 static bool ctrl_uri_equals(const char *uri1, const char *uri2)
 {
 	char split1[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	int size1 = pv_ctrl_utils_split_path(uri1, split1);
+	char *query;
+
+	// the query string sits in the last segment of the request
+	query = size1 ? strchr(split1[size1 - 1], '?') : NULL;
+	if (query)
+		*query = '\0';
 
 	char split2[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	int size2 = pv_ctrl_utils_split_path(uri2, split2);
+
+	if (size2 && !strcmp(split2[size2 - 1], "{*}")) {
+		if (size1 < size2)
+			return false;
+		size1 = size2 - 1;
+		size2--;
+	}
 
 	if (size1 != size2)
 		return false;
@@ -186,7 +201,9 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 		}
 
 		if (!(caller.method & it->methods)) {
-			err = 1;
+			// a refusal for the role is the better answer
+			if (!err)
+				err = 1;
 			continue;
 		}
 
@@ -249,7 +266,8 @@ int pv_ctrl_add_endpoint(const char *path, const int methods, bool mgmt,
 	int size = pv_ctrl_utils_split_path(path, path_split);
 
 	for (int i = 0; i < size; i++) {
-		if (!strcmp(path_split[i], "{}")) {
+		if (!strcmp(path_split[i], "{}") ||
+		    !strcmp(path_split[i], "{*}")) {
 			return ctrl_add_custom(path, methods, mgmt, fn);
 		}
 	}
