@@ -311,6 +311,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		}
 	}
 
+	// the devmode inlays depend on PV_DEVMODE_ALLOWED (pantavisor.config or OEM)
+	pv_volumes_add_devmode(pv->state);
+
 	// trail .pvr/ initialization
 	pv_storage_init_trail_pvr();
 

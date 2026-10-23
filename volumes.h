@@ -62,6 +62,22 @@ int pv_volume_unmount(struct pv_volume *v);
 
 void pv_volumes_empty(struct pv_state *s);
 
+// give every container the _devmode volume if the state is a devmode revision
+void pv_volumes_add_devmode(struct pv_state *s);
+// mount the _devmode volume of every container of the state
+int pv_volumes_mount_devmode(struct pv_state *s);
+// unmount the filesystem of every container shown to mgmt containers
+void pv_volumes_umount_devmode(struct pv_state *s);
+// mount or unmount the filesystem of one container at <pv dir>/devmode/<name>
+int pv_volumes_devmode_fs_mount(struct pv_state *s, struct pv_platform *p);
+void pv_volumes_devmode_fs_umount(struct pv_platform *p);
+// bind or unbind what the container wrote itself at <pv dir>/devmode/.container/<name>, read-only
+void pv_volumes_devmode_layer_mount(struct pv_state *s, struct pv_platform *p);
+void pv_volumes_devmode_layer_umount(struct pv_platform *p);
+// true if the container has such a layer; persistence is boot, revision, permanent or NULL
+bool pv_volumes_devmode_layer_get(struct pv_state *s, struct pv_platform *p,
+				  const char **persistence);
+
 int pv_volumes_mount_firmware_modules(void);
 int pv_volumes_umount_firmware_modules(void);
 
