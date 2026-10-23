@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "files are copied into and out of a container with pvcontrol devmode files: put, list, get and remove, also through a symlink and from a container with the mgmt role; callers without the mgmt role are refused",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-mgmt.pvrexport.tgz",
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
