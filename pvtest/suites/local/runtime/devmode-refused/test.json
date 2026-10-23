@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "devmode revisions are refused while PV_DEVMODE_ALLOWED is false",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

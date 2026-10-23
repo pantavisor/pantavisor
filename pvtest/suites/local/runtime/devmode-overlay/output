@@ -1,0 +1,28 @@
+== enable devmode and run a devmode revision ==
+== the folder lists the image files ==
+file in folder: yes
+directory in folder: yes
+file in container: yes
+== a file the container wrote itself ==
+file in layer: yes
+image file in layer: no
+write in layer: refused
+remove in layer: refused
+file in container: yes
+== remove the file and the directory content in the folder ==
+rm exit: 0
+mkdir exit: 0
+file in folder: no
+directory file in folder: no
+file in container before restart: yes
+== restart pv-example-norole ==
+file in container: no
+directory exists in container: yes
+entries of the directory in container: 0
+file in folder after restart: no
+== reset the inlay of pv-example-norole ==
+reset exit: 0
+file in folder after reset: yes
+directory file in folder after reset: yes
+file in container after reset and restart: yes
+directory file in container after reset and restart: yes

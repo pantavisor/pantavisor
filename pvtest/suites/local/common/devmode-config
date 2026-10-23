@@ -1,0 +1,40 @@
+# Sourced by the devmode tests after pvtest utils.
+#
+# PV_DEVMODE_ALLOWED is only accepted from pantavisor.config and the OEM config,
+# so the tests append it to the appengine pantavisor.config on the target and reboot.
+
+devmode_conf=/etc/pantavisor-appengine.config
+devmode_conf_orig=$(mktemp)
+
+devmode_reboot() {
+	local rev
+	rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+	pvcontrol commands reboot "pvtest: $1" > /dev/null 2>&1
+	wait_for_down 30 && wait_for_target_ready "$1" "$rev" "DONE|UPDATED" >&2
+}
+
+# devmode_conf_set <line>: add a line to pantavisor.config and reboot
+devmode_conf_set() {
+	local staged
+	pv_fetch_file "$devmode_conf" "$devmode_conf_orig" && [ -s "$devmode_conf_orig" ] \
+		|| { echo "ERROR: could not fetch $devmode_conf" >&2; return 1; }
+	{ cat "$devmode_conf_orig"; echo "$1"; } > "$devmode_conf_orig.new"
+	staged=$(pv_stage_file "$devmode_conf_orig.new") || return 1
+	pv_exec cp "$staged" "$devmode_conf" || return 1
+	pv_unstage_file "$staged"
+	rm -f "$devmode_conf_orig.new"
+	devmode_reboot "after pantavisor.config change"
+}
+
+devmode_conf_enable() { devmode_conf_set "PV_DEVMODE_ALLOWED=1"; }
+
+# put the original pantavisor.config back and reboot
+devmode_conf_restore() {
+	local staged
+	[ -s "$devmode_conf_orig" ] || return 0
+	staged=$(pv_stage_file "$devmode_conf_orig") || return 1
+	pv_exec cp "$staged" "$devmode_conf"
+	pv_unstage_file "$staged"
+	rm -f "$devmode_conf_orig"
+	devmode_reboot "after pantavisor.config restore"
+}

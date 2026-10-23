@@ -1,0 +1,123 @@
+#!/bin/sh
+#
+# Enable devmode through pantavisor.config, create a devmode revision from the running
+# revision and check that /devmode lists an inlay for every container. The
+# devmode revision is a try: the revision that was committed before stays the
+# committed one. Creating it tells the caller that the device reboots. Then:
+# - creating it again while it runs changes nothing
+# - create --resume keeps the files in the inlays of the earlier devmode revision
+# - a plain create removes them
+# - an explicit base works, a devmode revision or an unknown revision is refused
+# The test goes back to the committed revision at the end.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+echo "== enable devmode through pantavisor.config =="
+devmode_conf_enable || exit 1
+pvcontrol devmode status | jq -M '{enabled, active}' | tr -d '\r'
+
+echo "== create the devmode revision from the running revision =="
+create_err=$(mktemp)
+create_out=$(pvcontrol devmode create 2> "$create_err")
+echo "create exit: $?"
+echo "create stdout: $(echo "$create_out" | tr -d '\r' | jq -M -c .)"
+echo "create stderr: $(tr -d '\r' < "$create_err" | grep -v fallbear-cmd)"
+rm -f "$create_err"
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+
+echo "== device metadata in devmode =="
+echo "pantavisor.revision is the committed revision: $(pvcontrol devmeta ls | jq -M -r --arg rev "$base_rev" '.["pantavisor.revision"] == $rev' | tr -d '\r')"
+echo "pantavisor.devmode: $(pvcontrol devmeta ls | jq -M -r '.["pantavisor.devmode"]' | tr -d '\r')"
+
+echo "== devmode status =="
+pvcontrol devmode status | jq -M '{
+	enabled,
+	active,
+	revision,
+	base,
+	inlays: [.containers[] | select(.name | startswith("pv-example")) | {name, inlay: (.inlay | sub("^.*/disks/rev/"; "<storage>/disks/rev/"))}] | sort_by(.name)
+}' | tr -d '\r'
+
+echo "== the committed revision is unchanged =="
+pvcontrol steps show-progress "$base_rev" | jq -M -r '.status' | tr -d '\r'
+pvcontrol steps show-progress "$devmode_rev" | jq -M -r '.status' | tr -d '\r'
+
+writer="pv-example-mgmt"
+target="pv-example-norole"
+file_in_target="/etc/devmode-file"
+
+# leave devmode by running the committed revision
+leave_devmode() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "leave devmode" "$base_rev" "DONE|UPDATED" >&2 \
+		|| { echo "ERROR: $base_rev did not come back" >&2; exit 1; }
+}
+
+# create_wait <label> <devmode create arguments...>: print the answer, wait for the devmode revision
+create_wait() {
+	local label="$1" out
+	shift
+	out=$(pvcontrol devmode create "$@" 2> /dev/null)
+	echo "answer: $(echo "$out" | tr -d '\r' | jq -M -c .)"
+	wait_for_down 30
+	wait_for_target_ready "$label" "$devmode_rev" "UPDATED" >&2 \
+		|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+}
+
+file_in_inlay() {
+	pventer -c "$writer" test -e "/pantavisor/devmode/$target$file_in_target" && echo yes || echo no
+}
+
+echo "== create while the devmode revision runs changes nothing =="
+out=$(pvcontrol devmode create 2> /dev/null)
+echo "answer: $(echo "$out" | tr -d '\r' | jq -M -c .)"
+echo "devmode active: $(pvcontrol devmode status | jq -M '.active' | tr -d '\r')"
+
+echo "== write a file into the inlay of $target =="
+pventer -c "$writer" mkdir -p "/pantavisor/devmode/$target$(dirname "$file_in_target")"
+pventer -c "$writer" touch "/pantavisor/devmode/$target$file_in_target"
+echo "file in the inlay: $(file_in_inlay)"
+
+echo "== create --resume keeps the file =="
+leave_devmode
+create_wait "resume" --resume
+echo "file in the inlay: $(file_in_inlay)"
+
+echo "== a plain create removes the file =="
+leave_devmode
+create_wait "plain create"
+echo "file in the inlay: $(file_in_inlay)"
+
+echo "== an explicit base =="
+leave_devmode
+create_wait "explicit base" "$base_rev"
+
+echo "== a devmode revision cannot be the base =="
+out=$(pvcontrol devmode create "$devmode_rev" 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== a base that does not exist =="
+out=$(pvcontrol devmode create locals/no-such-revision 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'
+
+echo "== a base that is not a revision =="
+out=$(pvcontrol devmode create not-a-revision 2>&1)
+echo "exit: $?"
+echo "$out" | tr -d '\r' | grep '^{'

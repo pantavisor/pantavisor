@@ -1,0 +1,18 @@
+== enable devmode and run a devmode revision ==
+listed: yes
+== the running devmode revision is refused ==
+exit: 255
+{"Error":"Revision is running or being updated"}
+listed: yes
+== run the committed revision again ==
+listed: yes
+== a devmode revision that does not run is removed ==
+exit: 0
+listed: no
+== a revision that is gone is refused ==
+exit: 255
+{"Error":"Revision not found"}
+== a revision that is not a devmode revision is refused ==
+exit: 255
+{"Error":"Method not supported for this endpoint"}
+listed: yes
