@@ -181,7 +181,7 @@ $ curl -X POST --header "Content-Type: application/json" --data '{"base":"0","re
 
 The answer is sent before the device changes revision. `reboot` is `true` when the device reboots to run it. If the devmode revision of that base is already running, nothing changes and the answer is `{"revision":"devmode/r/0","base":"0","resumed":true,"running":true}`.
 
-To empty the inlay of one container:
+To empty the inlay of one container (a fresh inlay replaces it and the old one is removed when the container starts again):
 
 ```
 $ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/containers/my-container"

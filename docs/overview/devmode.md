@@ -198,7 +198,7 @@ curl -X GET --unix-socket /pantavisor/pv-ctrl http://localhost/devmode
 curl -X DELETE --unix-socket /pantavisor/pv-ctrl http://localhost/devmode/containers/my-container
 ```
 
-The first call shows whether devmode is on, the running devmode revision, the revision it is based on and the inlay directory of each container. The second call empties the inlay of one container, including its whiteouts and opaque directories, and the overlay work directory next to it. The image files show again in `/pantavisor/devmode/<container>` right away, and in the container after its next restart.
+The first call shows whether devmode is on, the running devmode revision, the revision it is based on and the inlay directory of each container. The second call replaces the inlay of one container with an empty one: the old directory is renamed to `_devmode.old.<number>` next to it in one step, so a power loss never leaves a half emptied inlay. The old directory is removed when the container starts again, with the overlay work directory; this is managed automatically, no action is needed. The image files show again in `/pantavisor/devmode/<container>` right away, and in the container after its next restart.
 
 ## Run commands in a container
 

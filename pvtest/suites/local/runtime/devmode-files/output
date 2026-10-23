@@ -67,6 +67,9 @@ odd
 == a directory with a mode ==
 {"path":"opt/devmode-dir","type":"dir"}
 [{"type":"dir","mode":"0750"}]
+== a directory without a mode ==
+{"path":"opt/devmode-plain/sub","type":"dir"}
+[{"path":"opt/devmode-plain","mode":"0755"},{"path":"opt/devmode-plain/sub","mode":"0755"}]
 == from a container with the mgmt role ==
 ["etc","etc/devmode-test.conf","opt","usr","usr/bin","usr/bin/curl"]
 == from a container without the mgmt role ==
@@ -78,3 +81,15 @@ exit: 255
 == the container sees the changes after a restart ==
 config: second version
 image file: gone
+== reset swaps in an empty inlay ==
+"etc/devmode-reset.conf"
+reset exit: 0
+{"container":"pv-example-norole","files":[]}
+old inlays before the restart: 1
+1
+"etc/devmode-after-reset.conf"
+config: gone
+reset file: gone
+file put after the reset: present
+image file: present
+old inlays after the restart: 0

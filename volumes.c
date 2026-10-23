@@ -19,7 +19,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <dirent.h>
 #include <errno.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -429,6 +431,104 @@ void pv_volumes_devmode_fs_umount(struct pv_platform *p)
 	if (umount2(mnt, MNT_DETACH))
 		pv_log(WARN, "cannot unmount %s: %s", mnt, strerror(errno));
 	p->devmode_fs = DEVMODE_FS_NONE;
+}
+
+// where the inlay of a container is on the storage
+static void pv_volumes_devmode_inlay_src(struct pv_state *s,
+					 struct pv_platform *p, char *buf,
+					 size_t size)
+{
+	struct pv_volume *v = pv_volumes_devmode_inlay(s, p);
+
+	if (v && v->src)
+		snprintf(buf, size, "%s", v->src);
+	else
+		pv_paths_storage_disks_rev_file(buf, size, s->rev, p->name,
+						DEVMODE_INLAY_DNAME);
+}
+
+#define DEVMODE_OLD_INLAY_INFIX ".old."
+
+// the inlay is renamed away in one step and a fresh one takes its place, so a
+// reset is quick and a power loss never leaves a half emptied inlay; the old
+// one goes when the container starts again (pv_volumes_devmode_sweep_old)
+int pv_volumes_devmode_inlay_reset(struct pv_state *s, struct pv_platform *p)
+{
+	static unsigned int counter;
+	char inlay[PATH_MAX], old[PATH_MAX + 64], work[PATH_MAX + 8];
+	struct stat st;
+	struct timespec now;
+
+	pv_volumes_devmode_inlay_src(s, p, inlay, sizeof(inlay));
+	snprintf(work, sizeof(work), "%s.work", inlay);
+
+	// the folder is an overlay of the inlay: take it away first
+	pv_volumes_devmode_fs_umount(p);
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	snprintf(old, sizeof(old), "%s%s%ld.%u", inlay, DEVMODE_OLD_INLAY_INFIX,
+		 (long)now.tv_sec, counter++);
+
+	if (stat(inlay, &st)) {
+		st.st_mode = 0755;
+		st.st_uid = 0;
+		st.st_gid = 0;
+	} else if (rename(inlay, old)) {
+		pv_log(ERROR, "cannot move the devmode inlay %s away: %s",
+		       inlay, strerror(errno));
+		pv_volumes_devmode_fs_mount(s, p);
+		return -1;
+	}
+
+	if (mkdir(inlay, st.st_mode & 07777) && errno != EEXIST) {
+		pv_log(ERROR, "cannot create the devmode inlay %s: %s", inlay,
+		       strerror(errno));
+		return -1;
+	}
+	if (chown(inlay, st.st_uid, st.st_gid))
+		pv_log(WARN, "cannot set the owner of %s: %s", inlay,
+		       strerror(errno));
+	chmod(inlay, st.st_mode & 07777);
+
+	pv_fs_path_remove(work, true);
+	pv_volumes_devmode_fs_mount(s, p);
+
+	return 0;
+}
+
+// remove inlays that a reset moved away; nothing uses them once the container
+// is stopped, which is when this runs, and a power loss can leave them behind
+void pv_volumes_devmode_sweep_old(struct pv_state *s, struct pv_platform *p)
+{
+	char inlay[PATH_MAX], dir[PATH_MAX], prefix[NAME_MAX + 8];
+	struct dirent **arr = NULL;
+	char *slash;
+	int n;
+
+	if (!p->devmode_inlay || !pv_storage_is_revision_devmode(s->rev))
+		return;
+
+	pv_volumes_devmode_inlay_src(s, p, inlay, sizeof(inlay));
+	snprintf(dir, sizeof(dir), "%s", inlay);
+	slash = strrchr(dir, '/');
+	if (!slash)
+		return;
+	snprintf(prefix, sizeof(prefix), "%s%s", slash + 1,
+		 DEVMODE_OLD_INLAY_INFIX);
+	*slash = '\0';
+
+	n = scandir(dir, &arr, NULL, alphasort);
+	for (int i = 0; i < n; i++) {
+		if (!strncmp(arr[i]->d_name, prefix, strlen(prefix))) {
+			char old[PATH_MAX];
+
+			pv_fs_path_concat(old, 2, dir, arr[i]->d_name);
+			pv_log(INFO, "removing old devmode inlay %s", old);
+			pv_fs_path_remove(old, true);
+		}
+		free(arr[i]);
+	}
+	free(arr);
 }
 
 static bool devmode_dir_shared;
