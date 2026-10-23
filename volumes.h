@@ -72,6 +72,10 @@ void pv_volumes_umount_devmode(struct pv_state *s);
 int pv_volumes_devmode_fs_mount(struct pv_state *s, struct pv_platform *p);
 void pv_volumes_devmode_fs_umount(struct pv_platform *p);
 // where pantavisor has the filesystem of a container mounted, -1 if it is not
+// swap the inlay of a container for an empty one
+int pv_volumes_devmode_inlay_reset(struct pv_state *s, struct pv_platform *p);
+// remove the inlays a reset left behind; the container must be stopped
+void pv_volumes_devmode_sweep_old(struct pv_state *s, struct pv_platform *p);
 int pv_volumes_devmode_fs_root(struct pv_platform *p, char *buf, size_t size);
 // bind or unbind what the container wrote itself at <pv dir>/devmode/.container/<name>, read-only
 void pv_volumes_devmode_layer_mount(struct pv_state *s, struct pv_platform *p);

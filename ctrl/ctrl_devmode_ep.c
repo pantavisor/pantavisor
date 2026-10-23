@@ -216,24 +216,6 @@ static void ctrl_devmode_get(struct evhttp_request *req, void *ctx)
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, pv_json_ser_str(&js));
 }
 
-static void ctrl_devmode_empty_dir(const char *path)
-{
-	struct dirent **arr = NULL;
-	int n = scandir(path, &arr, NULL, alphasort);
-
-	for (int i = 0; i < n; i++) {
-		char child[PATH_MAX] = { 0 };
-
-		if (strcmp(arr[i]->d_name, ".") &&
-		    strcmp(arr[i]->d_name, "..")) {
-			pv_fs_path_concat(child, 2, path, arr[i]->d_name);
-			pv_fs_path_remove(child, arr[i]->d_type == DT_DIR);
-		}
-		free(arr[i]);
-	}
-	free(arr);
-}
-
 static void ctrl_devmode_inlay_delete(struct evhttp_request *req, void *ctx)
 {
 	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
@@ -258,16 +240,15 @@ static void ctrl_devmode_inlay_delete(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
-	char path[PATH_MAX] = { 0 }, work[PATH_MAX] = { 0 };
+	char path[PATH_MAX] = { 0 };
+
 	pv_ctrl_devmode_inlay_path(pv->state, p, path, PATH_MAX);
-	pv_log(INFO, "emptying devmode inlay of %s: %s", p->name, path);
-	// the folder is an overlay of the inlay: take it away, clear the inlay
-	// with its whiteouts and the overlay work directory, and mount it again
-	pv_volumes_devmode_fs_umount(p);
-	ctrl_devmode_empty_dir(path);
-	snprintf(work, sizeof(work), "%s.work", path);
-	pv_fs_path_remove(work, true);
-	pv_volumes_devmode_fs_mount(pv->state, p);
+	pv_log(INFO, "resetting devmode inlay of %s: %s", p->name, path);
+	if (pv_volumes_devmode_inlay_reset(pv->state, p)) {
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot reset the inlay");
+		return;
+	}
 
 	pv_ctrl_utils_send_ok(req);
 }

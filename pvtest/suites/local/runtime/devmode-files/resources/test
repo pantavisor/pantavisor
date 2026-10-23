@@ -162,3 +162,23 @@ wait_for_target_ready "restart" "$devmode_rev" "UPDATED" >&2 \
 	|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }
 echo "config: $(in_target cat /etc/devmode-test.conf)"
 echo "image file: $(pventer -c "$target" test -e "/$image_file" && echo present || echo gone)"
+
+echo "== reset swaps in an empty inlay =="
+inlay_dir=$(pvcontrol devmode status | jq -M -r --arg c "$target" '.containers[] | select(.name == $c) | .inlay' | xargs dirname)
+old_dirs() { pv_exec ls "$inlay_dir" 2>/dev/null | tr -d '\r' | grep -c '^_devmode\.old\.'; }
+printf 'to be reset\n' | pvcontrol devmode files put "$target" etc/devmode-reset.conf - | jq -M -c '.path'
+pvcontrol devmode reset "$target" > /dev/null
+echo "reset exit: $?"
+pvcontrol devmode files ls "$target" | jq -M -c .
+echo "old inlays before the restart: $(old_dirs)"
+pvcontrol devmode files get "$target" etc/devmode-reset.conf 2>&1 | grep -c '^{"Error"'
+printf 'after reset\n' | pvcontrol devmode files put "$target" etc/devmode-after-reset.conf - | jq -M -c '.path'
+pvcontrol devmode apply "$target" --reboot > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "restart after reset" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $target did not come back in $devmode_rev" >&2; exit 1; }
+echo "config: $(pventer -c "$target" test -e /etc/devmode-test.conf && echo present || echo gone)"
+echo "reset file: $(pventer -c "$target" test -e /etc/devmode-reset.conf && echo present || echo gone)"
+echo "file put after the reset: $(pventer -c "$target" test -e /etc/devmode-after-reset.conf && echo present || echo gone)"
+echo "image file: $(pventer -c "$target" test -e "/$image_file" && echo present || echo gone)"
+echo "old inlays after the restart: $(old_dirs)"
