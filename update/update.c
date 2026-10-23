@@ -28,6 +28,7 @@
 #include "update/update_struct.h"
 
 #include "bootloader.h"
+#include "metadata.h"
 #include "objects.h"
 #include "paths.h"
 #include "signature.h"
@@ -69,6 +70,10 @@ static void _call_report_cb(const char *rev, const char *progress_str)
 
 	struct pv_update *u = _get_update_instance();
 	if (!u || !u->report_cb)
+		return;
+
+	// the Hub does not know devmode revisions
+	if (pv_storage_is_revision_devmode(rev))
 		return;
 
 	// send progress to hub
@@ -158,6 +163,15 @@ static void _finish_update_installation()
 	int bl_rv = pv_bootloader_install_update(u->rev);
 	if (bl_rv < 0) {
 		pv_log(WARN, "could not set bootloader with new update info");
+		pv_update_progress_set(&u->progress,
+				       PV_UPDATE_PROGRESS_STATUS_ERROR,
+				       PV_UPDATE_PROGRESS_MSG_INTERNAL_ERROR);
+		return;
+	}
+
+	// a devmode revision that is run again must not fall back right away
+	if (pv_storage_is_revision_devmode(u->rev) &&
+	    pv_bootloader_rearm_try(u->rev) < 0) {
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_ERROR,
 				       PV_UPDATE_PROGRESS_MSG_INTERNAL_ERROR);
@@ -891,7 +905,9 @@ void pv_update_set_final()
 	if (!u)
 		return;
 
-	if (u->transition == PV_SYSTEM_TRANSITION_NONREBOOT) {
+	// a devmode revision stays a try: pv_rev and done keep the last commit
+	if (u->transition == PV_SYSTEM_TRANSITION_NONREBOOT ||
+	    pv_storage_is_revision_devmode(u->rev)) {
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_UPDATED,
 				       PV_UPDATE_PROGRESS_MSG_UPDATED);
@@ -911,6 +927,21 @@ void pv_update_set_final()
 	pv_bootloader_post_commit_update(u->rev);
 out:
 	pv_update_finish();
+}
+
+int pv_update_devmode_reboot(void)
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv || !pv->state || pv->update ||
+	    !pv_storage_is_revision_devmode(pv->state->rev))
+		return -1;
+
+	if (pv_bootloader_rearm_try(pv->state->rev) < 0)
+		return -1;
+
+	pv_log(WALL, "rebooting into %s", pv->state->rev);
+	pv_issue_reboot();
+	return 0;
 }
 
 void pv_update_finish()
@@ -953,8 +984,15 @@ void pv_update_finish()
 
 	pv_update_progress_reload_logs(&u->progress);
 
+	bool devmode_ready = !pv_update_is_failed() && pv->state &&
+			     pv_storage_is_revision_devmode(pv->state->rev);
+
 	_free_update(u);
 	pv->update = NULL;
+
+	// devmode is only announced once its try is over and commands are accepted
+	if (devmode_ready)
+		pv_metadata_add_devmeta(DEVMETA_KEY_PV_DEVMODE, pv->state->rev);
 }
 
 static bool _progress_has_status(pv_update_progress_status_t status)
@@ -1033,7 +1071,17 @@ bool pv_update_is_local()
 	if (!u)
 		return false;
 
-	return pv_storage_is_revision_local(u->rev);
+	return pv_storage_is_revision_local(u->rev) ||
+	       pv_storage_is_revision_devmode(u->rev);
+}
+
+bool pv_update_is_devmode()
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u)
+		return false;
+
+	return pv_storage_is_revision_devmode(u->rev);
 }
 
 char *pv_update_get_rev()
