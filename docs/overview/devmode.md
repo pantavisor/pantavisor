@@ -145,6 +145,21 @@ ls -l /storage/disks/rev/devmode/r/12/my-container/_devmode/etc
 
 If the filesystem of the device cannot hold overlay whiteouts, Pantavisor logs a warning and shows only the inlay in `/pantavisor/devmode/<container>`; files can still be added and changed, but the image files are not listed.
 
+### Copy files with pvcontrol
+
+Without a shell in a mgmt container, for example over ssh to the host of the device, `pvcontrol devmode files` does the same through the control socket. The path is relative to the root of the container:
+
+```bash
+pvcontrol devmode files put my-container etc/my-app.conf ./my-app.conf --mode 0644
+cat my-app.conf | pvcontrol devmode files put my-container etc/my-app.conf -
+pvcontrol devmode files ls my-container
+pvcontrol devmode files get my-container etc/my-app.conf
+pvcontrol devmode files rm my-container etc/motd
+pvcontrol devmode apply my-container
+```
+
+`ls` shows what devmode changed, the content of the inlay, with the `sha256` of every file. A file of the image that you removed is listed as `"type":"deleted"`. A change made this way is the same as one made in `/pantavisor/devmode/<container>`: it lands in the inlay, and the container sees it after `pvcontrol devmode apply`. The endpoints are in the [control socket reference](../reference/pantavisor-commands.md#devmodefiles), the commands in [pvcontrol](../tools/pvcontrol.md#devmode).
+
 ### See what the container wrote itself
 
 The files a running container wrote itself live in its own writable layer, the top layer of the table above, and shadow the same path in the inlay. `/pantavisor/devmode/<container>` does not include that layer. Mgmt containers see it, read-only, at `/pantavisor/devmode/.container/<container>`:
@@ -235,4 +250,4 @@ While `devmode/l/<name>` or `devmode/r/<number>` exists, the revision it is base
 ## Reference
 
 - [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_DEVMODE_ALLOWED`
-- [Control socket](../reference/pantavisor-commands.md#devmode) — `/devmode`, `/steps/devmode/...`, container restart with `?reboot=1`, [`/containers/{name}/exec`](../reference/pantavisor-commands.md#run-a-command-in-a-container)
+- [Control socket](../reference/pantavisor-commands.md#devmode) — `/devmode`, [`/devmode/files`](../reference/pantavisor-commands.md#devmodefiles), `/steps/devmode/...`, container restart with `?reboot=1`, [`/containers/{name}/exec`](../reference/pantavisor-commands.md#run-a-command-in-a-container)

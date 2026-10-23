@@ -201,6 +201,63 @@ $ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/con
 | `409` | `DELETE`: the running revision is not a devmode revision; `POST`: an update or command is in progress |
 | `422` | `POST`: the state of the base does not verify |
 
+## /devmode/files
+
+These endpoints copy files into and out of a container while a [devmode](../overview/devmode.md) revision runs. They need `PV_DEVMODE_ALLOWED` and a running devmode revision, and are only available to containers with the `mgmt` role and to the `_pv_` shell of the host. The path after the container name is relative to the root of the container and percent-encoded; Pantavisor decodes it, and the `target` query value, before it checks them; `..` is refused with `400`, and a symlink in the container can only lead to something inside it.
+
+To list what devmode changed in a container, that is the content of its inlay:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container"
+{"container":"my-container","files":[{"path":"etc","type":"dir","mode":"0755","uid":0,"gid":0},{"path":"etc/my-app.conf","type":"file","size":19,"mode":"0644","uid":0,"gid":0,"sha256":"..."},{"path":"etc/motd","type":"deleted"}]}
+```
+
+`type` is `file`, `dir`, `symlink` (with `target`), `deleted` for a file of the image that was removed, or `special`. Entries are sorted by path, a directory before its content.
+
+To read a file as the container sees it, the inlay on top of the image:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/os-release"
+```
+
+To store a file, send its content as the body. Missing parent directories are created. The body is written to a temporary file next to the target and renamed over it when it is complete, so a file is replaced in one step:
+
+```
+$ curl -X PUT --data-binary @my-app.conf --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/my-app.conf?mode=0644"
+{"path":"etc/my-app.conf","sha256":"...","size":19}
+```
+
+| Query | Description |
+|-------|-------------|
+| `mode` | permissions in octal, default `0644` |
+| `uid`, `gid` | owner; the file keeps the owner of Pantavisor (root) when not given |
+| `type` | `file` (default, the body is the content), `dir` (creates a directory, no body) or `symlink` (needs `target`, no body) |
+| `target` | where a `symlink` points |
+
+To remove a file or an empty directory from the view of the container:
+
+```
+$ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/motd"
+$ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/opt/my-app?recursive=1"
+```
+
+Changes are made through the overlay that Pantavisor mounts at `/pantavisor/devmode/<container>`, so removing a file of the image leaves a delete marker in the inlay, like `rm` in that folder. They reach the running container after [`pvcontrol devmode apply`](../tools/pvcontrol.md#devmode), the same as files changed in the folder.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/devmode/files/{name}` | manifest of the inlay of a container |
+| `GET` | `/devmode/files/{name}/{path}` | content of a file |
+| `PUT` | `/devmode/files/{name}/{path}` | store a file, a directory or a symlink |
+| `DELETE` | `/devmode/files/{name}/{path}` | remove a file, a directory (`?recursive=1` for one with content) or a symlink |
+
+| Status | Condition |
+|--------|-----------|
+| `400` | the path contains `..`, a bad `mode`, `uid`, `gid` or `type`, `GET` of something that is not a regular file |
+| `403` | `PV_DEVMODE_ALLOWED` is `false`, or the caller has no `mgmt` role |
+| `404` | the container or the path does not exist |
+| `409` | the running revision is not a devmode revision, a directory is in the way, `DELETE` of a directory with content without `recursive`, or the container has no devmode filesystem |
+| `507` | not enough disk space |
+
 ## /daemons
 
 This endpoint can be used to list and manage Pantavisor internal daemons.

@@ -516,6 +516,10 @@ pvcontrol devmode create 12 --resume
 pvcontrol devmode reset my-container
 pvcontrol devmode apply my-container
 pvcontrol devmode apply my-system-container --reboot
+pvcontrol devmode files ls my-container
+pvcontrol devmode files put my-container etc/my-app.conf ./my-app.conf --mode 0644
+pvcontrol devmode files get my-container etc/my-app.conf
+pvcontrol devmode files rm my-container etc/motd
 ```
 
 | Subcommand | Description |
@@ -524,6 +528,19 @@ pvcontrol devmode apply my-system-container --reboot
 | `create [base] [--resume]` | One `POST /devmode`. Pantavisor copies the state json of `base` into `devmode/r/<number>` (`base` is a revision number) or `devmode/l/<name>` (`base` is `locals/<name>`), then runs it. Without `base`, the committed revision is used. A left-over devmode revision of that base is removed first; `--resume` keeps its files. |
 | `reset <container>` | Removes all files from the inlay of the container. |
 | `apply <container> [--reboot]` | Restarts the container so it sees the inlay files. A container with restart policy `system` needs `--reboot`, which reboots the device into the devmode revision. |
+| `files ls <container>` | `GET /devmode/files/<container>`: JSON list of what devmode changed in the container, with the `sha256` of each file. A removed file of the image has `"type":"deleted"`. |
+| `files get <container> <path>` | `GET /devmode/files/<container>/<path>`: the file, as the container sees it, on standard output. |
+| `files put <container> <path> [<file>\|-] [--mode <octal>] [--uid <n>] [--gid <n>] [--type file\|dir\|symlink] [--target <path>]` | `PUT /devmode/files/<container>/<path>`: stores `<file>`, or standard input without a file or with `-`. Missing directories are created. |
+| `files rm <container> <path> [--recursive]` | `DELETE /devmode/files/<container>/<path>`: removes the file or directory from the container; `--recursive` for a directory with content. |
+
+The path is relative to the root of the container. `pvcontrol` percent-encodes the path and `--target`, so they can hold spaces, `#`, `?`, `%` and non-ASCII letters. `put` with `--type dir` or `--type symlink` sends no content. The commands work for the `_pv_` shell of the host, for example over ssh, and for containers with the `mgmt` role, so no extra tool is needed on the device:
+
+```console
+$ ssh root@device "pvcontrol devmode files put my-container etc/my-app.conf -" < my-app.conf
+{"path":"etc/my-app.conf","sha256":"6cd1...","size":19}
+$ pvcontrol devmode files ls my-container
+{"container":"my-container","files":[{"path":"etc","type":"dir","mode":"0755","uid":0,"gid":0},{"path":"etc/my-app.conf","type":"file","size":19,"mode":"0644","uid":0,"gid":0,"sha256":"6cd1..."}]}
+```
 
 ```console
 $ pvcontrol devmode create 12
@@ -584,6 +601,10 @@ On a platform without managed drivers these are effectively no-ops returning
 | `devmode create [base] [--resume]` | POST | `/devmode` |
 | `devmode reset <container>` | DELETE | `/devmode/containers/{name}` |
 | `devmode apply <container> [--reboot]` | PUT | `/containers/{name}` (`--reboot` adds `?reboot=1`) |
+| `devmode files ls <container>` | GET | `/devmode/files/{name}` |
+| `devmode files get <container> <path>` | GET | `/devmode/files/{name}/{path}` |
+| `devmode files put <container> <path> [<file>\|-]` | PUT | `/devmode/files/{name}/{path}` |
+| `devmode files rm <container> <path>` | DELETE | `/devmode/files/{name}/{path}` |
 
 For the authoritative endpoint contracts (request/response shapes, status
 codes, management-socket requirements), see
