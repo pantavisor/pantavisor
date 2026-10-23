@@ -154,9 +154,19 @@ exec_run() {
 	trap 'cleanup_cgroup' EXIT
 
 	while [ "$shutdown" -eq 0 ]; do
-		revs=$(tr -d '\0' < "@PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt")
-		pv_rev=`echo "$revs" | awk -v FS="(pv_rev=|pv_try=)" '{print $2}' `
-		pv_try=`echo "$revs" | awk -v FS="(pv_rev=|pv_try=)" '{print $3}' `
+		boot_env="@PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt"
+		revs=$(tr '\0' '\n' < "$boot_env")
+		pv_rev=`echo "$revs" | sed -n 's/^pv_rev=//p' | head -n1`
+		pv_try=`echo "$revs" | sed -n 's/^pv_try=//p' | head -n1`
+
+		# pantavisor clears pv_trying to ask for the same try again (devmode)
+		if echo "$revs" | grep -q '^pv_trying='; then
+			pv_trying=""
+			{ echo "$revs" | grep -v '^pv_trying=' | tr '\n' '\0'; printf '\0'; } \
+				> "$boot_env.tmp" || true
+			cat "$boot_env.tmp" > "$boot_env"
+			rm -f "$boot_env.tmp"
+		fi
 
 		if [ -n "$pv_try" ]; then
 			if [ -n "$pv_trying" ] && [ "$pv_trying" = "$pv_try" ]; then
