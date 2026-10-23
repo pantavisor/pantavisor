@@ -311,6 +311,7 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_storage_init();
 	pv_ctrl_endpoints_wakelock_init();
 	pv_ctrl_endpoints_devmode_init();
+	pv_ctrl_endpoints_exec_init();
 }
 
 int pv_ctrl_start()
