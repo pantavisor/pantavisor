@@ -59,6 +59,7 @@ object count > 0: true
     }
   }
 ]
+dot folders listed: no
 == config ==
 config entries well-formed: true
 has PV_STORAGE_MNTPOINT: true
