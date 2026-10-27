@@ -301,7 +301,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		       "running in local mode. Will not consume new updates from Pantahub");
 
 	// only start local ph logger, start cloud services if connected
-	pv_logserver_toggle(pv, pv->state->rev);
+	pv_logserver_reconfigure();
 	ph_logger_toggle(pv->state->rev);
 
 	if (!pv_update_get_state()) {
