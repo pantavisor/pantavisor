@@ -143,6 +143,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/logserver/ingest` | Every protocol on a container's /dev/log and pv-ctrl-log, platform attribution, malformed input dropped without killing the log server | ✓ |
 | `local/logserver/fd-lifecycle` | pv-fd-log console capture across restart/stop/start: no leaked fds, no spin on a closed fd | ✓ |
 | `local/logserver/capture-off` | `PV_LOG_CAPTURE=0`, `PV_LOG_LOGGERS=0`, `PV_LOG_CAPTURE_DMESG=0` | ✓ |
+| `local/logserver/capture-revision` | `PV_LOG_CAPTURE`/`PV_LOG_CAPTURE_DMESG` from OEM config follow non-reboot updates, off then on, log server not restarted | ✓ |
 | `local/logserver/filetree-singlefile` | `PV_LOG_LEVEL=2`, filetree+singlefile, golang/strftime timestamps, absolute tsec, dmesg and loggers on | ✓ |
 | `local/logserver/dmesg-overrun` | `/dev/kmsg` ring buffer overrun: dmesg stays subscribed, overrun line once per 10 s window with a count | ✓ |
 | `local/logserver/stdout` | `PV_LOG_LEVEL=6`, filetree with `stdout.pantavisor`, invalid timestamp format, relative tsec, dmesg skipped | ✓ |

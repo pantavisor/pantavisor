@@ -1,0 +1,92 @@
+#!/bin/sh
+#
+# PV_LOG_CAPTURE and PV_LOG_CAPTURE_DMESG travel with the revision through its
+# OEM config (docs/overview/pantavisor-configuration-levels.md#oem), and the log
+# server applies them every time a revision starts running, including after a
+# non-reboot update (docs/reference/logserver-sockets.md#log-server-outputs).
+#
+# Both keys stay out of test.json: env and usrmeta beat OEM, so setting them
+# there would pin them. The baseline is their default, on, and is asserted.
+# PV_OEM_NAME=pv-example-app puts the OEM file inside a container that updates
+# without a reboot; each step also changes that container's lxc.tty.max.
+#
+#  1. a non-reboot update with both keys at 0: nothing is stored, /dev/kmsg released
+#  2. a non-reboot update with both keys at 1: lines are stored, /dev/kmsg held again
+#
+# The log server keeps its PID throughout: it is reconfigured, not restarted.
+# Every message carries a per-run nonce, and "stored" greps the whole log
+# directory for it, so lines from earlier boots cannot interfere.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+APP=pv-example-app
+SENDER=pv-example-norole
+OFF=locals/capture-off
+ON=locals/capture-on
+RUN="$$$(date +%s)"
+
+conf_val() { pvcontrol conf ls | jq -r --arg k "$1" '.[] | select(.key == $k) | .value' | tr -d '\r'; }
+
+LOGROOT=$(conf_val PV_LOG_DIR); LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+# PIDs of processes whose comm starts with $1
+procs() {
+	pv_exec sh -c "for p in /proc/[0-9]*; do case \"\$(cat \$p/comm 2>/dev/null)\" in $1*) echo \${p##*/};; esac; done" \
+		| tr -d '\r'
+}
+stored() { yesno pv_exec grep -rqF -- "$1" "$LOGROOT"; }
+send() { pventer -c "$SENDER" "printf '%s' 'level=INFO src=pvtest-rev message=$1' | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1; }
+kmsg_held() { yesno pv_exec sh -c "ls -l /proc/$PID/fd | grep -q /dev/kmsg"; }
+
+# Write the OEM config and post a non-reboot update, then wait for it to run
+post_capture() {
+	local rev="$1" val="$2" tty="$3"
+	printf 'PV_LOG_CAPTURE=%s\nPV_LOG_CAPTURE_DMESG=%s\n' "$val" "$val" > "$APP/test.config"
+	sed -i "s/lxc\.tty\.max = [0-9]*/lxc.tty.max = $tty/g" "$APP/lxc.container.conf"
+	pvr add . > /dev/null 2>&1
+	pvr commit > /dev/null 2>&1
+	pvr post --rev "$rev" > /dev/null 2>&1
+	wait_for_revision_state "$rev" "UPDATED" > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $rev to reach UPDATED" >&2; exit 1; }
+}
+
+PID=$(procs pv-log-server | head -n1)
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+echo "== baseline =="
+echo "PV_LOG_CAPTURE: $(conf_val PV_LOG_CAPTURE)"
+echo "PV_LOG_CAPTURE_DMESG: $(conf_val PV_LOG_CAPTURE_DMESG)"
+send "base-$RUN"
+wait_for_status "pv_exec grep -rqF -- 'base-$RUN' '$LOGROOT'" 0 15 > /dev/null 2>&1
+echo "line stored: $(stored "base-$RUN")"
+echo "pv-log-server holds /dev/kmsg: $(kmsg_held)"
+
+echo "== capture off =="
+post_capture "$OFF" 0 4
+echo "PV_LOG_CAPTURE: $(conf_val PV_LOG_CAPTURE)"
+echo "PV_LOG_CAPTURE_DMESG: $(conf_val PV_LOG_CAPTURE_DMESG)"
+send "off-$RUN"
+# the log server would have written it within a second; give it a few
+sleep 5
+echo "line stored: $(stored "off-$RUN")"
+echo "pv-log-server holds /dev/kmsg: $(kmsg_held)"
+echo "pv-log-server restarted: $([ "$(procs pv-log-server | head -n1)" = "$PID" ] && echo no || echo yes)"
+
+echo "== capture on =="
+post_capture "$ON" 1 2
+echo "PV_LOG_CAPTURE: $(conf_val PV_LOG_CAPTURE)"
+echo "PV_LOG_CAPTURE_DMESG: $(conf_val PV_LOG_CAPTURE_DMESG)"
+send "on-$RUN"
+wait_for_status "pv_exec grep -rqF -- 'on-$RUN' '$LOGROOT'" 0 15 > /dev/null 2>&1
+echo "line stored: $(stored "on-$RUN")"
+echo "pv-log-server holds /dev/kmsg: $(kmsg_held)"
+echo "pv-log-server restarted: $([ "$(procs pv-log-server | head -n1)" = "$PID" ] && echo no || echo yes)"
