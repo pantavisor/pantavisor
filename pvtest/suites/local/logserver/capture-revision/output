@@ -1,0 +1,17 @@
+== baseline ==
+PV_LOG_CAPTURE: 1
+PV_LOG_CAPTURE_DMESG: 1
+line stored: yes
+pv-log-server holds /dev/kmsg: yes
+== capture off ==
+PV_LOG_CAPTURE: 0
+PV_LOG_CAPTURE_DMESG: 0
+line stored: no
+pv-log-server holds /dev/kmsg: no
+pv-log-server restarted: no
+== capture on ==
+PV_LOG_CAPTURE: 1
+PV_LOG_CAPTURE_DMESG: 1
+line stored: yes
+pv-log-server holds /dev/kmsg: yes
+pv-log-server restarted: no
