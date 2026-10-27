@@ -118,13 +118,13 @@ Stores the `PH_` prefixed keys of the [configuration](../reference/pantavisor-co
 
 These configuration keys are persistent. By default, they are saved in plain text, but this can be changed if set to a [volume](#volumes) assigned to a [crypt disk](#disks).
 
-These credentials are written automatically when the device claims/registers against [Pantacor Hub](remote-control.md#pantacor-hub); there is no direct write endpoint for them. To wipe them and force the device to re-register (e.g. to re-claim it), run:
+These credentials are written automatically when the device claims/registers against [Pantacor Hub](remote-control.md#pantacor-hub). To wipe them and force the device to register a new identity (e.g. to re-claim it), run:
 
 ```bash
-pvcontrol cmd unclaim
+pvcontrol cmd reset-identity
 ```
 
-The device must be running a `DONE` [local revision](../reference/pantavisor-commands.md#steps). Unclaim also runs the [garbage collector](#garbage-collector), so the revisions of the previous Hub device are removed.
+The device must be running a `DONE` [local revision](../reference/pantavisor-commands.md#steps). Resetting the identity also runs the [garbage collector](#garbage-collector), so the revisions of the previous Hub device are removed.
 
 See [Commands](../tools/pvcontrol.md#commands).
 

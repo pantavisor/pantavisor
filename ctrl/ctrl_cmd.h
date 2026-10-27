@@ -44,7 +44,7 @@ enum pv_ctrl_cmd_op {
 	CMD_LOCAL_RUN_COMMIT = 12,
 	CMD_LOCAL_APPLY = 13,
 	CMD_XCONNECT_GRAPH = 14,
-	CMD_UNCLAIM = 15,
+	CMD_RESET_IDENTITY = 15,
 	MAX_CMD_OP
 };
 
@@ -78,7 +78,7 @@ static inline const char *pv_ctrl_cmd_op_to_str(const enum pv_ctrl_cmd_op op)
 		"LOCAL_RUN_COMMIT",
 		"LOCAL_APPLY",
 		"XCONNECT_GRAPH",
-		"UNCLAIM",
+		"RESET_IDENTITY",
 	};
 	return strings[op];
 }

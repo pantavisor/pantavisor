@@ -181,7 +181,7 @@ appengine, where we simulate the same behavior.
 
 As storage will survive after each test, we need to be careful to provide each iteration
 with the cleanest state possible (install and commit the initial revision, run garbage
-collector, unclaim, claim or go remote whenever needed...), as well as writing the tests
+collector, reset identity, claim or go remote whenever needed...), as well as writing the tests
 in a way that they are agnostic to the device's prior state.
 
 To achieve this, the host sets `PVTEST_RETYPE` to tell the tester how to request for
@@ -212,7 +212,8 @@ a target re-type into the desired boot configuration:
  │  • ONE power cycle:        │                              │
  │    re-type (test config)   │                              │
  │    or reboot (commit)      │                              │
- │  • gc, unclaim, go-remote  │                              │
+ │  • gc, reset identity,     │                              │
+ │    go-remote               │                              │
  │  • claim state, usrmeta    │                              │
  └─────────────┬──────────────┘                              │
                │ device live on the test's revision          │
@@ -226,7 +227,8 @@ a target re-type into the desired boot configuration:
                ▼
  ┌────────────────────────────┐
  │  Teardown  (once)          │   per target:
- │  • unclaim/delete, poweroff│   • lenient pantavisor shutdown
+ │  • reset identity/delete,  │   • lenient pantavisor shutdown
+ │    poweroff                │
  └────────────────────────────┘
 ```
 

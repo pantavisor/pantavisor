@@ -110,7 +110,8 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 	    ((cmd->op == CMD_REBOOT_DEVICE) ||
 	     (cmd->op == CMD_POWEROFF_DEVICE) || (cmd->op == CMD_LOCAL_RUN) ||
 	     (cmd->op == CMD_LOCAL_RUN_COMMIT) ||
-	     (cmd->op == CMD_MAKE_FACTORY) || (cmd->op == CMD_UNCLAIM))) {
+	     (cmd->op == CMD_MAKE_FACTORY) ||
+	     (cmd->op == CMD_RESET_IDENTITY))) {
 		return _cmd_reject(
 			cmd, HTTP_SERVUNAVAIL, 10 * 60,
 			"Cannot do this operation while update is ongoing");
@@ -141,19 +142,19 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 				   "Already in remote mode");
 	}
 
-	if (pv->unclaimed && cmd->op == CMD_UNCLAIM) {
+	if (pv->unclaimed && cmd->op == CMD_RESET_IDENTITY) {
 		return _cmd_reject(cmd, HTTP_NOCONTENT, -1,
 				   "Device is already unclaimed");
 	}
 
-	if (cmd->op == CMD_UNCLAIM &&
+	if (cmd->op == CMD_RESET_IDENTITY &&
 	    (!pv->state || !pv_storage_is_revision_local(pv->state->rev))) {
 		return _cmd_reject(
 			cmd, PV_HTTP_CONFLICT, -1,
 			"Cannot do this operation if not running a local revision");
 	}
 
-	if (cmd->op == CMD_UNCLAIM && !pv_state_is_done(pv->state)) {
+	if (cmd->op == CMD_RESET_IDENTITY && !pv_state_is_done(pv->state)) {
 		return _cmd_reject(
 			cmd, PV_HTTP_CONFLICT, -1,
 			"Cannot do this operation if current revision is not DONE");
