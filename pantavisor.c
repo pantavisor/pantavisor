@@ -684,33 +684,33 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv->remote_mode = true;
 		pv_metadata_add_devmeta(DEVMETA_KEY_PV_MODE, "remote");
 		break;
-	case CMD_UNCLAIM:
+	case CMD_RESET_IDENTITY:
 		if (pv->unclaimed) {
 			pv_log(WARN,
-			       "ignoring unclaim command because device is already unclaimed");
+			       "ignoring reset identity command because device is unclaimed");
 			goto out;
 		}
 
 		if (pv->update) {
 			pv_log(WARN,
-			       "ignoring unclaim command because an update is in progress");
+			       "ignoring reset identity command because an update is in progress");
 			goto out;
 		}
 
 		if (!pv_storage_is_revision_local(pv->state->rev)) {
 			pv_log(WARN,
-			       "ignoring unclaim command because current revision is not local");
+			       "ignoring reset identity command because current revision is not local");
 			goto out;
 		}
 
 		if (!pv_state_is_done(pv->state)) {
 			pv_log(WARN,
-			       "ignoring unclaim command because current revision is not DONE");
+			       "ignoring reset identity command because current revision is not DONE");
 			goto out;
 		}
 
 		pv_log(DEBUG,
-		       "unclaim command received. Removing credentials...");
+		       "reset identity command received. Removing credentials...");
 		pv_storage_gc_run();
 		pv_config_set_creds_prn("");
 		pv_config_set_creds_secret("");

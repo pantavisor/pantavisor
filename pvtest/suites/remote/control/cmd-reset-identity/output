@@ -5,17 +5,17 @@ idle
 posted: 1
 UPDATED
 UPDATED
-== unclaim rejected on Hub revision ==
+== reset identity rejected on Hub revision ==
 Cannot do this operation if not running a local revision
 1
 == local revision (non-reboot) ==
 UPDATED
-== unclaim rejected on non-DONE local revision ==
+== reset identity rejected on non-DONE local revision ==
 Cannot do this operation if current revision is not DONE
 1
 == local revision (reboot) ==
 DONE
-== unclaim ==
+== reset identity ==
 unset
 rev 1: removed
 == claim device (second Hub id) ==
@@ -29,8 +29,8 @@ posted: 1
   "status": "ERROR",
   "status-msg": "A container could not be started"
 }
-locals/unclaim-done
-== unclaim ==
+locals/reset-identity-done
+== reset identity ==
 unset
 claim
 == revision 1 per Hub id ==

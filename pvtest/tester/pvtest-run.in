@@ -469,27 +469,27 @@ _dev_read_file() {
 	fi
 }
 
-_dev_unclaim() {
+_dev_reset_identity() {
 	local dev="${1:-$(_dev_read_file /var/run/pantavisor/pv/device-id)}"
 
 	wait_for_current_settled \
-		|| pvtest_log WARN "device did not settle before unclaim; trying anyway"
+		|| pvtest_log WARN "device did not settle before identity reset; trying anyway"
 
-	if ! pv_ctrl -q cmd unclaim; then
+	if ! pv_ctrl -q cmd reset-identity; then
 		case "$pv_ctrl_out" in
 		*"already unclaimed"*)
 			pvtest_log INFO "device already unclaimed"
 			return 0
 			;;
 		esac
-		pvtest_log ERROR "pvcontrol cmd unclaim failed: $pv_ctrl_out"
+		pvtest_log ERROR "pvcontrol cmd reset-identity failed: $pv_ctrl_out"
 		return 1
 	fi
 	if [ -n "$dev" ]; then
 		pvtest_log INFO "deleting device $dev from Hub"
 		_hub_delete_device "$dev"
 	fi
-	pvtest_log INFO "device unclaimed"
+	pvtest_log INFO "device identity reset"
 	return 0
 }
 
@@ -540,7 +540,7 @@ _dev_claim() {
 	return 0
 }
 
-# Delete the device this slot currently points at from the Hub without device unclaim
+# Delete the device this slot currently points at from the Hub without device identity reset
 _dev_delete_only() {
 	local device_id="${1:-$(_dev_read_file /var/run/pantavisor/pv/device-id)}"
 	[ -n "$device_id" ] || return 0
@@ -548,9 +548,9 @@ _dev_delete_only() {
 	_hub_delete_device "$device_id"
 }
 
-# Unclaim device this slot currently points at via pvcontrol without Hub dev deletion
-handle_pre_remote_unclaim() {
-	pre_unclaimed_device=
+# Reset the identity of the device this slot currently points at via pvcontrol without Hub dev deletion
+handle_pre_remote_reset_identity() {
+	pre_reset_device=
 
 	case " $(pvtest_normalize_cfg "$required_env") " in
 	*" PV_CONTROL_REMOTE=1 "*) ;;
@@ -563,8 +563,8 @@ handle_pre_remote_unclaim() {
 	challenge=$(_dev_read_file /var/run/pantavisor/pv/challenge)
 	{ [ -n "$dev" ] && [ -z "$challenge" ]; } || return 0
 
-	pvtest_log INFO "device claimed from a previous test; unclaiming ($dev) before go-remote..."
-	if ! pv_ctrl -q cmd unclaim; then
+	pvtest_log INFO "device claimed from a previous test; resetting its identity ($dev) before go-remote..."
+	if ! pv_ctrl -q cmd reset-identity; then
 		# an aborted previous setup can leave the device already unclaimed
 		# with the hint files not yet renewed — benign, nothing to delete
 		case "$pv_ctrl_out" in
@@ -573,15 +573,15 @@ handle_pre_remote_unclaim() {
 			return 0
 			;;
 		esac
-		pvtest_log ERROR "pvcontrol cmd unclaim failed: $pv_ctrl_out"
+		pvtest_log ERROR "pvcontrol cmd reset-identity failed: $pv_ctrl_out"
 		return 1
 	fi
-	pre_unclaimed_device="$dev"
+	pre_reset_device="$dev"
 	return 0
 }
 
 # Prepare device and perform claim if not there and required by test
-# If claimed and not required by test, unclaim
+# If claimed and not required by test, reset identity
 handle_self_claim() {
 	claimed_device=
 
@@ -598,18 +598,18 @@ handle_self_claim() {
 		return 1
 	fi
 
-	if [ -n "$pre_unclaimed_device" ]; then
-		pvtest_log INFO "deleting device $pre_unclaimed_device from Hub"
-		_hub_delete_device "$pre_unclaimed_device"
-		pre_unclaimed_device=
+	if [ -n "$pre_reset_device" ]; then
+		pvtest_log INFO "deleting device $pre_reset_device from Hub"
+		_hub_delete_device "$pre_reset_device"
+		pre_reset_device=
 	fi
 
 	local device_id
 	device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
 
 	if [ "$state" = "idle" ] && [ "$self_claim" = "false" ] && [ -n "$device_id" ]; then
-		pvtest_log INFO "self-claim=false but device claimed; unclaiming ($device_id)..."
-		_dev_unclaim "$device_id" || return 1
+		pvtest_log INFO "self-claim=false but device claimed; resetting identity ($device_id)..."
+		_dev_reset_identity "$device_id" || return 1
 	elif [ "$state" = "claim" ] && [ "$self_claim" = "true" ]; then
 		local _claim_start
 		_claim_start=$(date +%s)
@@ -1037,7 +1037,7 @@ setup_test() {
 
 	_dev_gc || true
 
-	handle_pre_remote_unclaim || return 1
+	handle_pre_remote_reset_identity || return 1
 
 	# Go remote unless disabled by config so we support ALWAYS=0 test setups
 	local _cf
@@ -1365,14 +1365,14 @@ persistent_worker() {
 	if [ -n "$_ae" ]; then
 		_slot_bind_ae "$_ae"
 
-		# End-of-run courtesy reset, before unclaim as it requires a DONE local revision
+		# End-of-run courtesy reset, before identity reset as it requires a DONE local revision
 		if [ "$PVTEST_RETYPE" != "container" ]; then
 			_settle_to_factory || pvtest_log WARN "final factory reset failed"
 		fi
 
 		_state=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantahub.state"] // empty')
 		if [ "$_state" = "idle" ]; then
-			_dev_unclaim || _dev_delete_only
+			_dev_reset_identity || _dev_delete_only
 		else
 			_dev_delete_only
 		fi

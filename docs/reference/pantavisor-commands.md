@@ -188,7 +188,7 @@ These are the different commands that are supported. You can test them by substi
 | LOCAL_RUN_COMMIT | revision | transition to revision and commit it automatically |
 | LOCAL_APPLY | revision | apply revision changes without a full reboot |
 | XCONNECT_GRAPH | N/A | trigger an immediate xconnect graph reconciliation |
-| UNCLAIM | N/A | on a `DONE` local revision, run the garbage collector and remove Pantacor Hub credentials, so the device registers as a new Hub device and becomes claimable again, without a reboot |
+| RESET_IDENTITY | N/A | on a `DONE` local revision, run the garbage collector and remove Pantacor Hub credentials, so the device registers a new identity and becomes claimable again, without a reboot |
 
 ### Rejections
 
@@ -197,13 +197,13 @@ A command is not always accepted. These are the non-`200` responses and what cau
 | Status | Header | Commands | Condition |
 |--------|--------|----------|-----------|
 | `204` | — | `GO_REMOTE` | device is already in remote mode |
-| `204` | — | `UNCLAIM` | device is already unclaimed |
+| `204` | — | `RESET_IDENTITY` | device is already unclaimed |
 | `409` | — | `UPDATE_METADATA` | device is not in remote mode |
 | `409` | — | `GO_REMOTE` | remote control is disabled by [`PV_CONTROL_REMOTE`](pantavisor-configuration.md#summary) |
 | `409` | — | `DEFER_REBOOT` | the [debug shell](pantavisor-configuration.md#summary) is not active |
-| `409` | — | `UNCLAIM` | the running revision is not a [local revision](#steps) |
-| `409` | — | `UNCLAIM` | the running revision is not `DONE` |
-| `503` | `Retry-After: 600` | `REBOOT_DEVICE`, `POWEROFF_DEVICE`, `LOCAL_RUN`, `LOCAL_RUN_COMMIT`, `MAKE_FACTORY`, `UNCLAIM` | an [update](../overview/updates.md) is ongoing |
+| `409` | — | `RESET_IDENTITY` | the running revision is not a [local revision](#steps) |
+| `409` | — | `RESET_IDENTITY` | the running revision is not `DONE` |
+| `503` | `Retry-After: 600` | `REBOOT_DEVICE`, `POWEROFF_DEVICE`, `LOCAL_RUN`, `LOCAL_RUN_COMMIT`, `MAKE_FACTORY`, `RESET_IDENTITY` | an [update](../overview/updates.md) is ongoing |
 | `503` | `Retry-After: 120` | any | another command is still pending |
 
 ## /storage

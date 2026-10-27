@@ -8,8 +8,8 @@ fi
 PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1 \
     || { echo "ERROR: pvr login failed" >&2; exit 1; }
 
-LOCAL_UPDATED="locals/unclaim-updated"
-LOCAL_DONE="locals/unclaim-done"
+LOCAL_UPDATED="locals/reset-identity-updated"
+LOCAL_DONE="locals/reset-identity-done"
 S=$(pv_storage_dir)
 
 devmeta() { pvcontrol devmeta ls | jq -M -r ".[\"$1\"] // \"unset\""; }
@@ -50,24 +50,24 @@ claim_device() {
         || { echo "ERROR: timeout waiting for the Hub trail" >&2; exit 1; }
 }
 
-unclaim_device() {
+reset_identity_device() {
     wait_for_current_settled \
-        || { echo "ERROR: device did not settle before unclaim" >&2; exit 1; }
-    pvcontrol cmd unclaim > /dev/null \
-        || { echo "ERROR: pvcontrol cmd unclaim failed" >&2; exit 1; }
+        || { echo "ERROR: device did not settle before the identity reset" >&2; exit 1; }
+    pvcontrol cmd reset-identity > /dev/null \
+        || { echo "ERROR: pvcontrol cmd reset-identity failed" >&2; exit 1; }
     # the command is processed asynchronously after pvcontrol returns
     wait_for_value "devmeta pantahub.claimed" "unset" 30 \
         || { echo "ERROR: timeout waiting for pantahub.claimed to be removed" >&2; exit 1; }
     devmeta pantahub.claimed
 }
 
-# Unclaim must be rejected synchronously and leave the device claimed
-unclaim_rejected() {
+# The identity reset must be rejected synchronously and leave the device claimed
+reset_identity_rejected() {
     local err
     wait_for_current_settled \
-        || { echo "ERROR: device did not settle before unclaim" >&2; exit 1; }
-    if err=$(pvcontrol cmd unclaim 2>&1 > /dev/null); then
-        echo "ERROR: pvcontrol cmd unclaim was accepted" >&2; exit 1
+        || { echo "ERROR: device did not settle before the identity reset" >&2; exit 1; }
+    if err=$(pvcontrol cmd reset-identity 2>&1 > /dev/null); then
+        echo "ERROR: pvcontrol cmd reset-identity was accepted" >&2; exit 1
     fi
     echo "$err" | jq -M -r '.Error'
     devmeta pantahub.claimed
@@ -82,8 +82,8 @@ post_hub_rev() {
         cd "$co" || exit 1
         eval "$2"
         pvr add . > /dev/null 2>&1
-        pvr commit -m "unclaim test" > /dev/null 2>&1
-        pvr_post_rev -m "unclaim test" "$PVTEST_HUB_URL/trails/$1"
+        pvr commit -m "reset identity test" > /dev/null 2>&1
+        pvr_post_rev -m "reset identity test" "$PVTEST_HUB_URL/trails/$1"
     )
 }
 
@@ -111,15 +111,15 @@ pvcontrol steps show-progress 1 | jq -M -r '.status'
 wait_for_hub_status "$device_a" 1 UPDATED
 hub_status "$device_a" 1
 
-echo "== unclaim rejected on Hub revision =="
-unclaim_rejected
+echo "== reset identity rejected on Hub revision =="
+reset_identity_rejected
 
 echo "== local revision (non-reboot) =="
 co_local="$(mktemp -d)/checkout"
 pvr_clone_local_or_die "$co_local"
 cd "$co_local"
 mkdir -p _config/pv-example-app
-dd if=/dev/urandom of=_config/pv-example-app/pvtest-unclaim bs=4096 count=1 2>/dev/null
+dd if=/dev/urandom of=_config/pv-example-app/pvtest-reset-identity bs=4096 count=1 2>/dev/null
 pvr add . > /dev/null 2>&1
 pvr commit -m "non-reboot update" > /dev/null 2>&1
 pvr post --rev "$LOCAL_UPDATED" > /dev/null 2>&1
@@ -128,14 +128,14 @@ wait_for_revision_state "$LOCAL_UPDATED" "UPDATED" \
     || { echo "ERROR: timeout waiting for $LOCAL_UPDATED to reach UPDATED" >&2; exit 1; }
 pvcontrol steps show-progress "$LOCAL_UPDATED" | jq -M -r '.status'
 
-echo "== unclaim rejected on non-DONE local revision =="
-unclaim_rejected
+echo "== reset identity rejected on non-DONE local revision =="
+reset_identity_rejected
 
 echo "== local revision (reboot) =="
 cd "$co_local"
 # a platform-less object forces a reboot update
-mkdir -p pvtest-unclaim
-dd if=/dev/urandom of=pvtest-unclaim/random.bin bs=4096 count=1 2>/dev/null
+mkdir -p pvtest-reset-identity
+dd if=/dev/urandom of=pvtest-reset-identity/random.bin bs=4096 count=1 2>/dev/null
 pvr add . > /dev/null 2>&1
 pvr commit -m "reboot update" > /dev/null 2>&1
 pvr post --rev "$LOCAL_DONE" > /dev/null 2>&1
@@ -144,8 +144,8 @@ wait_for_target_ready "" "$LOCAL_DONE" DONE >&2 \
     || { echo "ERROR: timeout waiting for $LOCAL_DONE to reach DONE" >&2; exit 1; }
 pvcontrol steps show-progress "$LOCAL_DONE" | jq -M -r '.status'
 
-echo "== unclaim =="
-unclaim_device
+echo "== reset identity =="
+reset_identity_device
 if pv_exec ls -d "$S/trails/1" > /dev/null 2>&1; then echo "rev 1: kept"; else echo "rev 1: removed"; fi
 
 echo "== claim device (second Hub id) =="
@@ -169,8 +169,8 @@ wait_for_target_ready "" "$LOCAL_DONE" DONE >&2 \
     || { echo "ERROR: timeout waiting for rollback to $LOCAL_DONE" >&2; exit 1; }
 devmeta pantavisor.revision
 
-echo "== unclaim =="
-unclaim_device
+echo "== reset identity =="
+reset_identity_device
 wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
     || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }
 devmeta pantahub.state

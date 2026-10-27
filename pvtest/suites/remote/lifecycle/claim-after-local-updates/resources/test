@@ -99,7 +99,7 @@ for f in updated done; do
 done
 
 echo "== cleanup =="
-# unclaim locally too: a device left idle makes the framework delete it from the Hub again
-pvcontrol cmd unclaim > /dev/null \
-    || { echo "ERROR: pvcontrol cmd unclaim failed" >&2; exit 1; }
+# reset the identity locally too: a device left idle makes the framework delete it from the Hub again
+pvcontrol cmd reset-identity > /dev/null \
+    || { echo "ERROR: pvcontrol cmd reset-identity failed" >&2; exit 1; }
 pvr dev delete -y "$(pvr_device_url "$device_id")" > /dev/null
