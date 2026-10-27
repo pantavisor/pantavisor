@@ -393,14 +393,29 @@ static int pv_ls_utils_write_option(const char *path, const char *op)
 	return len < 0 ? len : 0;
 }
 
-int pv_ls_utils_printk_devmsg_on()
+int pv_ls_utils_kparam_set(struct pv_ls_kparam *p)
 {
-	return pv_ls_utils_write_option("/proc/sys/kernel/printk_devkmsg",
-					"on\n");
+	if (p->set)
+		return 0;
+
+	ssize_t len =
+		pv_fs_file_read_to_buf(p->path, p->saved, sizeof(p->saved) - 1);
+	if (len <= 0)
+		return -1;
+	p->saved[len] = '\0';
+
+	int ret = pv_ls_utils_write_option(p->path, p->value);
+	if (ret == 0)
+		p->set = true;
+
+	return ret;
 }
 
-int pv_ls_utils_ignore_loglevel()
+int pv_ls_utils_kparam_restore(struct pv_ls_kparam *p)
 {
-	return pv_ls_utils_write_option(
-		"/sys/module/printk/parameters/ignore_loglevel", "Y\n");
+	if (!p->set)
+		return 0;
+
+	p->set = false;
+	return pv_ls_utils_write_option(p->path, p->saved);
 }

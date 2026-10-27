@@ -27,6 +27,13 @@
 
 #include <stdbool.h>
 
+struct pv_ls_kparam {
+	const char *path;
+	const char *value;
+	char saved[16];
+	bool set;
+};
+
 int pv_ls_utils_open_logfile(const char *path, bool sync);
 int pv_ls_utils_open_datafile(const char *path, const struct pv_ls_log *log);
 void pv_ls_utils_close_datafile(int fd, const struct pv_ls_log *log);
@@ -39,6 +46,6 @@ int pv_ls_utils_print_raw(int fd, const struct pv_ls_log *log);
 char *pv_ls_utils_jsonify_log(const struct pv_ls_log *log);
 char *pv_ls_utils_output_to_str(int out_type);
 int pv_ls_utils_stdout(const struct pv_ls_log *log);
-int pv_ls_utils_printk_devmsg_on(void);
-int pv_ls_utils_ignore_loglevel(void);
+int pv_ls_utils_kparam_set(struct pv_ls_kparam *p);
+int pv_ls_utils_kparam_restore(struct pv_ls_kparam *p);
 #endif

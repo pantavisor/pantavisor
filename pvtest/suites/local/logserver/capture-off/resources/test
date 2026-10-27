@@ -6,8 +6,10 @@
 # off a different thing, so each has its own assertion:
 #
 #   PV_LOG_CAPTURE=0        the log server still runs and accepts messages, but
-#                           loads no output: nothing from any socket or console
-#                           reaches the log directory (pv_logserver_init).
+#                           loads only the update output (error logs of an
+#                           in-progress update, under the trail): nothing from
+#                           any socket or console reaches the log directory
+#                           (pv_logserver_init).
 #   PV_LOG_LOGGERS=0        no pv-logger-<container> process is started
 #                           (platforms.c, start_pvlogger_for_platform).
 #   PV_LOG_CAPTURE_DMESG=0  the log server does not hold /dev/kmsg open.

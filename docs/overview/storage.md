@@ -380,8 +380,9 @@ Alerts come from a dedicated `WALL` level, used for events meant for the console
 visible in the logs one step before `INFO` does, but an alert reaches the console even when
 [`PV_LOG_LEVEL`](../reference/pantavisor-configuration.md#summary) keeps it out of the logs. When a
 stdout [output type](#output-types) is configured, Pantavisor enables the kernel's `ignore_loglevel`
-so that copy of the message reaches the console too; the alert is then skipped so the line does not
-appear twice. `stdout.containers` never carries Pantavisor's own messages, so it does not count.
+so that copy of the message reaches the console too, and sets it back to its previous value once no
+stdout output is left; the alert is then skipped so the line does not appear twice.
+`stdout.containers` never carries Pantavisor's own messages, so it does not count.
 
 Alerts are on by default, and can be turned off with
 [`PV_LOG_CONSOLE_ALERTS`](../reference/pantavisor-configuration.md#summary), either at boot or at
