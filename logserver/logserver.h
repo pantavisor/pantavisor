@@ -30,8 +30,6 @@
 
 #define PV_PLATFORM_STR "pantavisor"
 
-void pv_logserver_toggle(struct pantavisor *pv, const char *rev);
-
 int pv_logserver_init(const char *rev);
 
 int pv_logserver_send_log(bool is_platform, char *platform, char *src,
@@ -40,6 +38,7 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args);
 
 void pv_logserver_transition(const char *rev);
+void pv_logserver_reconfigure(void);
 void pv_logserver_stop(void);
 
 void pv_logserver_ready(void);

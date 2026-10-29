@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "PV_LOG_CAPTURE and PV_LOG_CAPTURE_DMESG from a revision's OEM config follow non-reboot updates: capture off, then back on, without restarting the log server",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled PV_LOG_LEVEL=5 PV_LOG_SERVER_OUTPUTS=filetree PV_OEM_NAME=pv-example-app PV_POLICY=test",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz",
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

@@ -29,6 +29,7 @@
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <string.h>
+#include <stdlib.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <libgen.h>
@@ -55,6 +56,7 @@
 #include "utils/socket.h"
 #include "utils/pvsignals.h"
 #include "utils/timer.h"
+#include "utils/math.h"
 #include "pvctl_utils.h"
 #include "config.h"
 
@@ -90,7 +92,8 @@ typedef enum {
 	LOG_CMD_TRANSITION,
 	LOG_CMD_ADD_PLAT_SOCKET,
 	LOG_CMD_RM_PLAT_SOCKET,
-	LOG_CMD_READY
+	LOG_CMD_READY,
+	LOG_CMD_RECONFIGURE
 } log_cmd_code_t;
 
 struct pv_ls_fd {
@@ -136,6 +139,16 @@ struct pv_ls {
 };
 
 static bool pv_ls_ready_sent;
+static bool pv_ls_dmesg_on;
+
+static struct pv_ls_kparam pv_ls_kp_ignore_loglevel = {
+	.path = "/sys/module/printk/parameters/ignore_loglevel",
+	.value = "Y\n",
+};
+static struct pv_ls_kparam pv_ls_kp_devkmsg = {
+	.path = "/proc/sys/kernel/printk_devkmsg",
+	.value = "on\n",
+};
 
 static struct pv_ls logserver = {
 	.pid = -1,
@@ -168,6 +181,7 @@ static pv_ls_outputs_builder_t pv_ls_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
 
 static int pv_log(int level, char *msg, ...);
 static void pv_ls_remove_fd(int fd);
+static void pv_ls_apply_outputs(int outputs);
 
 static void pv_ls_conninfo_free(struct pv_ls_conninfo *ci)
 {
@@ -574,6 +588,29 @@ static int pv_ls_process_cmd(const struct pv_ls_log *log)
 	case LOG_CMD_READY:
 		pv_log(DEBUG, "ready command received");
 		pv_ls_utils_sync_ready();
+		break;
+	case LOG_CMD_RECONFIGURE:
+		if (!data) {
+			pv_log(DEBUG,
+			       "reconfigure command: NULL outputs received");
+			break;
+		}
+
+		char *end = NULL;
+		errno = 0;
+		long outputs = strtol(data, &end, 10);
+		if (errno || end == data || *end != '\0' || outputs <= 0 ||
+		    outputs >= (1L << LOGSERVER_MAX_OUTPUTS)) {
+			pv_log(WARN,
+			       "reconfigure command: invalid outputs '%s'",
+			       data);
+			break;
+		}
+
+		pv_log(DEBUG, "reconfigure command received with outputs 0x%lx",
+		       outputs);
+		if (outputs != logserver.active_out)
+			pv_ls_apply_outputs((int)outputs);
 		break;
 	case LOG_CMD_NULL:
 		pv_log(WARN, "unknown command received");
@@ -1189,22 +1226,6 @@ static pid_t pv_ls_start_service(const char *running_revision)
 	return logserver.pid;
 }
 
-static void pv_ls_start(const char *running_revision)
-{
-	if (logserver.pid == -1) {
-		pv_ls_start_service(running_revision);
-		pv_log(DEBUG, "starting log service with pid %d",
-		       logserver.pid);
-
-		if (logserver.pid > 0) {
-			pv_log(DEBUG, "started log service with pid %d",
-			       logserver.pid);
-		} else {
-			pv_log(ERROR, "unable to start log service");
-		}
-	}
-}
-
 static void pv_logserver_delete_outputs()
 {
 	struct pv_ls_out *it, *tmp;
@@ -1216,39 +1237,36 @@ static void pv_logserver_delete_outputs()
 	}
 }
 
-static void pv_ls_disable_log_capture()
+static void pv_ls_release_devkmsg()
 {
-	if (dl_list_len(&logserver.outputs) > 0)
-		pv_logserver_delete_outputs();
-
-	struct pv_ls_out *null_out = pv_ls_null_new();
-	if (!null_out)
-		return;
-	dl_list_add(&logserver.outputs, &null_out->list);
-}
-
-// XXX: this is bad code now. stop must never happen here; we
-// should kill this function and do the starting directly in the main
-// lifecycle code that currently calls this; disabling log capture
-// should happen through a "nullsink".
-void pv_logserver_toggle(struct pantavisor *pv, const char *running_rev)
-{
-	if (!pv)
+	if ((logserver.active_out &
+	     (LOG_SERVER_OUTPUT_STDOUT | LOG_SERVER_OUTPUT_STDOUT_DIRECT)) ||
+	    pv_ls_dmesg_on)
 		return;
 
-	// only start if we have log_capture configured
-	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
-		pv_ls_start(running_rev);
-	}
+	if (pv_ls_utils_kparam_restore(&pv_ls_kp_devkmsg) < 0)
+		pv_log(WARN, "could not restore printk_devkmsg: %s",
+		       strerror(errno));
 }
 
-static void pv_ls_capture_dmesg()
+static void pv_ls_capture_dmesg(bool enable, bool replay)
 {
 	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
 	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR))
+		enable = false;
+
+	if (enable == pv_ls_dmesg_on)
 		return;
 
-	if (pv_ls_utils_printk_devmsg_on() == 0)
+	if (!enable) {
+		pv_logserver_unsubscribe_fd("pantavisor", "dmesg");
+		pv_ls_dmesg_on = false;
+		pv_ls_release_devkmsg();
+		pv_log(DEBUG, "unsubscribing dmesg from logserver");
+		return;
+	}
+
+	if (pv_ls_utils_kparam_set(&pv_ls_kp_devkmsg) == 0)
 		pv_log(DEBUG,
 		       "setting printk_devmsg=on, all message will be captured");
 
@@ -1256,10 +1274,22 @@ static void pv_ls_capture_dmesg()
 	if (fd < 0) {
 		pv_log(WARN, "could not susbcribe dmesg to logserver %s",
 		       strerror(errno));
+		pv_ls_release_devkmsg();
 		return;
 	}
 
-	pv_logserver_subscribe_fd(fd, "pantavisor", "dmesg", INFO);
+	if (!replay && lseek(fd, 0, SEEK_END) < 0)
+		pv_log(WARN, "could not skip old dmesg records: %s",
+		       strerror(errno));
+
+	if (pv_logserver_subscribe_fd(fd, "pantavisor", "dmesg", INFO) < 0) {
+		pv_log(WARN, "could not send dmesg fd to logserver");
+		close(fd);
+		pv_ls_release_devkmsg();
+		return;
+	}
+	close(fd);
+	pv_ls_dmesg_on = true;
 	pv_log(DEBUG, "subscribing dmesg to logserver");
 }
 
@@ -1279,6 +1309,52 @@ static void pv_ls_load_outputs()
 	}
 }
 
+static int pv_ls_config_outputs()
+{
+	if (!pv_config_get_bool(PV_LOG_CAPTURE))
+		return LOG_SERVER_OUTPUT_UPDATE;
+
+	return pv_config_get_log_server_outputs();
+}
+
+static void pv_ls_apply_outputs(int outputs)
+{
+	logserver.active_out = outputs;
+	pv_ls_load_outputs();
+}
+
+static void pv_ls_setup_stdout()
+{
+	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_CONTAINERS) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR)) {
+		if (pv_ls_utils_kparam_set(&pv_ls_kp_ignore_loglevel) == 0)
+			pv_log(DEBUG,
+			       "stdout: ignoring kernel log level, all messages will be shown");
+		else
+			pv_log(WARN,
+			       "stdout: could not set ignore_loglevel: %s",
+			       strerror(errno));
+	} else if (pv_ls_utils_kparam_restore(&pv_ls_kp_ignore_loglevel) < 0) {
+		pv_log(WARN, "stdout: could not restore ignore_loglevel: %s",
+		       strerror(errno));
+	}
+
+	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT)) {
+		if (pv_ls_utils_kparam_set(&pv_ls_kp_devkmsg) == 0)
+			pv_log(DEBUG,
+			       "stdout: setting printk_devmsg=on, all messages will be captured");
+		else
+			pv_log(WARN,
+			       "stdout: could not set printk_devkmsg=on: %s",
+			       strerror(errno));
+	} else {
+		pv_ls_release_devkmsg();
+	}
+}
+
 int pv_logserver_init(const char *rev)
 {
 	if (!rev)
@@ -1286,35 +1362,8 @@ int pv_logserver_init(const char *rev)
 
 	dl_list_init(&logserver.outputs);
 
-	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
-		logserver.active_out = pv_config_get_log_server_outputs();
-		pv_ls_load_outputs();
-	} else {
-		pv_ls_disable_log_capture();
-	}
-
-	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
-	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
-	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_CONTAINERS) ||
-	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR)) {
-		if (pv_ls_utils_ignore_loglevel() == 0)
-			pv_log(DEBUG,
-			       "stdout: ignoring kernel log level, all messages will be shown");
-		else
-			pv_log(WARN,
-			       "stdout: could not set ignore_loglevel: %s",
-			       strerror(errno));
-		if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
-		    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT)) {
-			if (pv_ls_utils_printk_devmsg_on() == 0)
-				pv_log(DEBUG,
-				       "stdout: setting printk_devmsg=on, all messages will be captured");
-			else
-				pv_log(WARN,
-				       "stdout: could not set printk_devkmsg=on: %s",
-				       strerror(errno));
-		}
-	}
+	pv_ls_apply_outputs(pv_ls_config_outputs());
+	pv_ls_setup_stdout();
 
 	errno = 0;
 	logserver.epfd = epoll_create1(0);
@@ -1356,8 +1405,7 @@ int pv_logserver_init(const char *rev)
 	pv_ls_start_service(rev);
 	pv_log(DEBUG, "started log service with pid %d", logserver.pid);
 
-	if (pv_config_get_bool(PV_LOG_CAPTURE_DMESG))
-		pv_ls_capture_dmesg();
+	pv_ls_capture_dmesg(pv_config_get_bool(PV_LOG_CAPTURE_DMESG), true);
 
 	return 0;
 out:
@@ -1590,6 +1638,24 @@ void pv_logserver_transition(const char *rev)
 
 	pv_log(DEBUG, "transitioning logserver to rev '%s'", rev);
 	pv_logserver_send_cmd(LOG_CMD_TRANSITION, rev);
+}
+
+void pv_logserver_reconfigure(void)
+{
+	int outputs = pv_ls_config_outputs();
+
+	if (outputs != logserver.active_out) {
+		pv_log(DEBUG, "reconfiguring logserver outputs 0x%x -> 0x%x",
+		       logserver.active_out, outputs);
+		pv_ls_apply_outputs(outputs);
+		pv_ls_setup_stdout();
+
+		char buf[MAX_DEC_STRING_SIZE_OF_TYPE(int)];
+		snprintf(buf, sizeof(buf), "%d", outputs);
+		pv_logserver_send_cmd(LOG_CMD_RECONFIGURE, buf);
+	}
+
+	pv_ls_capture_dmesg(pv_config_get_bool(PV_LOG_CAPTURE_DMESG), false);
 }
 
 static void pv_logserver_free()

@@ -236,6 +236,10 @@ Set with [`PV_LOG_SERVER_OUTPUTS`](pantavisor-configuration.md#summary), a comma
 combine freely and unknown tokens are dropped with a warning. See
 [Output types](../overview/storage.md#output-types) for when to use each.
 
+With [`PV_LOG_CAPTURE`](pantavisor-configuration.md#summary) set to `0` no sink is active, whatever
+`PV_LOG_SERVER_OUTPUTS` says; only the error logs of an update are still kept, under the trail, and
+reported with its progress.
+
 | Value | Destination |
 |-------|-------------|
 | `filetree` | One file per source under `<PV_LOG_DIR>/<revision>/<container>/`. Default |
