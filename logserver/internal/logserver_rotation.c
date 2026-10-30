@@ -29,6 +29,7 @@
 #include "paths.h"
 #include "utils/fs.h"
 #include "utils/list.h"
+#include "utils/str.h"
 #include "log.h"
 
 #include <stdlib.h>
@@ -185,7 +186,7 @@ int pv_ls_rotation_log_rot(struct pv_ls_rot *rot, const char *fname)
 
 	// gzip replaces comp with comp.gz
 	char gz[PATH_MAX] = { 0 };
-	snprintf(gz, PATH_MAX, "%s.gz", comp);
+	SNPRINTF_WTRUNC(gz, PATH_MAX, "%s.gz", comp);
 	off_t gz_size = pv_fs_path_get_size(gz);
 	rot->cur_size += (gz_size > 0 ? gz_size : 0) - file_size;
 
