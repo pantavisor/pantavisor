@@ -170,13 +170,16 @@ printf '{"code":1,"data":"%s"}' "cmdexit-$RUN" | legacy 256 | malformed "legacy 
 printf '4\000%s\000pvtest-len\000%s' "$OTHER" "lenhuge-$RUN" | legacy_forged 2147483647 | malformed "legacy len beyond payload" "lenhuge-$RUN"
 printf '4\000%s\000pvtest-len\000%s' "$OTHER" "lenneg-$RUN" | legacy_forged -1 | malformed "legacy negative len" "lenneg-$RUN"
 
-# A stream message is whatever one non-blocking read pass gets, at most the log
-# buffer: the rest of a 200KB line is dropped, and the start is still logged
-pventer -c "$SENDER" "{ printf 'level=INFO src=pvtest-big message=%s' big-$RUN; head -c 200000 /dev/zero | tr '\\000' a; } | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1
+# A stream message is whatever one non-blocking read pass gets, at most the large
+# log buffer (2 x PV_LOG_BUF_NITEMS KiB): the rest of a line twice that size is
+# dropped, and the start is still logged. A line that fits in the buffer may land
+# whole or cut, depending on when the log server wakes up.
+BUFMAX=$((2 * $(conf_val PV_LOG_BUF_NITEMS) * 1024))
+pventer -c "$SENDER" "{ printf 'level=INFO src=pvtest-big message=%s' big-$RUN; head -c $((BUFMAX * 2)) /dev/zero | tr '\\000' a; } | nc -N -U -w1 /pantavisor/pv-ctrl-log" > /dev/null 2>&1
 if landed "big-$RUN"; then
 	pv_fetch_file "$SINGLE" "$TMP/pv.log"
 	len=$(jq -R -r --arg m "big-$RUN" 'fromjson? | select((.msg | tostring) | startswith($m)) | .msg | length' "$TMP/pv.log" | head -n1)
-	echo "oversized: stored=yes truncated=$([ "${len:-0}" -lt 200000 ] && echo yes || echo no)"
+	echo "oversized: stored=yes truncated=$([ "${len:-0}" -lt "$BUFMAX" ] && echo yes || echo no)"
 else
 	echo "oversized: stored=no"
 fi
