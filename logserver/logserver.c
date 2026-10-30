@@ -55,6 +55,7 @@
 #include "utils/socket.h"
 #include "utils/pvsignals.h"
 #include "utils/timer.h"
+#include "utils/str.h"
 #include "pvctl_utils.h"
 #include "config.h"
 
@@ -1674,7 +1675,7 @@ int pv_logserver_create_platform_socket(const char *platform, char *path)
 		return -1;
 	}
 
-	snprintf(path, max, "%s", full_path);
+	SNPRINTF_WTRUNC(path, max, "%s", full_path);
 	pv_log(DEBUG, "create socket command sent for %s", full_path);
 
 	unlink(full_path);
