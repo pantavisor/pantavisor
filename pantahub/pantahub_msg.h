@@ -39,7 +39,7 @@ struct pv_object_metadata {
 
 char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass);
 
-char *pv_pantahub_msg_parse_session_token(const char *json);
+void pv_pantahub_msg_parse_session(const char *json, char **token, char **hint);
 char *pv_pantahub_msg_parse_next_step(const char *json);
 
 int pv_pantahub_msg_parse_trails(const char *json);

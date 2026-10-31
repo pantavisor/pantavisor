@@ -23,6 +23,8 @@ pvcontrol cmd go-remote
 
 This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary) (`PV_CONTROL_REMOTE_ALWAYS`, default `0`).
 
+The owner of a claimed device can also lock its identity in Pantacor Hub and request a reset in order to renew device credentials. It is only supported when remote always is enabled, as it automatically runs a temporary local revision while the rest of the revisions are cleaned up from disk to start fresh. Then, it drops its old credentials, registers again as a new device linked to the old one and is left again ready for claiming.
+
 The main features offered by remote control are:
 
 * Keeping the device up to date: the [revisions](revisions.md) form a trail of steps in Pantacor Hub. This trail is ordered according to the time of [deploying](../../meta-pantavisor/getting-started/develop/cli-tools/workflows.md) and will be consumed by Pantavisor step by step. After founding a new step, Pantavisor will parse the [revision State JSON](../reference/pantavisor-state-format-v2.md), download the artifacts into the [storage](storage.md#trails-and-objects) and [transition](updates.md) to the new revision.
@@ -47,7 +49,8 @@ The client state can be consulted at any moment via [device metadata](../referen
 * **register**: device is trying to register as a non-claimed device in the cloud. This credentials will be stored after reboot.
 * **claim**: device is registered and is waiting to be claimed.
 * **sync**: device has been claimed and will try to upload the objects and state JSON to the cloud.
-* **login**: device is using its credentials to start a session with Hub.
+* **login**: device is using its credentials to start a session with Hub. This is where Pantavisor checks if an [identity reset](#pantacor-hub-client) has been issued from Hub.
+* **reset confirm**: device is confirming to Hub that an [identity reset](#pantacor-hub-client) has been successfully concluded.
 * **wait hub**: device is waiting for Hub to reply. We also use this to decide whether the device is claimed or not.
 * **report**: an update finished and device will continue uploading devmeta, downloading usrmeta while reporting its update status.
 * **idle**: device has checked all objects and state JSON is in the cloud. This is where the device will spend most of its time, uploading devmeta, downloading usrmeta and waiting for new updates.

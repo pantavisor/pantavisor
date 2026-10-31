@@ -28,6 +28,8 @@
 
 #include "utils/list.h"
 
+#define PV_DEVICE_ID_MAX_LEN (64)
+
 // GENERIC
 
 typedef enum {
@@ -262,6 +264,9 @@ int pv_config_load_update(const char *rev, const char *trail_config);
 int pv_config_load_creds(void);
 int pv_config_load_unclaimed_creds(void);
 int pv_config_save_creds(void);
+int pv_config_save_parent_creds(void);
+int pv_config_get_parent_creds_id(char *id, size_t size);
+void pv_config_remove_parent_creds(void);
 int pv_config_unload_creds(void);
 
 void pv_config_override_value(const char *key, const char *value);

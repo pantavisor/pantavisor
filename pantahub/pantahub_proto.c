@@ -55,6 +55,7 @@
 #define BODY_MAX_LEN (1 << 21) // 2MiB
 
 #define UNRESPONSIVE_REQUESTS_MAX 256
+#define FORBIDDEN_RELOGIN_WINDOW 60
 
 #define QUERY_PENDING_STEPS                                                    \
 	"?progress.status=%7B%22$in%22:%5B%22NEW%22,%22DOWNLOADING%22,%22INPROGRESS%22,%22TESTING%22,%22QUEUED%22%5D%7D"
@@ -91,6 +92,8 @@ typedef enum {
 
 struct pv_pantahub_session {
 	char *token;
+	// 403s make us log in again at most once per window
+	struct timer forbidden_relogin;
 	bool online;
 	short failed_requests;
 	bool any_failed_request;
@@ -102,6 +105,7 @@ struct pv_pantahub_session {
 	bool get_pending_steps_active;
 	bool put_progress_active;
 	bool get_step_active;
+	bool put_identity_reset_confirm_active;
 
 	struct pv_progress *next_progress;
 
@@ -156,6 +160,7 @@ static bool _devmeta_gate_pass(const char *json)
 void pv_pantahub_proto_init()
 {
 	session.token = NULL;
+	timer_stop(&session.forbidden_relogin);
 	session.online = false;
 	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
 	session.any_failed_request = false;
@@ -167,6 +172,7 @@ void pv_pantahub_proto_init()
 	session.get_pending_steps_active = false;
 	session.put_progress_active = false;
 	session.get_step_active = false;
+	session.put_identity_reset_confirm_active = false;
 
 	session.next_progress = NULL;
 
@@ -409,7 +415,7 @@ out:
 	session.failed_requests = 0;
 }
 
-static int _recv_buffer(struct evhttp_request *req, char **body)
+static int _recv_buffer_status(struct evhttp_request *req, char **body)
 {
 	int res;
 
@@ -425,18 +431,30 @@ static int _recv_buffer(struct evhttp_request *req, char **body)
 	if (res == 401) {
 		pv_log(WARN, "unauthorized");
 		_free_token();
-		return -1;
+	} else if (res == 403 &&
+		   timer_current_state(&session.forbidden_relogin).fin) {
+		pv_log(WARN, "forbidden. Logging in again...");
+		timer_start(&session.forbidden_relogin,
+			    FORBIDDEN_RELOGIN_WINDOW, 0, RELATIV_TIMER);
+		_free_token();
 	} else if (res != 200) {
 		pv_log(WARN, "returned %d", res);
-		return -1;
 	}
+
+	return res;
+}
+
+static int _recv_buffer(struct evhttp_request *req, char **body)
+{
+	if (_recv_buffer_status(req, body) != 200)
+		return -1;
 
 	return 0;
 }
 
 static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
-	char *body = NULL;
+	char *body = NULL, *hint = NULL;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
@@ -451,14 +469,20 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
-	session.token = pv_pantahub_msg_parse_session_token(body);
-	if (session.token)
-		pv_log(DEBUG, "got new token");
+	pv_pantahub_msg_parse_session(body, &session.token, &hint);
+	if (!session.token)
+		goto out;
+	pv_log(DEBUG, "got new token");
 
 out:
 	if (body)
 		free(body);
-	pv_pantahub_evaluate_state();
+	if (session.token)
+		pv_pantahub_on_login(hint);
+	else
+		pv_pantahub_evaluate_state();
+	if (hint)
+		free(hint);
 }
 
 void pv_pantahub_proto_post_auth()
@@ -496,6 +520,86 @@ void pv_pantahub_proto_post_auth()
 bool pv_pantahub_proto_is_auth()
 {
 	return session.token;
+}
+
+static void _recv_put_identity_reset_confirm_cb(struct evhttp_request *req,
+						void *ctx)
+{
+	char *body = NULL;
+	int res;
+
+	pv_log(TRACE, "run event: cb=%p",
+	       (void *)_recv_put_identity_reset_confirm_cb);
+
+	session.put_identity_reset_confirm_active = 0;
+
+	res = _recv_buffer_status(req, &body);
+	switch (res) {
+	case 200:
+		pv_log(INFO, "identity reset confirmed");
+		pv_config_remove_parent_creds();
+		break;
+	case 401:
+	case 408:
+	case 429:
+		pv_log(WARN, "PUT identity reset confirm failed; will retry");
+		// stay in reset confirm unless the session was dropped
+		if (session.token)
+			goto out;
+		break;
+	default:
+		// any other 4xx is final
+		if (res >= 400 && res < 500) {
+			pv_log(WARN,
+			       "identity reset confirmation refused (code=%d; body='%s')",
+			       res, body);
+			pv_config_remove_parent_creds();
+			break;
+		}
+		pv_log(WARN, "PUT identity reset confirm failed; will retry");
+		if (session.token)
+			goto out;
+	}
+
+	pv_pantahub_evaluate_state();
+out:
+	if (body)
+		free(body);
+}
+
+void pv_pantahub_proto_put_identity_reset_confirm()
+{
+	char parent[PV_DEVICE_ID_MAX_LEN], uri[256];
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return;
+	}
+
+	if (session.put_identity_reset_confirm_active) {
+		pv_log(DEBUG,
+		       "put_identity_reset_confirm_active = true; skip sending another request...");
+		return;
+	}
+
+	if (pv_config_get_parent_creds_id(parent, sizeof(parent))) {
+		pv_pantahub_evaluate_state();
+		return;
+	}
+
+	pv_log(DEBUG, "confirming identity reset of %s", parent);
+
+	SNPRINTF_WTRUNC(uri, sizeof(uri), "/devices/%s/identity-lock/confirm",
+			parent);
+
+	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, NULL,
+			       _recv_put_identity_reset_confirm_cb, NULL, NULL))
+		session.put_identity_reset_confirm_active = 1;
+}
+
+void pv_pantahub_proto_logout()
+{
+	_free_token();
 }
 
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
