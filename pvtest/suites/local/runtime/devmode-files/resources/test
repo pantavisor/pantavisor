@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# pvcontrol devmode files ls|get|put|rm (GET, PUT and DELETE on
+# pvcontrol devmode files ls|get|put|rm|mv|chmod (GET, PUT and DELETE on
 # /devmode/files/<container>[/<path>]).
 #
 # - refused while devmode is not allowed and while no devmode revision runs
@@ -8,6 +8,9 @@
 # - the list shows what was changed, with the sha256 of each file
 # - get returns the file as the container sees it
 # - removing a file of the image is listed as deleted and get does not find it
+# - mv renames a file or a directory, also into a directory that is new
+# - chmod changes the mode and the owner without sending the file again
+# - an error carries the errno next to the message
 # - paths with .. are refused; a symlink in the container cannot lead out of it
 # - a container with the mgmt role can use it, one without the role cannot
 # - after a restart the container sees the files
@@ -143,6 +146,52 @@ echo "== a directory without a mode =="
 pvcontrol devmode files put "$target" opt/devmode-plain/sub --type dir | jq -M -c .
 pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path | startswith("opt/devmode-plain")) | {path, mode}]'
 pvcontrol devmode files rm "$target" opt/devmode-plain --recursive > /dev/null
+
+echo "== rename a file into a directory that is new =="
+printf 'rename me\n' | pvcontrol devmode files put "$target" etc/devmode-rn.conf - > /dev/null
+pvcontrol devmode files mv "$target" etc/devmode-rn.conf opt/rn-new/moved.conf | jq -M -c .
+pvcontrol devmode files get "$target" opt/rn-new/moved.conf
+failing pvcontrol devmode files get "$target" etc/devmode-rn.conf
+echo "== rename a directory =="
+printf 'in dir\n' | pvcontrol devmode files put "$target" opt/rn-dir/f - > /dev/null
+pvcontrol devmode files mv "$target" opt/rn-dir opt/rn-dir2 | jq -M -c .
+pvcontrol devmode files get "$target" opt/rn-dir2/f
+failing pvcontrol devmode files get "$target" opt/rn-dir/f
+echo "== rename something that is not there =="
+failing pvcontrol devmode files mv "$target" etc/no-such-file opt/rn-gone
+echo "== rename onto a directory with content =="
+failing pvcontrol devmode files mv "$target" opt/rn-new opt/rn-dir2
+echo "== rename with a path that leaves the container =="
+failing pvcontrol devmode files mv "$target" ../etc opt/rn-gone
+pvcontrol devmode files rm "$target" opt/rn-new --recursive > /dev/null
+pvcontrol devmode files rm "$target" opt/rn-dir2 --recursive > /dev/null
+
+echo "== change the mode and the owner without sending the file =="
+printf 'attrs\n' | pvcontrol devmode files put "$target" etc/devmode-attrs.conf - | jq -M -c '.sha256'
+pvcontrol devmode files chmod "$target" etc/devmode-attrs.conf --mode 0600 --uid 1000 --gid 1001 | jq -M -c .
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "etc/devmode-attrs.conf") | {mode, uid, gid, sha256}]'
+echo "== change only the mode =="
+pvcontrol devmode files chmod "$target" etc/devmode-attrs.conf --mode 0640 > /dev/null
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "etc/devmode-attrs.conf") | {mode, uid, gid}]'
+echo "== change only the group =="
+pvcontrol devmode files chmod "$target" etc/devmode-attrs.conf --gid 1002 > /dev/null
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "etc/devmode-attrs.conf") | {mode, uid, gid}]'
+echo "== change the owner of a symlink =="
+pvcontrol devmode files put "$target" etc/devmode-attrs-link --type symlink --target devmode-attrs.conf > /dev/null
+pvcontrol devmode files chmod "$target" etc/devmode-attrs-link --uid 1003 | jq -M -c .
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "etc/devmode-attrs-link") | {type, uid}]'
+echo "== chmod needs something to change =="
+failing pvcontrol devmode files chmod "$target" etc/devmode-attrs.conf
+echo "== chmod of something that is not there =="
+failing pvcontrol devmode files chmod "$target" etc/no-such-file --mode 0600
+pvcontrol devmode files rm "$target" etc/devmode-attrs.conf > /dev/null
+pvcontrol devmode files rm "$target" etc/devmode-attrs-link > /dev/null
+
+echo "== an error carries the errno =="
+printf 'plain\n' | pvcontrol devmode files put "$target" opt/errno-file - > /dev/null
+failing sh -c "printf x | pvcontrol devmode files put '$target' opt/errno-file/below -"
+failing pvcontrol devmode files rm "$target" opt/no-such-dir
+pvcontrol devmode files rm "$target" opt/errno-file > /dev/null
 
 echo "== from a container with the mgmt role =="
 pventer -c "$mgmt" pvcontrol devmode files ls "$target" 2>&1 | tr -d '\r' | grep '^{' | jq -M -c '[.files[].path]'

@@ -520,6 +520,8 @@ pvcontrol devmode files ls my-container
 pvcontrol devmode files put my-container etc/my-app.conf ./my-app.conf --mode 0644
 pvcontrol devmode files get my-container etc/my-app.conf
 pvcontrol devmode files rm my-container etc/motd
+pvcontrol devmode files mv my-container etc/my-app.conf etc/my-app.conf.old
+pvcontrol devmode files chmod my-container opt/my-app/run.sh --mode 0755 --uid 1000
 ```
 
 | Subcommand | Description |
@@ -532,6 +534,8 @@ pvcontrol devmode files rm my-container etc/motd
 | `files get <container> <path>` | `GET /devmode/files/<container>/<path>`: the file, as the container sees it, on standard output. |
 | `files put <container> <path> [<file>\|-] [--mode <octal>] [--uid <n>] [--gid <n>] [--type file\|dir\|symlink] [--target <path>]` | `PUT /devmode/files/<container>/<path>`: stores `<file>`, or standard input without a file or with `-`. Missing directories are created. |
 | `files rm <container> <path> [--recursive]` | `DELETE /devmode/files/<container>/<path>`: removes the file or directory from the container; `--recursive` for a directory with content. |
+| `files mv <container> <from> <to>` | `PUT /devmode/files/<container>/<to>?type=rename&from=<from>`: renames a file, directory or symlink; missing directories of `<to>` are created. |
+| `files chmod <container> <path> [--mode <octal>] [--uid <n>] [--gid <n>]` | `PUT /devmode/files/<container>/<path>?type=attrs`: changes mode or owner in place, at least one option is needed. A symlink only takes an owner. |
 
 The path is relative to the root of the container. `pvcontrol` percent-encodes the path and `--target`, so they can hold spaces, `#`, `?`, `%` and non-ASCII letters. `put` with `--type dir` or `--type symlink` sends no content. The commands work for the `_pv_` shell of the host, for example over ssh, and for containers with the `mgmt` role, so no extra tool is needed on the device:
 
@@ -605,6 +609,8 @@ On a platform without managed drivers these are effectively no-ops returning
 | `devmode files get <container> <path>` | GET | `/devmode/files/{name}/{path}` |
 | `devmode files put <container> <path> [<file>\|-]` | PUT | `/devmode/files/{name}/{path}` |
 | `devmode files rm <container> <path>` | DELETE | `/devmode/files/{name}/{path}` |
+| `devmode files mv <container> <from> <to>` | PUT | `/devmode/files/{name}/{to}?type=rename&from={from}` |
+| `devmode files chmod <container> <path>` | PUT | `/devmode/files/{name}/{path}?type=attrs` |
 
 For the authoritative endpoint contracts (request/response shapes, status
 codes, management-socket requirements), see

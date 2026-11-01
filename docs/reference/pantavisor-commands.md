@@ -231,8 +231,26 @@ $ curl -X PUT --data-binary @my-app.conf --unix-socket /pantavisor/pv-ctrl "http
 |-------|-------------|
 | `mode` | permissions in octal, default `0644` for a file and `0755` for a directory |
 | `uid`, `gid` | owner; the file keeps the owner of Pantavisor (root) when not given |
-| `type` | `file` (default, the body is the content), `dir` (creates a directory, no body) or `symlink` (needs `target`, no body) |
+| `type` | `file` (default, the body is the content), `dir` (creates a directory, no body), `symlink` (needs `target`, no body), `rename` (needs `from`, no body) or `attrs` (needs one of `mode`, `uid`, `gid`, no body) |
 | `target` | where a `symlink` points |
+| `from` | the path to move for `type=rename`; the path of the request is the new name |
+
+To rename a file or directory, or to change mode and owner without sending the content again:
+
+```
+$ curl -X PUT --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/my-app.conf.old?type=rename&from=etc/my-app.conf"
+{"path":"etc/my-app.conf.old","type":"rename","from":"etc/my-app.conf"}
+$ curl -X PUT --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/opt/my-app/run.sh?type=attrs&mode=0755&uid=1000"
+{"path":"opt/my-app/run.sh","type":"attrs"}
+```
+
+A directory that comes from the image cannot be renamed on the overlay and answers `409`. A symlink takes `uid` and `gid` with `type=attrs`, not `mode`.
+
+An error answer has the message in `Error` and, when a system call failed, its reason in `errno`, for example `ENOENT`, `ENOTDIR`, `EISDIR`, `EEXIST`, `ENOTEMPTY`, `EXDEV` or `EACCES`:
+
+```
+{"Error":"Not found","errno":"ENOENT"}
+```
 
 To remove a file or an empty directory from the view of the container:
 
@@ -247,12 +265,12 @@ Changes are made through the overlay that Pantavisor mounts at `/pantavisor/devm
 |--------|------|-------------|
 | `GET` | `/devmode/files/{name}` | manifest of the inlay of a container |
 | `GET` | `/devmode/files/{name}/{path}` | content of a file |
-| `PUT` | `/devmode/files/{name}/{path}` | store a file, a directory or a symlink |
+| `PUT` | `/devmode/files/{name}/{path}` | store a file, a directory or a symlink, rename (`type=rename`) or change mode and owner (`type=attrs`) |
 | `DELETE` | `/devmode/files/{name}/{path}` | remove a file, a directory (`?recursive=1` for one with content) or a symlink |
 
 | Status | Condition |
 |--------|-----------|
-| `400` | the path contains `..`, a bad `mode`, `uid`, `gid` or `type`, `GET` of something that is not a regular file |
+| `400` | the path contains `..`, a bad `mode`, `uid`, `gid` or `type`, `type=rename` without `from`, `type=attrs` without any of `mode`, `uid`, `gid`, `GET` of something that is not a regular file |
 | `403` | `PV_DEVMODE_ALLOWED` is `false`, or the caller has no `mgmt` role |
 | `404` | the container or the path does not exist |
 | `409` | the running revision is not a devmode revision, a directory is in the way, `DELETE` of a directory with content without `recursive`, or the container has no devmode filesystem |

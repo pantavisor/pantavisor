@@ -32,18 +32,18 @@ get exit: 0
 same as in the container: yes
 == get a file that is not there ==
 exit: 255
-{"Error":"Not found"}
+{"Error":"Not found","errno":"ENOENT"}
 == remove a file of the image ==
 rm exit: 0
 {"path":"usr/bin/curl","type":"deleted"}
 exit: 255
-{"Error":"Not found"}
+{"Error":"Not found","errno":"ENOENT"}
 == remove a file that is not there ==
 exit: 255
-{"Error":"Not found"}
+{"Error":"Not found","errno":"ENOENT"}
 == remove a directory needs --recursive ==
 exit: 255
-{"Error":"A directory is in the way, or the path is not a directory"}
+{"Error":"A directory is in the way, or the path is not a directory","errno":"ENOTEMPTY"}
 rm recursive exit: 0
 ["etc","etc/devmode-test.conf","opt","usr","usr/bin","usr/bin/curl"]
 == unsafe paths ==
@@ -70,6 +70,47 @@ odd
 == a directory without a mode ==
 {"path":"opt/devmode-plain/sub","type":"dir"}
 [{"path":"opt/devmode-plain","mode":"0755"},{"path":"opt/devmode-plain/sub","mode":"0755"}]
+== rename a file into a directory that is new ==
+{"path":"opt/rn-new/moved.conf","type":"rename","from":"etc/devmode-rn.conf"}
+rename me
+exit: 255
+{"Error":"Not found","errno":"ENOENT"}
+== rename a directory ==
+{"path":"opt/rn-dir2","type":"rename","from":"opt/rn-dir"}
+in dir
+exit: 255
+{"Error":"Not found","errno":"ENOENT"}
+== rename something that is not there ==
+exit: 255
+{"Error":"Not found","errno":"ENOENT"}
+== rename onto a directory with content ==
+exit: 255
+{"Error":"A directory is in the way, or the path is not a directory","errno":"ENOTEMPTY"}
+== rename with a path that leaves the container ==
+exit: 255
+{"Error":"from must be a path relative to the container root"}
+== change the mode and the owner without sending the file ==
+"c64a75030cd90ebbd5c41fc55b796f9ff02482d9d938727d9002512a1d1cdeda"
+{"path":"etc/devmode-attrs.conf","type":"attrs"}
+[{"mode":"0600","uid":1000,"gid":1001,"sha256":"c64a75030cd90ebbd5c41fc55b796f9ff02482d9d938727d9002512a1d1cdeda"}]
+== change only the mode ==
+[{"mode":"0640","uid":1000,"gid":1001}]
+== change only the group ==
+[{"mode":"0640","uid":1000,"gid":1002}]
+== change the owner of a symlink ==
+{"path":"etc/devmode-attrs-link","type":"attrs"}
+[{"type":"symlink","uid":1003}]
+== chmod needs something to change ==
+exit: 255
+{"Error":"Give at least one of mode, uid, gid"}
+== chmod of something that is not there ==
+exit: 255
+{"Error":"Not found","errno":"ENOENT"}
+== an error carries the errno ==
+exit: 255
+{"Error":"A directory is in the way, or the path is not a directory","errno":"ENOTDIR"}
+exit: 255
+{"Error":"Not found","errno":"ENOENT"}
 == from a container with the mgmt role ==
 ["etc","etc/devmode-test.conf","opt","usr","usr/bin","usr/bin/curl"]
 == from a container without the mgmt role ==

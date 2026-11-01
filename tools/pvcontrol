@@ -173,6 +173,10 @@ usage_devmode() {
 	echo "                                                   - store a file (from <file> or stdin) in the container; the path is relative to the container root"
 	echo "       pvcontrol devmode files rm <container> <path> [--recursive]"
 	echo "                                                   - remove a file or directory from the container"
+	echo "       pvcontrol devmode files mv <container> <from> <to>"
+	echo "                                                   - rename a file, directory or symlink of the container"
+	echo "       pvcontrol devmode files chmod <container> <path> [--mode <octal>] [--uid <n>] [--gid <n>]"
+	echo "                                                   - change the mode or owner of a file without sending it again"
 }
 
 usage_daemons() {
@@ -599,6 +603,34 @@ parse_devmode_files_args() {
 		cmd='devmodefilesget'
 		container_name="$2"
 		devmode_path="$3"
+		;;
+	mv)
+		if [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ] || [ $# -gt 4 ]; then usage_devmode; exit 1; fi
+		cmd='devmodefilesmv'
+		container_name="$2"
+		devmode_path="$4"
+		devmode_query="type=rename&from=$(devmode_urlencode "$3")"
+		;;
+	chmod)
+		if [ -z "$2" ] || [ -z "$3" ]; then usage_devmode; exit 1; fi
+		cmd='devmodefileschmod'
+		container_name="$2"
+		devmode_path="$3"
+		devmode_query="type=attrs"
+		shift 3
+		while [ $# -gt 0 ]; do
+			case "$1" in
+			--mode|--uid|--gid)
+				if [ $# -lt 2 ]; then usage_devmode; exit 1; fi
+				devmode_query="$devmode_query&${1#--}=$(devmode_urlencode "$2")"
+				shift
+				;;
+			*)
+				usage_devmode; exit 1
+				;;
+			esac
+			shift
+		done
 		;;
 	put|rm)
 		if [ -z "$2" ] || [ -z "$3" ]; then usage_devmode; exit 1; fi
@@ -1183,6 +1215,10 @@ exec_cmd() {
 		devmodefilesrm)
 			devmode_files_url
 			response=`$CURL -X DELETE --unix-socket "$SOCKET" "$devmode_url"`
+			;;
+		devmodefilesmv|devmodefileschmod)
+			devmode_files_url
+			response=`$CURL -X PUT --unix-socket "$SOCKET" "$devmode_url"`
 			;;
 		*)
 			echo "ERROR: unknown operation"; exit 1

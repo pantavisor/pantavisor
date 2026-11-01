@@ -155,7 +155,16 @@ cat my-app.conf | pvcontrol devmode files put my-container etc/my-app.conf -
 pvcontrol devmode files ls my-container
 pvcontrol devmode files get my-container etc/my-app.conf
 pvcontrol devmode files rm my-container etc/motd
+pvcontrol devmode files mv my-container etc/my-app.conf etc/my-app.conf.old
+pvcontrol devmode files chmod my-container opt/my-app/run.sh --mode 0755 --uid 1000 --gid 1000
 pvcontrol devmode apply my-container
+```
+
+`mv` renames a file, directory or symlink in one step and creates the directories of the new path. A directory that comes from the image cannot be renamed on the overlay; copy it and remove the old one instead. `chmod` changes the mode and the owner of a file without sending it again; give any of `--mode`, `--uid` and `--gid`. A symlink only takes an owner. When a call fails, the answer carries the reason as an `errno` next to the message:
+
+```console
+$ pvcontrol devmode files rm my-container opt/my-app
+{"Error":"A directory is in the way, or the path is not a directory","errno":"ENOTEMPTY"}
 ```
 
 `ls` shows what devmode changed, the content of the inlay, with the `sha256` of every file. A file of the image that you removed is listed as `"type":"deleted"`. A change made this way is the same as one made in `/pantavisor/devmode/<container>`: it lands in the inlay, and the container sees it after `pvcontrol devmode apply`. The endpoints are in the [control socket reference](../reference/pantavisor-commands.md#devmodefiles), the commands in [pvcontrol](../tools/pvcontrol.md#devmode).
