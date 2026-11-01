@@ -1203,7 +1203,7 @@ show_output() {
 		code=255
 		[ "$http_code" = "503" ] && code=75
 		case "$content" in
-			"{\"Error\":\"Not enough disk space available\"}")
+			"{\"Error\":\"Not enough disk space available\""*)
 				code=48
 				;;
 			"{\"Error\":\"Object has bad checksum\"}")

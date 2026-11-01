@@ -351,8 +351,75 @@ static int dmf_open_dir(int rootfd, const char *rel, bool create)
 	return parent;
 }
 
+// name of the errno that explains the last failed call; NULL if there is none
+static const char *dmf_errname;
+
+static const char *dmf_errno_name(int err)
+{
+	switch (err) {
+	case ENOENT:
+		return "ENOENT";
+	case ENOTDIR:
+		return "ENOTDIR";
+	case EISDIR:
+		return "EISDIR";
+	case EEXIST:
+		return "EEXIST";
+	case ENOTEMPTY:
+		return "ENOTEMPTY";
+	case EXDEV:
+		return "EXDEV";
+	case EACCES:
+		return "EACCES";
+	case EPERM:
+		return "EPERM";
+	case ELOOP:
+		return "ELOOP";
+	case ENOSPC:
+		return "ENOSPC";
+	case EDQUOT:
+		return "EDQUOT";
+	case EROFS:
+		return "EROFS";
+	case EBUSY:
+		return "EBUSY";
+	case EINVAL:
+		return "EINVAL";
+	case ENAMETOOLONG:
+		return "ENAMETOOLONG";
+	case EIO:
+		return "EIO";
+	case EMFILE:
+		return "EMFILE";
+	case ENOMEM:
+		return "ENOMEM";
+	default:
+		return NULL;
+	}
+}
+
+static void dmf_send_error(struct evhttp_request *req, int code,
+			   const char *msg)
+{
+	const char *name = dmf_errname;
+
+	dmf_errname = NULL;
+	pv_ctrl_utils_send_error_errno(req, code, msg, name);
+}
+
+static void dmf_drain_error(struct evhttp_request *req, int code,
+			    const char *msg)
+{
+	const char *name = dmf_errname;
+
+	dmf_errname = NULL;
+	pv_ctrl_utils_drain_on_arrive_with_err_errno(req, code, msg, name);
+}
+
 static int dmf_errno_code(const char **msg)
 {
+	dmf_errname = dmf_errno_name(errno);
+
 	switch (errno) {
 	case ENOENT:
 		*msg = "Not found";
@@ -417,8 +484,7 @@ static void dmf_send_put_reply(struct evhttp_request *req, int code,
 
 	if (!sha || fstat(fd, &st)) {
 		free(sha);
-		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
-					 "Cannot read back the file");
+		dmf_send_error(req, HTTP_INTERNAL, "Cannot read back the file");
 		return;
 	}
 
@@ -591,21 +657,20 @@ static void dmf_get_file(struct evhttp_request *req, struct dmf_ctx *c)
 
 	code = dmf_open_root(c, &msg);
 	if (code) {
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 
 	fd = dmf_openat(c->rootfd, c->path, O_RDONLY, 0);
 	if (fd < 0) {
 		code = dmf_errno_code(&msg);
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 
 	if (fstat(fd, &st) || !S_ISREG(st.st_mode)) {
 		close(fd);
-		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
-					 "Not a regular file");
+		dmf_send_error(req, HTTP_BADREQUEST, "Not a regular file");
 		return;
 	}
 
@@ -615,8 +680,7 @@ static void dmf_get_file(struct evhttp_request *req, struct dmf_ctx *c)
 	    evbuffer_add_file(evhttp_request_get_output_buffer(req), fd, 0,
 			      st.st_size)) {
 		close(fd);
-		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
-					 "Cannot send the file");
+		dmf_send_error(req, HTTP_INTERNAL, "Cannot send the file");
 		return;
 	}
 	if (st.st_size <= 0)
@@ -638,7 +702,7 @@ static void dmf_get(struct evhttp_request *req, void *ctx)
 	if (!code)
 		code = dmf_find_container(&c, &msg);
 	if (code) {
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		dmf_ctx_clear(&c);
 		return;
 	}
@@ -731,7 +795,7 @@ static void dmf_delete(struct evhttp_request *req, void *ctx)
 	if (!code)
 		code = dmf_open_root(&c, &msg);
 	if (code) {
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		dmf_ctx_clear(&c);
 		return;
 	}
@@ -743,7 +807,7 @@ static void dmf_delete(struct evhttp_request *req, void *ctx)
 		code = dmf_errno_code(&msg);
 		if (dirfd >= 0)
 			close(dirfd);
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		dmf_ctx_clear(&c);
 		return;
 	}
@@ -759,7 +823,7 @@ static void dmf_delete(struct evhttp_request *req, void *ctx)
 	dmf_ctx_clear(&c);
 
 	if (code) {
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 
@@ -796,7 +860,7 @@ static int dmf_put_done(struct pv_ctrl_file *file)
 	    fsync(file->fd) ||
 	    renameat(put->dirfd, put->tmp, put->dirfd, put->leaf)) {
 		code = dmf_errno_code(&msg);
-		pv_ctrl_utils_send_error(file->req, code, msg);
+		dmf_send_error(file->req, code, msg);
 		return -1;
 	}
 	put->pending = false;
@@ -906,7 +970,7 @@ static void dmf_put_other(struct evhttp_request *req, struct dmf_ctx *c,
 	}
 
 	if (code) {
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 
@@ -931,7 +995,7 @@ static void dmf_put_rename(struct evhttp_request *req, struct dmf_ctx *c,
 	int code = 0, fromfd;
 
 	if (!from || dmf_normalize(from, norm, sizeof(norm)) || !*norm) {
-		pv_ctrl_utils_send_error(
+		dmf_send_error(
 			req, HTTP_BADREQUEST,
 			"from must be a path relative to the container root");
 		return;
@@ -943,7 +1007,7 @@ static void dmf_put_rename(struct evhttp_request *req, struct dmf_ctx *c,
 		code = dmf_errno_code(&msg);
 		if (fromfd >= 0)
 			close(fromfd);
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 
@@ -952,7 +1016,7 @@ static void dmf_put_rename(struct evhttp_request *req, struct dmf_ctx *c,
 	if (put->dirfd < 0 || renameat(fromfd, leaf, put->dirfd, put->leaf)) {
 		code = dmf_errno_code(&msg);
 		close(fromfd);
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 	close(fromfd);
@@ -983,8 +1047,8 @@ static void dmf_put_chattr(struct evhttp_request *req, struct dmf_ctx *c,
 	int code = 0, fd;
 
 	if (!has_mode && !has_uid && !has_gid) {
-		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
-					 "Give at least one of mode, uid, gid");
+		dmf_send_error(req, HTTP_BADREQUEST,
+			       "Give at least one of mode, uid, gid");
 		return;
 	}
 
@@ -993,7 +1057,7 @@ static void dmf_put_chattr(struct evhttp_request *req, struct dmf_ctx *c,
 		code = dmf_errno_code(&msg);
 		if (fd >= 0)
 			close(fd);
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 
@@ -1009,7 +1073,7 @@ static void dmf_put_chattr(struct evhttp_request *req, struct dmf_ctx *c,
 	close(fd);
 
 	if (code) {
-		pv_ctrl_utils_send_error(req, code, msg);
+		dmf_send_error(req, code, msg);
 		return;
 	}
 
@@ -1033,9 +1097,8 @@ static void dmf_put_file(struct evhttp_request *req, struct dmf_put *put)
 
 	if (!fstatat(put->dirfd, put->leaf, &st, AT_SYMLINK_NOFOLLOW)) {
 		if (S_ISDIR(st.st_mode)) {
-			pv_ctrl_utils_drain_on_arrive_with_err(
-				req, PV_HTTP_CONFLICT,
-				"A directory is in the way");
+			dmf_drain_error(req, PV_HTTP_CONFLICT,
+					"A directory is in the way");
 			dmf_put_free(put);
 			return;
 		}
@@ -1047,7 +1110,7 @@ static void dmf_put_file(struct evhttp_request *req, struct dmf_put *put)
 		    O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
 	if (fd < 0) {
 		code = dmf_errno_code(&msg);
-		pv_ctrl_utils_drain_on_arrive_with_err(req, code, msg);
+		dmf_drain_error(req, code, msg);
 		dmf_put_free(put);
 		return;
 	}
@@ -1056,8 +1119,7 @@ static void dmf_put_file(struct evhttp_request *req, struct dmf_put *put)
 	file = pv_ctrl_file_new_fd(req, fd, put->path);
 	if (!file) {
 		close(fd);
-		pv_ctrl_utils_drain_on_arrive_with_err(req, HTTP_INTERNAL,
-						       "Out of memory");
+		dmf_drain_error(req, HTTP_INTERNAL, "Out of memory");
 		dmf_put_free(put);
 		return;
 	}
@@ -1078,13 +1140,13 @@ static void dmf_put(struct evhttp_request *req, void *ctx)
 
 	code = pv_ctrl_utils_is_req_ok(req, ctx, err);
 	if (code) {
-		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
+		dmf_drain_error(req, code, err);
 		return;
 	}
 
 	code = dmf_parse(req, &c, &msg);
 	if (code) {
-		pv_ctrl_utils_drain_on_arrive_with_err(req, code, msg);
+		dmf_drain_error(req, code, msg);
 		return;
 	}
 
@@ -1156,7 +1218,7 @@ static void dmf_put(struct evhttp_request *req, void *ctx)
 	return;
 
 fail:
-	pv_ctrl_utils_drain_on_arrive_with_err(req, code, msg);
+	dmf_drain_error(req, code, msg);
 	dmf_put_free(put);
 	dmf_ctx_clear(&c);
 }

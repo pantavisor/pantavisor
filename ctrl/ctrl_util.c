@@ -54,6 +54,7 @@ struct ctrl_utils_drain_data {
 	struct evhttp_request *req;
 	int code;
 	char *msg;
+	const char *errname;
 };
 
 struct pv_ctrl_http_code_value http_codes[] = {
@@ -63,6 +64,7 @@ struct pv_ctrl_http_code_value http_codes[] = {
 };
 
 #define PV_CTRL_UTILS_ERR_RSP "{\"Error\":\"%s\"}"
+#define PV_CTRL_UTILS_ERR_ERRNO_RSP "{\"Error\":\"%s\",\"errno\":\"%s\"}"
 
 static struct pv_ctrl_http_code_value ctrl_utils_get_http_value(int code)
 {
@@ -176,18 +178,31 @@ static void ctrl_utils_send_fmt_str(struct evhttp_request *req, int code,
 	evhttp_send_reply(req, code, reason, NULL);
 }
 
+void pv_ctrl_utils_send_error_errno(struct evhttp_request *req, int code,
+				    const char *err_str, const char *errname)
+{
+	const char *fmt =
+		errname ? PV_CTRL_UTILS_ERR_ERRNO_RSP : PV_CTRL_UTILS_ERR_RSP;
+	const char *reason = NULL;
+
+	if (code <= 0) {
+		struct pv_ctrl_http_code_value v =
+			ctrl_utils_get_http_value(code);
+		code = v.code;
+		reason = v.reason;
+	}
+
+	if (errname)
+		ctrl_utils_send_fmt_str(req, code, reason, fmt, err_str,
+					errname);
+	else
+		ctrl_utils_send_fmt_str(req, code, reason, fmt, err_str);
+}
+
 void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 			      const char *err_str)
 {
-	if (code > 0) {
-		ctrl_utils_send_fmt_str(req, code, NULL, PV_CTRL_UTILS_ERR_RSP,
-					err_str);
-		return;
-	}
-
-	struct pv_ctrl_http_code_value v = ctrl_utils_get_http_value(code);
-	ctrl_utils_send_fmt_str(req, v.code, v.reason, PV_CTRL_UTILS_ERR_RSP,
-				err_str);
+	pv_ctrl_utils_send_error_errno(req, code, err_str, NULL);
 }
 
 int pv_ctrl_utils_split_path(const char *uri,
@@ -401,7 +416,8 @@ static void ctrl_utils_drain_error_callback(struct evbuffer *buf,
 		return;
 
 	struct ctrl_utils_drain_data *data = ctx;
-	pv_ctrl_utils_send_error(data->req, data->code, data->msg);
+	pv_ctrl_utils_send_error_errno(data->req, data->code, data->msg,
+				       data->errname);
 	free(data->msg);
 	free(data);
 }
@@ -421,9 +437,16 @@ void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req)
 void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
 					    int code, const char *err_str)
 {
+	pv_ctrl_utils_drain_on_arrive_with_err_errno(req, code, err_str, NULL);
+}
+
+void pv_ctrl_utils_drain_on_arrive_with_err_errno(struct evhttp_request *req,
+						  int code, const char *err_str,
+						  const char *errname)
+{
 	if (!ctrl_utils_expects_body(req)) {
 		pv_ctrl_utils_drain_req(req);
-		pv_ctrl_utils_send_error(req, code, err_str);
+		pv_ctrl_utils_send_error_errno(req, code, err_str, errname);
 		return;
 	}
 
@@ -440,6 +463,7 @@ void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
 	}
 
 	data->code = code;
+	data->errname = errname;
 	data->msg = strdup(err_str ? err_str : "");
 	if (!data->msg) {
 		free(data);
