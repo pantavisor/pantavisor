@@ -364,8 +364,13 @@ static int dmf_errno_code(const char **msg)
 		*msg = "A directory is in the way, or the path is not a directory";
 		return PV_HTTP_CONFLICT;
 	case ELOOP:
-	case EXDEV:
 		*msg = "The path leads through a symlink that cannot be followed";
+		return HTTP_BADREQUEST;
+	case EXDEV:
+		*msg = "Cannot rename a directory that comes from the image; copy it instead";
+		return PV_HTTP_CONFLICT;
+	case EINVAL:
+		*msg = "A directory cannot be moved into itself";
 		return HTTP_BADREQUEST;
 	case ENOSPC:
 	case EDQUOT:
@@ -915,6 +920,56 @@ static void dmf_put_other(struct evhttp_request *req, struct dmf_ctx *c,
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, pv_json_ser_str(&js));
 }
 
+// move from to the path of the request; the missing directories of the new path are created
+static void dmf_put_rename(struct evhttp_request *req, struct dmf_ctx *c,
+			   struct dmf_put *put)
+{
+	const char *msg = NULL, *from = dmf_query(c, "from");
+	char norm[PATH_MAX], dir[PATH_MAX], leaf[NAME_MAX];
+	struct pv_json_ser js;
+	struct stat st;
+	int code = 0, fromfd;
+
+	if (!from || dmf_normalize(from, norm, sizeof(norm)) || !*norm) {
+		pv_ctrl_utils_send_error(
+			req, HTTP_BADREQUEST,
+			"from must be a path relative to the container root");
+		return;
+	}
+
+	dmf_split(norm, dir, sizeof(dir), leaf, sizeof(leaf));
+	fromfd = dmf_open_dir(c->rootfd, dir, false);
+	if (fromfd < 0 || fstatat(fromfd, leaf, &st, AT_SYMLINK_NOFOLLOW)) {
+		code = dmf_errno_code(&msg);
+		if (fromfd >= 0)
+			close(fromfd);
+		pv_ctrl_utils_send_error(req, code, msg);
+		return;
+	}
+
+	dmf_split(put->path, dir, sizeof(dir), put->leaf, sizeof(put->leaf));
+	put->dirfd = dmf_open_dir(c->rootfd, dir, true);
+	if (put->dirfd < 0 || renameat(fromfd, leaf, put->dirfd, put->leaf)) {
+		code = dmf_errno_code(&msg);
+		close(fromfd);
+		pv_ctrl_utils_send_error(req, code, msg);
+		return;
+	}
+	close(fromfd);
+	fsync(put->dirfd);
+
+	pv_json_ser_init(&js, 256);
+	pv_json_ser_object(&js);
+	pv_json_ser_key(&js, "path");
+	pv_json_ser_string(&js, put->path);
+	pv_json_ser_key(&js, "type");
+	pv_json_ser_string(&js, "rename");
+	pv_json_ser_key(&js, "from");
+	pv_json_ser_string(&js, norm);
+	pv_json_ser_object_pop(&js);
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, pv_json_ser_str(&js));
+}
+
 static void dmf_put_file(struct evhttp_request *req, struct dmf_put *put)
 {
 	static unsigned int counter;
@@ -1003,14 +1058,22 @@ static void dmf_put(struct evhttp_request *req, void *ctx)
 	if (dmf_query(&c, "type") && *dmf_query(&c, "type"))
 		type = dmf_query(&c, "type");
 	if (!code && strcmp(type, "file") && strcmp(type, "dir") &&
-	    strcmp(type, "symlink")) {
-		msg = "type must be file, dir or symlink";
+	    strcmp(type, "symlink") && strcmp(type, "rename")) {
+		msg = "type must be file, dir, symlink or rename";
 		code = HTTP_BADREQUEST;
 	}
 	if (code)
 		goto fail;
 
 	snprintf(put->path, sizeof(put->path), "%s", c.path);
+	if (!strcmp(type, "rename")) {
+		pv_ctrl_utils_drain_req(req);
+		dmf_put_rename(req, &c, put);
+		dmf_put_free(put);
+		dmf_ctx_clear(&c);
+		return;
+	}
+
 	dmf_split(c.path, dir, sizeof(dir), put->leaf, sizeof(put->leaf));
 	put->dirfd = dmf_open_dir(c.rootfd, dir, true);
 	if (put->dirfd < 0) {
