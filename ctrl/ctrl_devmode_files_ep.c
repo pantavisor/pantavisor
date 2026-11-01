@@ -970,6 +970,59 @@ static void dmf_put_rename(struct evhttp_request *req, struct dmf_ctx *c,
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, pv_json_ser_str(&js));
 }
 
+// change mode and owner in place; a symlink only takes an owner
+static void dmf_put_chattr(struct evhttp_request *req, struct dmf_ctx *c,
+			   struct dmf_put *put)
+{
+	bool has_mode = dmf_query(c, "mode"), has_uid = dmf_query(c, "uid");
+	bool has_gid = dmf_query(c, "gid");
+	const char *msg = NULL;
+	char proc[64];
+	struct pv_json_ser js;
+	struct stat st;
+	int code = 0, fd;
+
+	if (!has_mode && !has_uid && !has_gid) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Give at least one of mode, uid, gid");
+		return;
+	}
+
+	fd = dmf_openat(c->rootfd, put->path, O_PATH | O_NOFOLLOW, 0);
+	if (fd < 0 || fstat(fd, &st)) {
+		code = dmf_errno_code(&msg);
+		if (fd >= 0)
+			close(fd);
+		pv_ctrl_utils_send_error(req, code, msg);
+		return;
+	}
+
+	// an O_PATH descriptor cannot be given to fchmod, its /proc link can
+	snprintf(proc, sizeof(proc), "/proc/self/fd/%d", fd);
+	if (has_mode && !S_ISLNK(st.st_mode) && chmod(proc, put->mode))
+		code = dmf_errno_code(&msg);
+	// (uid_t)-1 leaves that half of the owner as it is
+	else if ((has_uid || has_gid) &&
+		 fchownat(fd, "", has_uid ? put->uid : (uid_t)-1,
+			  has_gid ? put->gid : (gid_t)-1, AT_EMPTY_PATH))
+		code = dmf_errno_code(&msg);
+	close(fd);
+
+	if (code) {
+		pv_ctrl_utils_send_error(req, code, msg);
+		return;
+	}
+
+	pv_json_ser_init(&js, 256);
+	pv_json_ser_object(&js);
+	pv_json_ser_key(&js, "path");
+	pv_json_ser_string(&js, put->path);
+	pv_json_ser_key(&js, "type");
+	pv_json_ser_string(&js, "attrs");
+	pv_json_ser_object_pop(&js);
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, pv_json_ser_str(&js));
+}
+
 static void dmf_put_file(struct evhttp_request *req, struct dmf_put *put)
 {
 	static unsigned int counter;
@@ -1058,8 +1111,9 @@ static void dmf_put(struct evhttp_request *req, void *ctx)
 	if (dmf_query(&c, "type") && *dmf_query(&c, "type"))
 		type = dmf_query(&c, "type");
 	if (!code && strcmp(type, "file") && strcmp(type, "dir") &&
-	    strcmp(type, "symlink") && strcmp(type, "rename")) {
-		msg = "type must be file, dir, symlink or rename";
+	    strcmp(type, "symlink") && strcmp(type, "rename") &&
+	    strcmp(type, "attrs")) {
+		msg = "type must be file, dir, symlink, rename or attrs";
 		code = HTTP_BADREQUEST;
 	}
 	if (code)
@@ -1069,6 +1123,14 @@ static void dmf_put(struct evhttp_request *req, void *ctx)
 	if (!strcmp(type, "rename")) {
 		pv_ctrl_utils_drain_req(req);
 		dmf_put_rename(req, &c, put);
+		dmf_put_free(put);
+		dmf_ctx_clear(&c);
+		return;
+	}
+
+	if (!strcmp(type, "attrs")) {
+		pv_ctrl_utils_drain_req(req);
+		dmf_put_chattr(req, &c, put);
 		dmf_put_free(put);
 		dmf_ctx_clear(&c);
 		return;
