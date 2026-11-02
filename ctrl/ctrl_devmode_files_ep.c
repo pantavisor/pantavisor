@@ -855,9 +855,9 @@ static int dmf_put_done(struct pv_ctrl_file *file)
 	if (!file->ok)
 		return -1;
 
-	if (fchmod(file->fd, put->mode) ||
-	    (put->set_owner && fchown(file->fd, put->uid, put->gid)) ||
-	    fsync(file->fd) ||
+	// the owner goes first: changing it clears setuid and setgid
+	if ((put->set_owner && fchown(file->fd, put->uid, put->gid)) ||
+	    fchmod(file->fd, put->mode) || fsync(file->fd) ||
 	    renameat(put->dirfd, put->tmp, put->dirfd, put->leaf)) {
 		code = dmf_errno_code(&msg);
 		dmf_send_error(file->req, code, msg);
@@ -942,10 +942,11 @@ static void dmf_put_other(struct evhttp_request *req, struct dmf_ctx *c,
 					      O_CLOEXEC)) < 0)
 			code = dmf_errno_code(&msg);
 		else {
-			if (created || dmf_query(c, "mode"))
-				fchmod(fd, dmode);
+			// the owner goes first: changing it clears setgid
 			if (put->set_owner)
 				fchown(fd, put->uid, put->gid);
+			if (created || dmf_query(c, "mode"))
+				fchmod(fd, dmode);
 			close(fd);
 		}
 	} else {
@@ -1063,12 +1064,13 @@ static void dmf_put_chattr(struct evhttp_request *req, struct dmf_ctx *c,
 
 	// an O_PATH descriptor cannot be given to fchmod, its /proc link can
 	snprintf(proc, sizeof(proc), "/proc/self/fd/%d", fd);
-	if (has_mode && !S_ISLNK(st.st_mode) && chmod(proc, put->mode))
-		code = dmf_errno_code(&msg);
+	// the owner goes first: changing it clears setuid and setgid
 	// (uid_t)-1 leaves that half of the owner as it is
-	else if ((has_uid || has_gid) &&
-		 fchownat(fd, "", has_uid ? put->uid : (uid_t)-1,
-			  has_gid ? put->gid : (gid_t)-1, AT_EMPTY_PATH))
+	if ((has_uid || has_gid) &&
+	    fchownat(fd, "", has_uid ? put->uid : (uid_t)-1,
+		     has_gid ? put->gid : (gid_t)-1, AT_EMPTY_PATH))
+		code = dmf_errno_code(&msg);
+	else if (has_mode && !S_ISLNK(st.st_mode) && chmod(proc, put->mode))
 		code = dmf_errno_code(&msg);
 	close(fd);
 

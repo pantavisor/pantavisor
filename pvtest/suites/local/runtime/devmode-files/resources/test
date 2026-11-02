@@ -187,6 +187,18 @@ failing pvcontrol devmode files chmod "$target" etc/no-such-file --mode 0600
 pvcontrol devmode files rm "$target" etc/devmode-attrs.conf > /dev/null
 pvcontrol devmode files rm "$target" etc/devmode-attrs-link > /dev/null
 
+echo "== setuid and setgid survive an owner given with the mode =="
+printf 'suid\n' | pvcontrol devmode files put "$target" etc/devmode-suid.conf - --mode 4755 --uid 0 --gid 0 > /dev/null
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "etc/devmode-suid.conf") | {mode, uid, gid}]'
+pvcontrol devmode files put "$target" opt/devmode-sgid --type dir --mode 2755 --uid 0 --gid 0 > /dev/null
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "opt/devmode-sgid") | {type, mode, uid, gid}]'
+printf 'attrs suid\n' | pvcontrol devmode files put "$target" etc/devmode-suid-attrs.conf - > /dev/null
+pvcontrol devmode files chmod "$target" etc/devmode-suid-attrs.conf --mode 4755 --uid 1000 > /dev/null
+pvcontrol devmode files ls "$target" | jq -M -c '[.files[] | select(.path == "etc/devmode-suid-attrs.conf") | {mode, uid}]'
+pvcontrol devmode files rm "$target" etc/devmode-suid.conf > /dev/null
+pvcontrol devmode files rm "$target" etc/devmode-suid-attrs.conf > /dev/null
+pvcontrol devmode files rm "$target" opt/devmode-sgid > /dev/null
+
 echo "== an error carries the errno =="
 printf 'plain\n' | pvcontrol devmode files put "$target" opt/errno-file - > /dev/null
 failing sh -c "printf x | pvcontrol devmode files put '$target' opt/errno-file/below -"

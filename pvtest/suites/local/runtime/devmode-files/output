@@ -106,6 +106,10 @@ exit: 255
 == chmod of something that is not there ==
 exit: 255
 {"Error":"Not found","errno":"ENOENT"}
+== setuid and setgid survive an owner given with the mode ==
+[{"mode":"4755","uid":0,"gid":0}]
+[{"type":"dir","mode":"2755","uid":0,"gid":0}]
+[{"mode":"4755","uid":1000}]
 == an error carries the errno ==
 exit: 255
 {"Error":"A directory is in the way, or the path is not a directory","errno":"ENOTDIR"}
