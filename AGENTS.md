@@ -140,7 +140,12 @@ author:
    steps it could not follow. If it gets one wrong or cannot answer, repeat step 2 with its
    questions added, at most twice.
 
-In Claude Code, `/pr-describe` runs these steps. Elsewhere, run them by hand in new sessions.
+An agent does this on its own whenever it opens a PR or rewrites a PR description; nobody has to
+ask for it. Steps 2 and 3 each run in a fresh subagent that does not inherit the conversation (in
+Claude Code a `general-purpose` agent, never a fork), and each gets only what its step names. If
+the agent was not part of the work, it asks the person for the author facts instead of guessing.
+Between rounds it does not edit the text itself: a wrong fact is fixed in the author facts and the
+description written again. It shows the person the result before posting.
 
 Rules for the text:
 
