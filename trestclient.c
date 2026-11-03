@@ -31,6 +31,7 @@
 #include <sys/stat.h>
 
 #include <jsmn/jsmnutil.h>
+#include <thttp-denylist.h>
 
 #include "paths.h"
 #include "trestclient.h"
@@ -279,6 +280,8 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		goto err;
 	}
 
+	trest_set_denylist(client, pv_config_get_str(PV_LIBTHTTP_DENYLIST));
+
 	// a proxy -> dont use tls unless proxyconnect configured
 	if (proxy_host) {
 		trest_set_proxy_connect(client, proxy_host, proxy_port, false,
@@ -326,6 +329,11 @@ const char **pv_ph_get_certs()
 		}
 
 		pv_paths_cert(path, PATH_MAX, files[n]->d_name);
+		// the denylist is not a certificate, even if it sits in this dir
+		if (!strcmp(path, pv_config_get_str(PV_LIBTHTTP_DENYLIST))) {
+			free(files[n]);
+			continue;
+		}
 		size = strlen(path);
 		cafiles[i] = malloc((size + 1) * sizeof(char));
 		if (!cafiles[i]) {
@@ -341,6 +349,23 @@ const char **pv_ph_get_certs()
 	free(files);
 
 	return (const char **)cafiles;
+}
+
+// loads the certificate denylist and logs how many entries it has
+struct thttp_denylist *pv_ph_load_denylist(void)
+{
+	const char *path = pv_config_get_str(PV_LIBTHTTP_DENYLIST);
+	int count = 0;
+	struct thttp_denylist *dl = thttp_denylist_load(path, &count);
+
+	if (dl) {
+		pv_log(INFO, "loaded %d certificate denylist entries from %s",
+		       count, path);
+	} else {
+		pv_log(INFO, "no certificate denylist at %s", path);
+	}
+
+	return dl;
 }
 
 void pv_ph_free_certs(const char **certs)
