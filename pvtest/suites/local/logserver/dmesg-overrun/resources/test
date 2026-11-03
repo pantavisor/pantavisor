@@ -18,6 +18,11 @@
 # The kernel ring buffer is shared by every appengine on the host, so a burst
 # wipes the dmesg history of tests running in parallel: no test may assert on
 # dmesg contents.
+#
+# For the same reason this log server can overrun on its own, outside a
+# burst; an overrun logged just before a burst opens a window and shifts every
+# line. The rate limit sequence is retried up to 3 times: a foreign overrun
+# spoils one attempt, a real bug gives the same wrong result every attempt.
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
 
@@ -60,9 +65,9 @@ burst() {
 		done
 		exec 3>&-
 		kill -CONT $PID
-		echo 'pvtest-overrun-done-$RUN-$1' > /dev/kmsg
+		echo 'pvtest-overrun-done-$RUN-$attempt-$1' > /dev/kmsg
 	" > /dev/null 2>&1
-	if ! wait_for_status "pv_exec grep -rqF -- 'pvtest-overrun-done-$RUN-$1' '$L'" 0 60 > /dev/null 2>&1; then
+	if ! wait_for_status "pv_exec grep -rqF -- 'pvtest-overrun-done-$RUN-$attempt-$1' '$L'" 0 60 > /dev/null 2>&1; then
 		echo "burst $1: marker never reached the logs" >&2
 	fi
 }
@@ -72,22 +77,37 @@ report() {
 	echo "burst $1: $((n - $2)) new line(s)$( [ "$n" -gt "$2" ] && echo ", ($(last_count) times)")"
 }
 
-# let a window opened by an overrun during boot expire
-sleep 11
+expected="burst A: 1 new line(s), (1 times)
+burst B: 0 new line(s)
+burst C: 1 new line(s), (2 times)"
+
+attempt=1
+while :; do
+	# let a window opened by an earlier overrun expire
+	sleep 11
+	before=$(overruns)
+	burst A
+	result=$(report A "$before")
+
+	before=$(overruns)
+	burst B
+	result="$result
+$(report B "$before")"
+
+	sleep 11
+	before=$(overruns)
+	burst C
+	result="$result
+$(report C "$before")"
+
+	[ "$result" = "$expected" ] && break
+	printf 'attempt %s: unexpected result\n%s\n' "$attempt" "$result" >&2
+	[ "$attempt" -ge 3 ] && break
+	attempt=$((attempt + 1))
+done
 
 echo "== rate limit =="
-before=$(overruns)
-burst A
-report A "$before"
-
-before=$(overruns)
-burst B
-report B "$before"
-
-sleep 11
-before=$(overruns)
-burst C
-report C "$before"
+echo "$result"
 
 echo "== dmesg =="
 echo "pv-log-server holds /dev/kmsg: $(yesno pv_exec sh -c "ls -l /proc/$PID/fd | grep -q /dev/kmsg")"
