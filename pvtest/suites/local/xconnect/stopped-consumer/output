@@ -1,0 +1,8 @@
+== post revision with pv-avahi-browse staged ==
+pv-avahi-browse status: STAGED
+== wait 60 seconds with the consumer not running ==
+listener errors in pantavisor.log: 0
+pv-avahi-browse status: STAGED
+== start pv-avahi-browse ==
+pv-avahi-browse status: STARTED
+bus call from started consumer: OK

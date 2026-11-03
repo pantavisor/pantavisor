@@ -29,13 +29,21 @@ static struct dl_list g_links;
 static struct event *g_reconcile_timer;
 static bool g_empty; // graph has no links
 static int g_interval = RECONCILE_MIN_SEC;
-static bool g_unsettled; // a link was added/retried/failed this tick
+static bool g_unsettled; // a link was added or re-established this tick
 static bool g_kicked; // reconcile requested by a plugin or signal
 static char *g_last_graph;
-static char g_last_fail[256];
-static unsigned g_fail_repeat;
+
+// Failed attempts per link, kept until the link comes up
+struct link_fail {
+	struct dl_list list;
+	unsigned count;
+	char key[];
+};
+static struct dl_list g_fails;
+static bool g_ctrl_failed; // pv-ctrl connect failed before
 
 int pvx_debug;
+int pvx_quiet;
 
 extern struct pvx_plugin pvx_plugin_unix;
 extern struct pvx_plugin pvx_plugin_rest;
@@ -182,6 +190,29 @@ static struct pvx_link *parse_link(const char *json, jsmntok_t *itok,
 	return link;
 }
 
+static struct link_fail *find_fail(const char *key)
+{
+	struct link_fail *f;
+
+	dl_list_for_each(f, &g_fails, struct link_fail, list)
+	{
+		if (!strcmp(f->key, key))
+			return f;
+	}
+	return NULL;
+}
+
+static struct link_fail *new_fail(const char *key)
+{
+	struct link_fail *f = calloc(1, sizeof(*f) + strlen(key) + 1);
+
+	if (!f)
+		return NULL;
+	strcpy(f->key, key);
+	dl_list_add_tail(&g_fails, &f->list);
+	return f;
+}
+
 static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 {
 	char *type = pv_json_get_value(json, "type", itok, obj_tokc);
@@ -201,6 +232,15 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 	struct pvx_link *link = parse_link(json, itok, obj_tokc, plugin);
 	if (!link)
 		return;
+
+	// A container that is not running has no namespace to inject into; a
+	// working link stays as it is, and the link comes up once a pid shows.
+	if (!link->consumer_pid && strcmp(link->consumer, "_pv_")) {
+		xc_debug("Skipping link %s/%s: consumer not running\n",
+			 link->consumer, link->name);
+		pvx_link_free(link);
+		return;
+	}
 
 	struct pvx_link *existing =
 		find_link(link->consumer, link->name, link->consumer_socket);
@@ -240,12 +280,12 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 	dl_list_init(&link->list);
 	dl_list_add_tail(&g_links, &link->list);
 
-	char key[sizeof(g_last_fail)];
+	char key[256];
 	snprintf(key, sizeof(key), "%s/%s/%s", link->consumer, link->name,
 		 link->consumer_socket);
-	bool is_retry = !strcmp(key, g_last_fail);
+	struct link_fail *fail = find_fail(key);
 
-	if (is_retry)
+	if (fail)
 		xc_debug("Adding link: %s\n", key);
 	else
 		printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
@@ -253,22 +293,28 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 		       link->consumer_pid, link->type, link->provider_socket,
 		       link->consumer_socket);
 
-	if (plugin->on_link_added(link) < 0) {
-		g_unsettled = true;
-		// Log the first failure of a link, then only every Nth retry
-		if (!is_retry)
-			g_fail_repeat = 0;
-		if (g_fail_repeat++ % LINK_FAIL_LOG_EVERY == 0)
+	// Repeat a failing link's errors only every Nth attempt
+	pvx_quiet = fail && fail->count % LINK_FAIL_LOG_EVERY;
+	int rc = plugin->on_link_added(link);
+	pvx_quiet = 0;
+
+	if (rc < 0) {
+		// Not marked unsettled: a failing link must not pin the retry
+		// interval at its minimum
+		if (!fail)
+			fail = new_fail(key);
+		if (fail && fail->count++ % LINK_FAIL_LOG_EVERY == 0)
 			fprintf(stderr,
 				"Failed to add link for %s (attempt %u)\n",
-				link->name, g_fail_repeat);
-		snprintf(g_last_fail, sizeof(g_last_fail), "%s", key);
+				link->name, fail->count);
 		dl_list_del(&link->list);
 		pvx_link_free(link);
 	} else {
 		g_unsettled = true;
-		if (is_retry)
-			g_last_fail[0] = '\0';
+		if (fail) {
+			dl_list_del(&fail->list);
+			free(fail);
+		}
 		link->established = true;
 		printf("Link established: %s/%s\n", link->consumer, link->name);
 	}
@@ -417,7 +463,13 @@ static void fetch_graph(void)
 
 	if (bufferevent_socket_connect(bev, (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
-		fprintf(stderr, "Failed to initiate connection to pv-ctrl\n");
+		// pv-ctrl is not listening yet on the first fetch after boot
+		if (g_ctrl_failed)
+			fprintf(stderr,
+				"Failed to initiate connection to pv-ctrl\n");
+		else
+			xc_debug("pv-ctrl not up yet\n");
+		g_ctrl_failed = true;
 		bufferevent_free(bev);
 		schedule_next(true);
 	}
@@ -468,6 +520,7 @@ int main(int argc, char **argv)
 	}
 
 	dl_list_init(&g_links);
+	dl_list_init(&g_fails);
 
 	signal_event = evsignal_new(g_base, SIGINT, signal_cb, (void *)g_base);
 	if (!signal_event || event_add(signal_event, NULL) < 0) {

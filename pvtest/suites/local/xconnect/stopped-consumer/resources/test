@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# A container that uses a hosted-bus service but is not running (STAGED) must
+# not make pv-xconnect try to listen for it on the host. Before the fix the
+# link was built with consumer pid 0, treated as a host-side consumer, and
+# failed with "Could not create listener" every 5 seconds forever.
+#
+# pv-avahi (running, part of the initial revision) owns org.freedesktop.Avahi. pv-avahi-browse is the
+# consumer, kept STAGED. After a quiet period the log must show no listener
+# errors; then starting pv-avahi-browse must bring its link up.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+CONSUMER=pv-avahi-browse
+QUIET_SECONDS=60
+SVC="org.freedesktop.Avahi"
+ADDR="unix:path=/run/dbus/system_bus_socket"
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+merge_tarball() {
+	dir=$(mktemp -d)
+	tar xzf "$1" -C "$dir" > /dev/null 2>&1 \
+		|| { echo "ERROR: failed to extract $1" >&2; exit 1; }
+	pvr merge "$dir" > /dev/null 2>&1 \
+		|| { echo "ERROR: pvr merge failed for $1" >&2; exit 1; }
+	rm -rf "$dir"
+}
+
+consumer_status() {
+	pvcontrol containers ls | jq -r --arg n "$CONSUMER" 'map(select(.name==$n))[0].status'
+}
+
+dsend() {
+	pventer -c "$CONSUMER" \
+		env DBUS_SYSTEM_BUS_ADDRESS="$ADDR" \
+		dbus-send --system --print-reply "$@" 2>&1
+}
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+PVLOG="${LOGROOT%/}/current/pantavisor/pantavisor.log"
+
+echo "== post revision with $CONSUMER staged =="
+merge_tarball ${PVTEST_ROOT:-/work}/local/common/tarballs/$CONSUMER.pvrexport.tgz
+pvr checkout > /dev/null 2>&1
+tmp=$(mktemp)
+jq '."status_goal" = "MOUNTED" | ."lifecycle_goal" = "STAGED"' $CONSUMER/run.json > "$tmp"
+mv "$tmp" $CONSUMER/run.json
+pvr add $CONSUMER/run.json > /dev/null 2>&1
+pvr commit -m "stage $CONSUMER" > /dev/null 2>&1
+pvr post --rev "locals/stopped-consumer" > /dev/null 2>&1
+wait_for_revision_state "locals/stopped-consumer" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/stopped-consumer to reach UPDATED" >&2; exit 1; }
+echo "$CONSUMER status: $(consumer_status)"
+
+echo "== wait $QUIET_SECONDS seconds with the consumer not running =="
+sleep $QUIET_SECONDS
+errors=$(pv_exec grep -cE 'Could not create listener|chmod socket|Failed to add link' "$PVLOG" | tr -d ' \r')
+echo "listener errors in pantavisor.log: $errors"
+echo "$CONSUMER status: $(consumer_status)"
+
+echo "== start $CONSUMER =="
+pvcontrol containers start $CONSUMER > /dev/null
+wait_for_value 'consumer_status' "STARTED" 60 > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for $CONSUMER to reach STARTED" >&2; exit 1; }
+
+# The link is built on the next graph check, so give it time to come up
+i=0
+while [ $i -lt 60 ]; do
+	if dsend --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC \
+		| grep -q "boolean true"; then
+		break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
+echo "$CONSUMER status: $(consumer_status)"
+if dsend --dest=$SVC / org.freedesktop.Avahi.Server.GetVersionString | grep -q 'string "avahi'; then
+	echo "bus call from started consumer: OK"
+else
+	echo "bus call from started consumer: FAILED"
+fi

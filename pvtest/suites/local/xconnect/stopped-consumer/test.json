@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "xconnect: a link to a consumer that is not running stays quiet in the log, and works once the consumer is started",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-avahi.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}
