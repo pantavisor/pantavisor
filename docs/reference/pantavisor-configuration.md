@@ -98,6 +98,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) cache directory |
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
+| `PV_LIBTHTTP_DENYLIST` | path | `/etc/thttp/denylist` | file with SHA-256 hashes of public keys of certificates that HTTPS connections must refuse, see [certificate denylist](../overview/certificate-denylist.md); a missing file means no denylist |
 | `PV_LIBTHTTP_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` ALL | `3` | set libthttp log verbosity level |
 | `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../overview/storage.md#logs) buffer size |
@@ -238,6 +239,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_DROPBEAR_CACHE_DIR`              | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LIBEVENT_DEBUG_MODE`             | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LIBTHTTP_CERTSDIR`               | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_LIBTHTTP_DENYLIST`               | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LIBTHTTP_LOG_LEVEL`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_AUTO_DEVLOG`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_BUF_NITEMS`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |

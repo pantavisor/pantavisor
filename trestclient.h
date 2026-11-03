@@ -37,5 +37,6 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv,
 
 const char **pv_ph_get_certs();
 void pv_ph_free_certs(const char **certs);
+struct thttp_denylist *pv_ph_load_denylist(void);
 
 #endif /* PV_TRESTCLIENT_H */
