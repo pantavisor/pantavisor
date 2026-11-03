@@ -264,6 +264,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 
 	if (signed_puturl && tls_req) {
 		tls_req->crtfiles = (char **)crtfiles;
+		tls_req->denylistfile = pv_config_get_str(PV_LIBTHTTP_DENYLIST);
 		req = (thttp_request_t *)tls_req;
 		req->is_tls = 1;
 

@@ -254,6 +254,8 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		goto err;
 	}
 
+	trest_set_denylist(client, pv_config_get_str(PV_LIBTHTTP_DENYLIST));
+
 	// a proxy -> dont use tls unless proxyconnect configured
 	if (proxy_host) {
 		trest_set_proxy_connect(client, proxy_host, proxy_port, false,

@@ -97,6 +97,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) cache directory |
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
+| `PV_LIBTHTTP_DENYLIST` | path | `/etc/thttp/denylist` | file with SHA-256 hashes of public keys of certificates that HTTPS connections must refuse, see [certificate denylist](#certificate-denylist); a missing file means no denylist |
 | `PV_LIBTHTTP_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` ALL | `3` | set libthttp log verbosity level |
 | `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../overview/storage.md#logs) buffer size |
@@ -235,6 +236,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_DROPBEAR_CACHE_DIR`              | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LIBEVENT_DEBUG_MODE`             | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LIBTHTTP_CERTSDIR`               | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_LIBTHTTP_DENYLIST`               | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LIBTHTTP_LOG_LEVEL`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_AUTO_DEVLOG`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_BUF_NITEMS`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
@@ -313,3 +315,17 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_WDT_MODE`                        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_WDT_TIMEOUT`                     | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED` | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
+
+## Certificate denylist
+
+Devices often have no reliable clock, so expiry and revocation dates cannot be relied on. To stop trusting a certificate anyway, ship a denylist file with the BSP. Pantavisor refuses any HTTPS connection whose chain contains a listed certificate, whether it is the server certificate, an intermediate or a root.
+
+The file is set with `PV_LIBTHTTP_DENYLIST` (default `/etc/thttp/denylist`). It has one entry per line: the lowercase hex SHA-256 of the certificate's public key (DER encoded SubjectPublicKeyInfo). Because the key is listed, a re-issued certificate with the same key is blocked too. Empty lines and `#` comments are ignored; lines that are not a SHA-256 are logged and skipped. A missing file means no denylist.
+
+Get the entry for a certificate with:
+
+```bash
+openssl x509 -in cert.pem -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d' ' -f1
+```
+
+Keep the file outside the certificates directory (`PV_LIBTHTTP_CERTSDIR`). At startup pantavisor logs the number of entries it loaded.

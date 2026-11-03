@@ -32,6 +32,7 @@
 #include <string.h>
 #include <trest.h>
 #include <thttp.h>
+#include <thttp-denylist.h>
 
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -151,6 +152,11 @@ const char **pv_ph_get_certs()
 		}
 
 		pv_paths_cert(path, PATH_MAX, files[n]->d_name);
+		// the denylist is not a certificate, even if it sits in this dir
+		if (!strcmp(path, pv_config_get_str(PV_LIBTHTTP_DENYLIST))) {
+			free(files[n]);
+			continue;
+		}
 		size = strlen(path);
 		cafiles[i] = malloc((size + 1) * sizeof(char));
 		memcpy(cafiles[i], path, size);
@@ -164,6 +170,23 @@ const char **pv_ph_get_certs()
 	free(files);
 
 	return (const char **)cafiles;
+}
+
+// loads the certificate denylist and logs how many entries it has
+struct thttp_denylist *pv_ph_load_denylist(void)
+{
+	const char *path = pv_config_get_str(PV_LIBTHTTP_DENYLIST);
+	int count = 0;
+	struct thttp_denylist *dl = thttp_denylist_load(path, &count);
+
+	if (dl) {
+		pv_log(INFO, "loaded %d certificate denylist entries from %s",
+		       count, path);
+	} else {
+		pv_log(INFO, "no certificate denylist at %s", path);
+	}
+
+	return dl;
 }
 
 void pv_ph_free_certs(const char **certs)
@@ -273,6 +296,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	tls_req = thttp_request_tls_new_0();
 	certs = pv_ph_get_certs();
 	tls_req->crtfiles = (char **)certs;
+	tls_req->denylistfile = pv_config_get_str(PV_LIBTHTTP_DENYLIST);
 
 	thttp_request_t *req = (thttp_request_t *)tls_req;
 
