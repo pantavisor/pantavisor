@@ -152,6 +152,8 @@ static const char *_scope_str(enum wl_scope scope)
 		return "devmeta";
 	case WL_USRMETA:
 		return "usrmeta";
+	case WL_SYNC:
+		return "sync";
 	case WL_DEBUG_SHELL:
 		return "debug_shell";
 	case WL_POLL:
@@ -1194,6 +1196,8 @@ char *pv_wakelock_get_json(void)
 			pv_json_ser_bool(&js, wl.held[WL_DEVMETA]);
 			pv_json_ser_key(&js, "usrmeta");
 			pv_json_ser_bool(&js, wl.held[WL_USRMETA]);
+			pv_json_ser_key(&js, "sync");
+			pv_json_ser_bool(&js, wl.held[WL_SYNC]);
 			pv_json_ser_key(&js, "shutdown");
 			pv_json_ser_bool(&js, wl.held[WL_SHUTDOWN]);
 			pv_json_ser_key(&js, "debug_shell");

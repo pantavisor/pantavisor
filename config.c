@@ -529,6 +529,23 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 		pv_log(WARN, "unknown bootloader type '%s'", value);
 }
 
+creds_t pv_config_get_creds_type()
+{
+	const char *ct = pv_config_get_str(PH_CREDS_TYPE);
+
+	if (!ct) {
+		pv_log(ERROR, "PH_CREDS_TYPE not set");
+	} else if (!strcmp(ct, "builtin")) {
+		return CREDS_BUILTIN;
+	} else if (strlen(ct) >= 4 && !strncmp(ct, "ext-", 4)) {
+		return CREDS_EXTERNAL;
+	} else {
+		pv_log(ERROR, "PH_CREDS_TYPE '%s' unknown", ct);
+	}
+
+	return CREDS_ERROR;
+}
+
 void pv_config_set_creds_id(char *id)
 {
 	_set_config_by_index_str(PH_CREDS_ID, id, PH_CLIENT);
@@ -1552,6 +1569,8 @@ int pv_config_save_creds()
 		pv_log(ERROR, "cannot save creds in %s", path);
 		return -1;
 	}
+
+	pv_log(DEBUG, "saved creds in '%s'", path);
 
 	return 0;
 }

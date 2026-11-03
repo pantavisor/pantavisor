@@ -24,6 +24,14 @@
 
 #include <sys/types.h>
 
+struct pv_device {
+	char *id;
+	char *prn;
+	char *secret;
+	char *challenge;
+	char *owner;
+};
+
 struct pv_step {
 	char *msg;
 	char *progress;
@@ -37,7 +45,12 @@ struct pv_object_metadata {
 	char *geturl;
 };
 
+int pv_pantahub_msg_parse_device(const char *json, struct pv_device *device);
+void pv_pantahub_msg_clean_device(struct pv_device *device);
+
 char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass);
+char *pv_pantahub_msg_ser_object_json(const char *name, off_t size,
+				      const char *sha256sum);
 
 void pv_pantahub_msg_parse_session(const char *json, char **token, char **hint);
 char *pv_pantahub_msg_parse_next_step(const char *json);
@@ -56,5 +69,7 @@ void pv_pantahub_msg_print_object_metadata(
 	struct pv_object_metadata *object_metadata);
 void pv_pantahub_msg_clean_object_metadata(
 	struct pv_object_metadata *object_metadata);
+
+char *pv_pantahub_msg_parse_object_puturl(const char *json);
 
 #endif

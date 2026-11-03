@@ -8,6 +8,8 @@
 # test.json, so the framework does not wait for a claim state the device can
 # never reach against that host.
 phconf=/run/pantavisor/pv/phconfig/pantahub.config
+# registered creds left by earlier tests on persistent storage skip register
+unclaimed=/run/pantavisor/pv/phconfig/unclaimed.config
 conf_value() {
 	pvcontrol conf ls | jq -r --arg k "$1" '.[] | select(.key == $k) | .value | select(. != "(null)")'
 }
@@ -39,6 +41,11 @@ set_phconf() {
 }
 
 restore_phconf() {
+	if [ -s "$tmp/unclaimed" ]; then
+		put_file "$tmp/unclaimed" "$unclaimed"
+	else
+		pv_exec rm -f "$unclaimed"
+	fi
 	set_phconf "$tmp/phconf" "after pantahub.config restore" \
 		|| echo "ERROR: could not restore pantahub.config" >&2
 	rm -rf "$tmp"
@@ -46,6 +53,7 @@ restore_phconf() {
 
 pv_fetch_file "$phconf" "$tmp/phconf" && [ -s "$tmp/phconf" ] \
 	|| { echo "ERROR: could not fetch pantahub.config" >&2; rm -rf "$tmp"; exit 1; }
+pv_exec test -f "$unclaimed" && pv_fetch_file "$unclaimed" "$tmp/unclaimed"
 trap restore_phconf EXIT
 
 echo "== post revision enabling remote control in OEM config =="
@@ -61,6 +69,7 @@ wait_for_target_ready "after OEM config post" "$rev" "DONE|UPDATED" > /dev/null 
 	|| { echo "ERROR: timeout waiting for $rev" >&2; exit 1; }
 
 echo "== remove creds and reboot =="
+pv_exec rm -f "$unclaimed"
 grep -v -e '^PH_CREDS_ID=' -e '^PH_CREDS_PRN=' -e '^PH_CREDS_SECRET=' "$tmp/phconf" > "$tmp/phconf.unclaimed"
 set_phconf "$tmp/phconf.unclaimed" "after reboot unclaimed" \
 	|| { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
@@ -73,9 +82,9 @@ wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "register" 6
 pvcontrol devmeta ls | jq -M -r '.["pantahub.state"]'
 
 echo "== register attempts fail TLS =="
-wait_for_value "[ \$(pv_exec grep -cE \"POST /devices/ (got no response|returned HTTP error)\" $log) -ge 3 ] && echo ok" "ok" 60 \
+wait_for_value "[ \$(pv_exec grep -c \"POST device failed\" $log) -ge 3 ] && echo ok" "ok" 60 \
 	|| { echo "ERROR: timeout waiting for register attempts" >&2; exit 1; }
-pv_exec grep -q 'POST /devices/ returned HTTP error (code=404' "$log" \
+pv_exec grep -q 'POST device failed (code=404' "$log" \
 	&& echo "404 received: yes" || echo "404 received: no"
 
 echo "== inject fake claimed creds and reboot =="

@@ -63,10 +63,10 @@
 #include "cgroup.h"
 #include "buffer.h"
 #include "daemons.h"
-#include "updater.h"
 
 #include "event/event.h"
 #include "event/event_periodic.h"
+#include "event/event_rest.h"
 #include "event/event_socket.h"
 
 #include "pantahub/pantahub.h"
@@ -101,7 +101,6 @@ struct pantavisor *pv_get_instance()
 
 static struct timer timer_rollback_remote;
 static struct timer timer_wait_delay;
-static struct timer timer_updater_interval;
 static struct timer timer_commit;
 
 static const int PV_WAIT_PERIOD = 1;
@@ -262,15 +261,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 			goto out;
 		}
 
-		// load pantahub.config from vol or storage
-		if (pv_config_load_creds()) {
-			pv_log(ERROR, "creds load failed");
-			goto out;
-		}
-
-		if (pv_pantahub_init()) {
-			pv_log(ERROR,
-			       "pantahub client could not be initialized");
+		if (pv_pantahub_start()) {
+			pv_log(ERROR, "pantahub client could not be started");
 			goto out;
 		}
 	}
@@ -323,8 +315,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		    pv_config_get_int(PH_UPDATER_NETWORK_TIMEOUT), 0,
 		    RELATIV_TIMER);
 	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
-	timer_start(&timer_updater_interval,
-		    pv_config_get_int(PH_UPDATER_INTERVAL), 0, RELATIV_TIMER);
 
 	if (pv_config_get_wdt_mode() <= WDT_STARTUP)
 		pv_wdt_stop();
@@ -335,70 +325,6 @@ out:
 		free(json);
 
 	return next_state;
-}
-
-static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
-{
-	int need_register = 1;
-	char *c = NULL;
-	char path[PATH_MAX];
-
-	struct timer_state tstate =
-		timer_current_state(&timer_updater_interval);
-	if (!tstate.fin)
-		return PV_STATE_WAIT;
-
-	if (!pv_state_is_done(pv->state)) {
-		WARN_ONCE(
-			"will not allow claiming if not running a DONE revision");
-		return PV_STATE_WAIT;
-	}
-
-	timer_start(&timer_updater_interval,
-		    pv_config_get_int(PH_UPDATER_INTERVAL), 0, RELATIV_TIMER);
-
-	pv_config_load_unclaimed_creds();
-
-	const char *id = pv_config_get_str(PH_CREDS_ID);
-	if (id && strcmp(id, "") && pv_ph_device_exists(pv))
-		need_register = 0;
-
-	if (need_register) {
-		pv_metadata_add_devmeta(
-			DEVMETA_KEY_PH_STATE,
-			pv_pantahub_state_string(PH_STATE_REGISTER));
-		if (!pv_ph_register_self(pv)) {
-			pv_ph_release_client(pv);
-			return PV_STATE_WAIT;
-		}
-		pv_config_save_creds();
-		pv_ph_release_client(pv);
-	}
-
-	if (!pv_ph_device_is_owned(pv, &c)) {
-		pv_metadata_add_devmeta(
-			DEVMETA_KEY_PH_STATE,
-			pv_pantahub_state_string(PH_STATE_CLAIM));
-		pv_log(INFO, "device challenge: '%s'", c);
-		pv_ph_update_hint_file(pv, c);
-	} else {
-		pv_log(INFO, "device has been claimed, proceeding normally");
-		pv->unclaimed = false;
-		pv_config_save_creds();
-		pv_ph_release_client(pv);
-		pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-		if (pv_fs_file_save(path, "", 0444) < 0)
-			pv_log(WARN, "could not save file %s: %s", path,
-			       strerror(errno));
-		pv_metadata_add_devmeta("pantahub.claimed", "1");
-	}
-
-	pv_ph_update_hint_file(pv, NULL);
-
-	if (c)
-		free(c);
-
-	return PV_STATE_WAIT;
 }
 
 static pv_state_t pv_wait_update()
@@ -475,10 +401,10 @@ void pv_reset_identity()
 	pv_pantahub_stop();
 	ph_logger_stop_lenient();
 	ph_logger_stop_force();
-	pv_pantahub_proto_reset_trails_status();
-	pv_trail_remote_remove(pv);
-	pv_metadata_rm_devmeta("pantahub.claimed");
-	pv_ph_release_client(pv);
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_CLAIMED, "0");
+	// restart from init so the client registers again
+	if (pv->remote_mode)
+		pv_pantahub_start();
 }
 
 void pv_reset_identity_transition()
@@ -505,8 +431,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	struct timer_state tstate;
 
 	ph_logger_toggle(pv->state->rev);
-	// new ph client state machine
-	pv_pantahub_start();
 
 	// we don't want to rollback local revisions because of failing Hub comms
 	// which could happen when PV_CONTROL_REMOTE_ALWAYS=1
@@ -561,10 +485,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
 		if (pv_wait_delay_timedout()) {
-			// check if device is unclaimed
 			if (pv->unclaimed) {
-				// unclaimed wait operations
-				next_state = pv_wait_unclaimed(pv);
 				// drive the update FSM too: claim is gated on
 				// running a DONE rev, so an unclaimed device that
 				// boots into a try revision (e.g. a local upgrade
@@ -572,8 +493,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 				// PV_CONTROL_REMOTE_ALWAYS=1) would otherwise
 				// deadlock — claim refuses while INPROGRESS, and
 				// pv_wait_update() never runs from this branch.
-				if (next_state == PV_STATE_WAIT)
-					next_state = pv_wait_update();
+				next_state = pv_wait_update();
 			} else {
 				// rest of network wait stuff: connectivity check. update management,
 				// meta data uppload, ph logger push start...
@@ -728,6 +648,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		pv->remote_mode = true;
 		pv_metadata_add_devmeta(DEVMETA_KEY_PV_MODE, "remote");
+		pv_pantahub_start();
 		break;
 	case CMD_RESET_IDENTITY:
 		if (pv->unclaimed) {
@@ -811,14 +732,10 @@ static void pv_remove(struct pantavisor *pv)
 	if (pv->cmdline)
 		free(pv->cmdline);
 
-	if (pv->conn)
-		free(pv->conn);
-
 	pv_state_free(pv->state);
 	pv->state = NULL;
 	pv_ctrl_cmd_free(pv->cmd);
 	pv_config_free();
-	pv_trail_remote_remove(pv);
 	pv_metadata_remove();
 
 	free(pv);
@@ -863,7 +780,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	ph_logger_stop_force();
 	ph_logger_close();
 
-	pv_pantahub_close();
+	pv_pantahub_stop();
+	pv_event_rest_cleanup();
+	pv_config_unload_creds();
 
 	// stop pvctrl
 	pv_ctrl_stop();

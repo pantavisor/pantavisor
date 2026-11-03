@@ -229,6 +229,9 @@ Before committing a new test, always check that it shares these rules:
     isolation mechanism between runs and the storage might be shared between tests.
     Therefore, any test must be written in a way that is independent from the state the
     device is into after previous tests (e.g. GC that deletes previous revisions).
+    A registered but unclaimed identity also survives in `phconfig/unclaimed.config`, so
+    a test that needs a fresh registration must clear that file as well as the creds in
+    `phconfig/pantahub.config`, and restore it on exit.
 13. **Test specific containers:** The initial test revision is the device factory clone
     plus the extra containers declared in `setup.containers.tarballs`. Never include
     `bsp` or an additional pvr endpoint container (e.g. pvr-sdk) as those should be
