@@ -36,6 +36,7 @@
 #include <mbedtls/ssl.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
+#include <thttp-denylist.h>
 
 #include "event/event_rest.h"
 #include "event/event.h"
@@ -44,6 +45,7 @@
 #include "metadata.h"
 #include "pantavisor.h"
 #include "paths.h"
+#include "pantahub/pantahub.h"
 
 #include "utils/fs.h"
 #include "utils/list.h"
@@ -60,6 +62,7 @@ static mbedtls_x509_crt cacert;
 static mbedtls_ctr_drbg_context ctr_drbg;
 static mbedtls_entropy_context entropy;
 static mbedtls_ssl_config config;
+static thttp_denylist_t *denylist;
 
 // test-only download pacer; libevent's token bucket is a no-op on mbedtls
 struct pv_rest_pacer {
@@ -164,6 +167,9 @@ int pv_event_rest_init(void)
 	}
 	mbedtls_ssl_conf_ca_chain(&config, &cacert, NULL);
 
+	denylist = pv_ph_load_denylist();
+	thttp_denylist_install(&config, denylist);
+
 	pv_log(DEBUG, "HTTP REST initialized");
 
 	return 0;
@@ -177,6 +183,8 @@ void pv_event_rest_cleanup(void)
 		_pacer_drop(p);
 
 	mbedtls_x509_crt_free(&cacert);
+	thttp_denylist_free(denylist);
+	denylist = NULL;
 	mbedtls_ssl_config_free(&config);
 	mbedtls_ctr_drbg_free(&ctr_drbg);
 	mbedtls_entropy_free(&entropy);

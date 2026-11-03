@@ -104,6 +104,7 @@ typedef enum {
 #define DISK_WRITABLEDIR_DEF "/writable"
 #define DROPBEAR_CACHE_DIR_DEF "/storage/cache/dropbear"
 #define LIBTHTTP_CERTSDIR_DEF "/certs"
+#define LIBTHTTP_DENYLIST_DEF "/etc/thttp/denylist"
 #define LOG_DIR_DEF "/storage/logs/"
 #define LOG_SERVER_OUTPUTS_DEF "filetree"
 #define NET_BRADDRESS4_DEF "10.0.3.1"
@@ -215,6 +216,8 @@ static struct pv_config_entry entries[] = {
 	  .value.b = false },
 	{ STR, "PV_LIBTHTTP_CERTSDIR", PV, 0, false,
 	  .value.s = LIBTHTTP_CERTSDIR_DEF },
+	{ STR, "PV_LIBTHTTP_DENYLIST", PV, 0, false,
+	  .value.s = LIBTHTTP_DENYLIST_DEF },
 	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV | OEM | RUN, 0, false,
 	  .value.i = 3 },
 	{ BOOL, "PV_LOG_AUTO_DEVLOG", PV | OEM, 0, false, .value.b = true },
@@ -363,6 +366,7 @@ static struct pv_config_alias aliases[] = {
 	{ "disk.writabledir", "PV_DISK_WRITABLEDIR" },
 	{ "dropbear.cache.dir", "PV_DROPBEAR_CACHE_DIR" },
 	{ "libthttp.certdir", "PV_LIBTHTTP_CERTSDIR" },
+	{ "libthttp.denylist", "PV_LIBTHTTP_DENYLIST" },
 	{ "libthttp.log.level", "PV_LIBTHTTP_LOG_LEVEL" },
 	{ "log.capture", "PV_LOG_CAPTURE" },
 	{ "log.capture.dmesg", "PV_LOG_CAPTURE_DMESG" },
