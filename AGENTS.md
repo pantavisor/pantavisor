@@ -137,8 +137,9 @@ author:
    writes the title and description using the template.
 3. **Cold read.** Another new session reads only the title and description, never the diff, and
    answers: what is the problem, what does the PR do about it, how is it done, and which words or
-   steps it could not follow. If it gets one wrong or cannot answer, repeat step 2 with its
-   questions added, at most twice.
+   steps it could not follow. The agent that did the work compares those answers with its facts
+   and the commits. If one is wrong or missing, repeat step 2 with the reader's questions added,
+   at most twice, then show the person what is still unclear.
 
 An agent does this on its own whenever it opens a PR or rewrites a PR description; nobody has to
 ask for it. Steps 2 and 3 each run in a fresh subagent that does not inherit the conversation (in
@@ -157,6 +158,8 @@ Rules for the text:
 - **Tested** always says what was not tested. "Nothing known" is an answer, leaving it out is not.
 - Use the project's own words (container, revision, group, volume, pvtest) and plain English
   otherwise. A term made up during the work does not go in the description.
+- **Implementation** is minimal: a few bullets naming the files or functions a reviewer should
+  look at, one line each. No walkthrough of the code; the diff shows that.
 - A small PR (one commit, obvious change) needs only **Problem**, **Approach** and **Tested**.
 
 ## Development Guidelines

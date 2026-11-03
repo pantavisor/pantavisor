@@ -18,8 +18,8 @@ config key, command, path or test involved. No function names, no history. -->
 
 ## Implementation
 
-<!-- Optional. How it is done, for reviewers: the functions, files and design
-choices that matter. -->
+<!-- Optional. A few one-line bullets naming the files or functions a reviewer
+should look at. No walkthrough of the code. -->
 
 ## In this PR
 
