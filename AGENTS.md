@@ -116,12 +116,52 @@ The `docs/` folder is published on [docs.pantavisor.io/reference](https://docs.p
 - **Pantavisor as Security Broker**: Containers use logical service names, access granted via explicit `run.json` requirements
 - **Build flag**: `PANTAVISOR_XCONNECT` (CMake), controlled by `xconnect` in `PANTAVISOR_FEATURES` (Yocto)
 
+## Pull requests
+
+A reviewer opening a PR knows master and nothing else. The description must tell them three things
+before anything else: the problem, what the PR does about it, and how. Use the headings in
+[.github/pull_request_template.md](.github/pull_request_template.md): **Problem**, **Approach**,
+**Implementation**, **In this PR**, **Tested**, **Review notes**.
+
+**Never write the description in the session that wrote the code.** That session carries every
+approach it tried and dropped, the names it made up along the way and the steps it took for
+granted, and the description comes out as the story of the work instead of an explanation of the
+change. Write it from a fresh session that sees only master, the branch and a few facts from the
+author:
+
+1. **Author facts.** The author (person or session that did the work) writes down only facts, as
+   short lists: the problem in one sentence as a user sees it, where the change was tested and what
+   ran, and what was not tested. No explanation of the code.
+2. **Write.** A new session, with no access to the earlier conversation, reads
+   `git log origin/master..HEAD` and `git diff origin/master...HEAD`, takes the author facts, and
+   writes the title and description using the template.
+3. **Cold read.** Another new session reads only the title and description, never the diff, and
+   answers: what is the problem, what does the PR do about it, how is it done, and which words or
+   steps it could not follow. If it gets one wrong or cannot answer, repeat step 2 with its
+   questions added, at most twice.
+
+In Claude Code, `/pr-describe` runs these steps. Elsewhere, run them by hand in new sessions.
+
+Rules for the text:
+
+- The first sentence of **Problem** makes sense to someone who has never seen the code: name the
+  config key, command, path or test a user deals with. No function names before **Implementation**.
+- Describe the present. No history of earlier designs, no commit hashes as background.
+- Every commit appears in **In this PR**. A commit that does not belong to the problem goes in its
+  own PR.
+- **Tested** always says what was not tested. "Nothing known" is an answer, leaving it out is not.
+- Use the project's own words (container, revision, group, volume, pvtest) and plain English
+  otherwise. A term made up during the work does not go in the description.
+- A small PR (one commit, obvious change) needs only **Problem**, **Approach** and **Tested**.
+
 ## Development Guidelines
 
 - **Configuration keys**: the `PV_*`/`PH_*` env-var name in `entries[]` (config.c) is the only identity of a key. The dotted `aliases[]` table is frozen legacy: never add an alias for a new entry, and write docs, commits, and examples in the env-var form only (see the note in [docs/reference/pantavisor-configuration.md](docs/reference/pantavisor-configuration.md)).
 - **State schema evolution**: a revision must never WONTGO on the device that installs it just because it carries a key or value that pantavisor doesn't know yet (see [Compatibility](docs/reference/pantavisor-state-format-v2.md#compatibility)). Add a feature to `state.json` as a new field. Never add an accepted value to an existing enum field, and never change an existing key's JSON type. If a value can't be additive, pair it with a new key that older parsers ignore, as `lifecycle_goal` pairs with `status_goal`. A new key must not start with an existing key's name at the same level: older pantavisor versions match `run.json` keys by prefix, so a `status_goal_v2` key would be read as `status_goal`.
 - **Documentation**: Every change gets a [documentation pass](#every-change-gets-a-documentation-pass) in the same commit — consider both the overview and the reference. See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for what belongs where, and run `scripts/check-docs.sh` before committing.
 - **Commits**: Always use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification (v1.0.0) for all commit messages.
+- **Commit headlines**: they become the release changelog (`.github/scripts/make-changelog.sh`), so name the behaviour that changes, not the function that changed: `fix(logserver): apply log capture config on revision change`, not `fix(logserver): replace pv_logserver_toggle()`.
+- **Pull requests**: write the description from a fresh session, see [Pull requests](#pull-requests).
 - **Formatting**: Run `clang-format -i` on modified `.c`/`.h` files before committing
 - **API testing**: Use `pvcurl` (not `curl`) inside appengine containers
 - **Build**: Use `kas/with-workspace.yaml` overlay for local source development
