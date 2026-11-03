@@ -16,7 +16,7 @@ Cannot do this operation if current revision is not DONE
 == local revision (reboot) ==
 DONE
 == reset identity ==
-unset
+0
 rev 1: removed
 == claim device (second Hub id) ==
 claim
@@ -31,7 +31,7 @@ posted: 1
 }
 locals/reset-identity-done
 == reset identity ==
-unset
+0
 claim
 == revision 1 per Hub id ==
 first: UPDATED

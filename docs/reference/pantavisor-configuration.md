@@ -59,8 +59,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_CREDS_PROXY_NOPROXYCONNECT` | `0` or `1` | `0` | disable proxy communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_CREDS_PROXY_PORT` | port | `3218` | set port for proxy communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials secret |
-| `PH_CREDS_TYPE` | `builtin` or `ext-<handler>` | `builtin` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials type; `ext-<handler>` delegates login to an external handler binary instead of the built-in PRN/secret flow |
-| `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_CREDS_TYPE` | `builtin` or `ext-<handler>` | `builtin` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials type; `ext-<handler>` registers the device by running `/btools/ext-<handler>.register` |
+| `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) sent when the device registers at [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_METADATA_DEVMETA_HEARTBEAT` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `60` | upper bound between [device metadata](../overview/storage.md#device-metadata) pushes; a push happens even when nothing changed, so [Pantacor Hub](../overview/remote-control.md#pantacor-hub) keeps seeing the device as alive |
@@ -69,9 +69,9 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](../overview/storage.md#user-metadata) from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_ONLINE_REQUEST_THRESHOLD` | number of failures | `0` | number of failed requests to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) allowed to still consider device online |
 | `PH_UPDATER_DOWNLOAD_RATE_LIMIT` | bytes per second | `0` (unlimited) | throttle object-download throughput; test/debug knob for reliably exercising resume/interruption behavior, not a production traffic-shaping feature |
-| `PH_UPDATER_INTERVAL` | time (in seconds) | `5` | set time between [Pantacor Hub](../overview/remote-control.md#pantacor-hub) [update](../overview/updates.md) requests |
+| `PH_UPDATER_INTERVAL` | time (in seconds) | `5` | set time between [Pantacor Hub](../overview/remote-control.md#pantacor-hub) [update](../overview/updates.md), register or claim requests |
 | `PH_UPDATER_NETWORK_TIMEOUT` | time (in seconds) | `120` | set time before [rollback](../overview/updates.md#error) if device cannot communicate with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
-| `PH_UPDATER_TRANSFER_MAX_COUNT` | number of transfers | `5` | set maximum number of object transfers to and from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) during [updates](../overview/updates.md) |
+| `PH_UPDATER_TRANSFER_MAX_COUNT` | number of transfers | `5` | set maximum number of simultaneous object transfers to and from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) during [updating](../overview/updates.md) and [syncing](../overview/remote-control.md#pantacor-hub-client) |
 | `PV_BOOTLOADER_FITCONFIG` | string | empty | set FIT configuration name |
 | `PV_BOOTLOADER_MTD_ENV` | string | empty | set MTD name for bootloader env |
 | `PV_BOOTLOADER_MTD_ONLY` | `0` or `1` | `0` | enable MTD for bootloader env |

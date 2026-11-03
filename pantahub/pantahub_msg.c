@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+#include <stdint.h>
 #include <stdlib.h>
 
 #include <jsmn/jsmnutil.h>
@@ -37,6 +38,46 @@
 
 #define AUTH_JSON_LEN 128
 
+int pv_pantahub_msg_parse_device(const char *json, struct pv_device *device)
+{
+	int tokc, ret = -1;
+	jsmntok_t *tokv = NULL;
+
+	if (!json || !device)
+		goto out;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted device JSON");
+		goto out;
+	}
+
+	device->id = pv_json_get_value(json, "id", tokv, tokc);
+	device->prn = pv_json_get_value(json, "prn", tokv, tokc);
+	device->secret = pv_json_get_value(json, "secret", tokv, tokc);
+	device->challenge = pv_json_get_value(json, "challenge", tokv, tokc);
+	device->owner = pv_json_get_value(json, "owner", tokv, tokc);
+
+	ret = 0;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
+void pv_pantahub_msg_clean_device(struct pv_device *device)
+{
+	if (device->id)
+		free(device->id);
+	if (device->prn)
+		free(device->prn);
+	if (device->secret)
+		free(device->secret);
+	if (device->challenge)
+		free(device->challenge);
+	if (device->owner)
+		free(device->owner);
+}
+
 char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass)
 {
 	if (!user || !pass)
@@ -51,6 +92,33 @@ char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass)
 		pv_json_ser_string(&js, user);
 		pv_json_ser_key(&js, "password");
 		pv_json_ser_string(&js, pass);
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
+}
+
+char *pv_pantahub_msg_ser_object_json(const char *name, off_t size,
+				      const char *sha256sum)
+{
+	struct pv_json_ser js;
+	char size_str[32];
+
+	if (!name || !sha256sum)
+		return NULL;
+
+	SNPRINTF_WTRUNC(size_str, sizeof(size_str), "%jd", (intmax_t)size);
+
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "objectname");
+		pv_json_ser_string(&js, name);
+		pv_json_ser_key(&js, "size");
+		pv_json_ser_string(&js, size_str);
+		pv_json_ser_key(&js, "sha256sum");
+		pv_json_ser_string(&js, sha256sum);
 		pv_json_ser_object_pop(&js);
 	}
 
@@ -280,4 +348,26 @@ void pv_pantahub_msg_clean_object_metadata(
 		free(object_metadata->sha256sum);
 	if (object_metadata->geturl)
 		free(object_metadata->geturl);
+}
+
+char *pv_pantahub_msg_parse_object_puturl(const char *json)
+{
+	int tokc;
+	jsmntok_t *tokv = NULL;
+	char *puturl = NULL;
+
+	if (!json)
+		goto out;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted object registration JSON");
+		goto out;
+	}
+
+	puturl = pv_json_get_value(json, "signed-puturl", tokv, tokc);
+
+out:
+	if (tokv)
+		free(tokv);
+	return puturl;
 }

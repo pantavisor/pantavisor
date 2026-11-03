@@ -56,8 +56,8 @@ reset_identity_device() {
     pvcontrol cmd reset-identity > /dev/null \
         || { echo "ERROR: pvcontrol cmd reset-identity failed" >&2; exit 1; }
     # the command is processed asynchronously after pvcontrol returns
-    wait_for_value "devmeta pantahub.claimed" "unset" 30 \
-        || { echo "ERROR: timeout waiting for pantahub.claimed to be removed" >&2; exit 1; }
+    wait_for_value "devmeta pantahub.claimed" "0" 30 \
+        || { echo "ERROR: timeout waiting for pantahub.claimed to become 0" >&2; exit 1; }
     devmeta pantahub.claimed
 }
 
