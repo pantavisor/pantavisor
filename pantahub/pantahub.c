@@ -749,13 +749,13 @@ static bool _on_identity_reset_requested()
 	pv_log(INFO, "got identity-reset-requested hint");
 
 	if (!pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS)) {
-		WARN_ONCE(
-			"ignoring identity reset request because remote mode is not forced on local revisions");
+		pv_log(WARN,
+		       "ignoring identity reset request because PV_CONTROL_REMOTE_ALWAYS is disabled. Keeping current identity");
 		return false;
 	}
 
 	if (pv->update) {
-		pv_log(DEBUG,
+		pv_log(WARN,
 		       "deferring identity reset request because an update is in progress");
 		ph->identity_reset_deferred = true;
 		return false;
