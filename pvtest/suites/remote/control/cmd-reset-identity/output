@@ -1,10 +1,14 @@
 == claim device (first Hub id) ==
 claim
 idle
+== make factory rejected on claimed device ==
+Cannot do this operation if device is already claimed
 == Hub revision 1 (non-reboot) on first Hub id ==
 posted: 1
 UPDATED
 UPDATED
+== go remote while remote ==
+204
 == reset identity rejected on Hub revision ==
 Cannot do this operation if not running a local revision
 1
@@ -15,9 +19,12 @@ Cannot do this operation if current revision is not DONE
 1
 == local revision (reboot) ==
 DONE
-== reset identity ==
+mode: local
+== reset identity (local mode) ==
 0
 rev 1: removed
+reset identity again: 204
+mode: remote
 == claim device (second Hub id) ==
 claim
 idle
@@ -25,12 +32,14 @@ device-id: changed
 secret: changed
 == Hub revision 1 (broken) on second Hub id ==
 posted: 1
+locals/reset-identity-done
+mode: local
+mode: remote
 {
   "status": "ERROR",
   "status-msg": "A container could not be started"
 }
-locals/reset-identity-done
-== reset identity ==
+== reset identity (go-remote) ==
 0
 claim
 == revision 1 per Hub id ==

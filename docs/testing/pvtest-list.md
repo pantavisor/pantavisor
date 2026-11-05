@@ -83,6 +83,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/control/basic-endpoints-curl` | Basic Endpoints via cURL | ✓ |
 | `local/control/status-codes` | HTTP status-code contract (commands, signals, drivers, buildinfo) | ✓ |
 | `local/control/staged-start` | STAGED via MOUNTED + lifecycle_goal: stage, API start/stop/start, reject start on plain MOUNTED, unknown lifecycle_goal falls back | ✓ |
+| `local/control/cmd-rejections` | Commands are rejected in local mode, with remote control disabled by config and while an update is ongoing | |
 | `local/control/pvcontrol-responsiveness` | pvcontrol responds normally during a time-consuming local operation (e.g. object transfer, sequential update) | |
 
 ### xconnect
@@ -191,8 +192,9 @@ Remote experience tests require an active Pantacor Hub connection and exercise t
 |------|-------------|------|
 | `remote/control/manual-claim` | Manual Device Claim | ✓ |
 | `remote/control/auto-claim` | Automatic Device Claim | ✓ |
-| `remote/control/cmd-reset-identity` | Identity reset is rejected unless on a DONE local revision, then re-claim reprocesses revision 1 under a new Hub id | |
-| `remote/control/hint-reset-identity` | Hub identity-reset-requested hint transitions to locals/identity-reset, wipes the credentials, registers naming the old Hub id as parent, confirms the reset after the autotok re-claim and reprocesses revision 1 under the new Hub id | |
+| `remote/control/cmd-reset-identity` | With PV_CONTROL_REMOTE_ALWAYS=0, identity reset is rejected unless on a DONE local revision, wipes the credentials in local mode and after go-remote, then re-claim reprocesses revision 1 under a new Hub id | |
+| `remote/control/hint-reset-identity` | With PV_CONTROL_REMOTE_ALWAYS=0, Hub identity-reset-requested hint on a Hub revision transitions to locals/identity-reset, which stays remote across reboots, wipes the credentials, registers naming the old Hub id as parent, confirms the reset after the autotok re-claim and processes revision 1 under each Hub id | |
+| `remote/control/hint-reset-identity-go-remote` | With PV_CONTROL_REMOTE_ALWAYS=0, Hub identity-reset-requested hint on a go-remote local revision transitions to locals/identity-reset, which stays remote across reboots, wipes the credentials, registers naming the old Hub id as parent, confirms the reset after the autotok re-claim and processes revision 1 under the new Hub id | |
 | `remote/control/always-remote-disabled` | Always Remote Disabled | ✓ |
 | `remote/control/always-remote-enabled` | Always Remote Enabled | ✓ |
 | `remote/control/pvcontrol-responsiveness` | pvcontrol responds normally during a Pantahub download or other expensive remote operation | |

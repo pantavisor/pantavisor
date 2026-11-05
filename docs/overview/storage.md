@@ -125,7 +125,7 @@ These credentials are written automatically when the device registers with and i
 pvcontrol cmd reset-identity
 ```
 
-The device must be running a `DONE` [local revision](../reference/pantavisor-commands.md#steps). The device owner can also trigger this from [Pantacor Hub](remote-control.md#pantacor-hub-client). Resetting the identity also runs the [garbage collector](#garbage-collector), so the revisions of the previous Hub device are removed.
+The device must be running a `DONE` [local revision](../reference/pantavisor-commands.md#steps) with remote control enabled (`PV_CONTROL_REMOTE`). The device owner can also trigger this from [Pantacor Hub](remote-control.md#pantacor-hub-client). Resetting the identity also runs the [garbage collector](#garbage-collector), so the revisions of the previous Hub device are removed.
 
 See [Commands](../tools/pvcontrol.md#commands).
 

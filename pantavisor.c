@@ -282,12 +282,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// we know if we are in local if the running revision has the local format
 	if (pv_storage_is_revision_local(pv->state->rev)) {
 		pv_log(INFO, "running local revision %s", pv->state->rev);
-		pv->remote_mode = false;
-		if (pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS)) {
-			pv_log(DEBUG,
-			       "remote mode forced on local revision by configuration");
-			pv->remote_mode = true;
-		}
+		pv->remote_mode = pv_is_remote_forced_on_local(pv->state->rev);
+		if (pv->remote_mode)
+			pv_log(DEBUG, "remote mode forced on local revision");
 	}
 
 	if (!pv->remote_mode)
@@ -392,6 +389,13 @@ static pv_state_t pv_wait_update()
 	return PV_STATE_WAIT;
 }
 
+bool pv_is_remote_forced_on_local(const char *rev)
+{
+	return pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS) ||
+	       (pv_config_get_bool(PV_CONTROL_REMOTE) &&
+		!strcmp(rev, IDENTITY_RESET_LOCAL_REV));
+}
+
 void pv_reset_identity()
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -444,7 +448,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	ph_logger_toggle(pv->state->rev);
 
 	// we don't want to rollback local revisions because of failing Hub comms
-	// which could happen when PV_CONTROL_REMOTE_ALWAYS=1
+	// which could happen when remote mode is forced on them
 	if (pv_update_is_local())
 		goto out;
 
@@ -706,6 +710,12 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->unclaimed) {
 			pv_log(WARN,
 			       "ignoring reset identity command because device is unclaimed");
+			goto out;
+		}
+
+		if (!pv_config_get_bool(PV_CONTROL_REMOTE)) {
+			pv_log(WARN,
+			       "ignoring reset identity command because remote mode is disabled by config");
 			goto out;
 		}
 

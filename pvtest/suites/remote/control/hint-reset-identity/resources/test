@@ -16,6 +16,12 @@ RESET_REV="locals/identity-reset"
 
 devmeta() { pvcontrol devmeta ls | jq -M -r ".[\"$1\"] // \"unset\""; }
 
+wait_for_mode() {
+    wait_for_value "devmeta pantavisor.mode" "$1" 60 \
+        || { echo "ERROR: timeout waiting for pantavisor.mode $1" >&2; exit 1; }
+    echo "mode: $(devmeta pantavisor.mode)"
+}
+
 # never printed: only compared between the two registrations
 creds_secret() { pvcontrol conf ls | jq -r '.[] | select(.key == "PH_CREDS_SECRET") | .value'; }
 
@@ -48,6 +54,47 @@ wait_for_autoclaim() {
         || { echo "ERROR: timeout waiting for the Hub trail" >&2; exit 1; }
 }
 
+# Lock the identity of Hub device $1 and request its reset
+lock_and_reset() {
+    local req code
+    for req in identity-lock identity-lock/reset; do
+        code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+            -H "Authorization: Bearer $bearer" \
+            "$PVTEST_HUB_URL/devices/$1/$req")
+        [ "$code" = "200" ] || { echo "ERROR: PUT $req failed with HTTP $code" >&2; exit 1; }
+    done
+    hub_device "$1" '.["identity-lock"].state'
+}
+
+# Wait for the transition to the reset revision and the wipe of revision $1
+wait_for_reset_transition() {
+    wait_for_target_ready "" "$RESET_REV" DONE >&2 \
+        || { echo "ERROR: timeout waiting for $RESET_REV to reach DONE" >&2; exit 1; }
+    pvcontrol steps show-progress "$RESET_REV" | jq -M -r '.status'
+    # remote is forced on the reset revision regardless of REMOTE_ALWAYS
+    wait_for_mode remote
+    # the wipe runs at the first login after DONE
+    wait_for_status "! pv_exec ls -d \"$(pv_storage_dir)/trails/$1\" > /dev/null 2>&1" 0 120
+    if pv_exec ls -d "$(pv_storage_dir)/trails/$1" > /dev/null 2>&1; then echo "$1: kept"; else echo "$1: removed"; fi
+}
+
+# Wait for the autotok re-claim after resetting Hub device $1 and for $1 to see
+# the reset confirmed. Sets device_id
+wait_for_reset_confirmed() {
+    local new_secret
+    wait_for_autoclaim "$1"
+    if [ "$device_id" != "$1" ]; then echo "device-id: changed"; else echo "device-id: unchanged"; fi
+    new_secret=$(creds_secret)
+    [ -n "$new_secret" ] || { echo "ERROR: empty PH_CREDS_SECRET after claim" >&2; exit 1; }
+    if [ "$new_secret" != "$prev_secret" ]; then echo "secret: changed"; else echo "secret: unchanged"; fi
+    prev_secret="$new_secret"
+    if [ "$(hub_device "$device_id" .parent_device_id)" = "$1" ]; then echo "parent: previous Hub id"; else echo "parent: other"; fi
+    wait_for_value "hub_device $1 '.[\"identity-lock\"].state'" "identity-reset-done" 120 \
+        || { echo "ERROR: timeout waiting for the identity reset to be confirmed" >&2; exit 1; }
+    hub_device "$1" '.["identity-lock"].state'
+    if [ "$(hub_device "$1" '.["identity-lock"]["new-identity-id"]')" = "$device_id" ]; then echo "new-identity: new Hub id"; else echo "new-identity: other"; fi
+}
+
 # Post the current device revision with edits applied by $2 to the trail of $1
 post_hub_rev() {
     local co
@@ -62,7 +109,7 @@ post_hub_rev() {
     )
 }
 
-# the framework only knows the last device id; delete both trails' devices even on failure
+# the framework only knows the last device id; delete every Hub id's device even on failure
 cleanup() {
     for d in $device_a $device_b; do
         pvr dev delete -y "$(pvr_device_url "$d")" > /dev/null 2>&1
@@ -97,9 +144,14 @@ wait_for_down 30 \
     || { echo "ERROR: pv-ctrl never went down after reboot" >&2; exit 1; }
 wait_for_target_ready \
     || { echo "ERROR: timeout waiting for device to come back after reboot" >&2; exit 1; }
+# REMOTE_ALWAYS=0: the local base revision boots in local mode
+wait_for_mode local
+pvcontrol commands go-remote > /dev/null 2>&1 \
+    || { echo "ERROR: pvcontrol commands go-remote failed" >&2; exit 1; }
 wait_for_autoclaim ""
 device_a="$device_id"
-secret_a=$(creds_secret)
+prev_secret=$(creds_secret)
+[ -n "$prev_secret" ] || { echo "ERROR: empty PH_CREDS_SECRET after claim" >&2; exit 1; }
 
 echo "== Hub revision 1 (non-reboot) on first Hub id =="
 rev=$(post_hub_rev "$device_a" \
@@ -118,44 +170,21 @@ wait_for_down 30 \
 wait_for_target_ready "" 1 DONE >&2 \
     || { echo "ERROR: timeout waiting for 1 to reach DONE" >&2; exit 1; }
 wait_for_hub_status "$device_a" 1 DONE
+wait_for_mode remote
 
-echo "== lock and reset first Hub id identity =="
-for req in identity-lock identity-lock/reset; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
-        -H "Authorization: Bearer $bearer" \
-        "$PVTEST_HUB_URL/devices/$device_a/$req")
-    [ "$code" = "200" ] || { echo "ERROR: PUT $req failed with HTTP $code" >&2; exit 1; }
-done
-hub_device "$device_a" '.["identity-lock"].state'
+echo "== lock and reset first Hub id identity (Hub revision) =="
+lock_and_reset "$device_a"
 # the device only sees the hint at its next login
 pvcontrol commands reboot "pvtest: log in again to get the hint" > /dev/null 2>&1
 wait_for_down 30 \
     || { echo "ERROR: pv-ctrl never went down after reboot" >&2; exit 1; }
 
-echo "== identity reset transition =="
-wait_for_target_ready "" "$RESET_REV" DONE >&2 \
-    || { echo "ERROR: timeout waiting for $RESET_REV to reach DONE" >&2; exit 1; }
-pvcontrol steps show-progress "$RESET_REV" | jq -M -r '.status'
-# the wipe runs at the first login after DONE
-wait_for_status "! pv_exec ls -d \"$(pv_storage_dir)/trails/1\" > /dev/null 2>&1" 0 120
-if pv_exec ls -d "$(pv_storage_dir)/trails/1" > /dev/null 2>&1; then echo "rev 1: kept"; else echo "rev 1: removed"; fi
+echo "== identity reset transition (Hub revision) =="
+wait_for_reset_transition 1
 
 echo "== auto-claim device (second Hub id) =="
-wait_for_autoclaim "$device_a"
+wait_for_reset_confirmed "$device_a"
 device_b="$device_id"
-if [ "$device_b" != "$device_a" ]; then echo "device-id: changed"; else echo "device-id: unchanged"; fi
-secret_b=$(creds_secret)
-[ -n "$secret_a" ] && [ -n "$secret_b" ] \
-    || { echo "ERROR: empty PH_CREDS_SECRET after claim" >&2; exit 1; }
-if [ "$secret_b" != "$secret_a" ]; then echo "secret: changed"; else echo "secret: unchanged"; fi
-
-if [ "$(hub_device "$device_b" .parent_device_id)" = "$device_a" ]; then echo "parent: first Hub id"; else echo "parent: other"; fi
-
-echo "== identity reset confirmed by second Hub id =="
-wait_for_value "hub_device $device_a '.[\"identity-lock\"].state'" "identity-reset-done" 120 \
-    || { echo "ERROR: timeout waiting for the identity reset to be confirmed" >&2; exit 1; }
-hub_device "$device_a" '.["identity-lock"].state'
-if [ "$(hub_device "$device_a" '.["identity-lock"]["new-identity-id"]')" = "$device_b" ]; then echo "new-identity: second Hub id"; else echo "new-identity: other"; fi
 
 echo "== Hub revision 1 (broken) on second Hub id =="
 rev=$(post_hub_rev "$device_b" \
@@ -167,6 +196,7 @@ pvr stepinfo "$PVTEST_HUB_URL/trails/$device_b/steps/1" | sed -n '/^{/,$p' \
     | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
 wait_for_target_ready "" "$RESET_REV" DONE >&2 \
     || { echo "ERROR: timeout waiting for rollback to $RESET_REV" >&2; exit 1; }
+wait_for_mode remote
 devmeta pantavisor.revision
 
 echo "== revision 1 per Hub id =="

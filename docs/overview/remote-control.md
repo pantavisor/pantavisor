@@ -23,7 +23,7 @@ pvcontrol cmd go-remote
 
 This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary) (`PV_CONTROL_REMOTE_ALWAYS`, default `0`).
 
-The owner of a claimed device can also lock its identity in Pantacor Hub and request a reset in order to renew device credentials. It is only supported when remote always is enabled, as it automatically runs a temporary local revision while the rest of the revisions are cleaned up from disk to start fresh. Then, it drops its old credentials, registers again as a new device linked to the old one and is left again ready for claiming.
+The owner of a claimed device can also lock its identity in Pantacor Hub and request a reset in order to renew device credentials. The device reboots into a temporary local revision, `locals/identity-reset`, while the rest of the revisions are cleaned up from disk to start fresh. Then, it drops its old credentials, registers again as a new device linked to the old one and is left again ready for claiming. Unlike other local revisions, `locals/identity-reset` keeps communication with Pantacor Hub even when remote always is disabled, so the device stays reachable across reboots until the new owner deploys a revision. Identity reset is not available when remote control is disabled (`PV_CONTROL_REMOTE=0`).
 
 The main features offered by remote control are:
 

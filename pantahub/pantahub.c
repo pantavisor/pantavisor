@@ -776,12 +776,6 @@ static bool _on_identity_reset_requested()
 
 	pv_log(INFO, "got identity-reset-requested hint");
 
-	if (!pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS)) {
-		pv_log(WARN,
-		       "ignoring identity reset request because PV_CONTROL_REMOTE_ALWAYS is disabled. Keeping current identity");
-		return false;
-	}
-
 	if (pv->update) {
 		pv_log(WARN,
 		       "deferring identity reset request because an update is in progress");
@@ -789,7 +783,18 @@ static bool _on_identity_reset_requested()
 		return false;
 	}
 
+	// copying the running revision onto itself would remove it
+	if (!strcmp(pv->state->rev, IDENTITY_RESET_LOCAL_REV) &&
+	    !pv_state_is_done(pv->state)) {
+		pv_log(WARN,
+		       "ignoring identity reset request because %s is not DONE",
+		       IDENTITY_RESET_LOCAL_REV);
+		return false;
+	}
+
+	// wiping on a local revision that boots in local mode would lose the device
 	if (pv_storage_is_revision_local(pv->state->rev) &&
+	    pv_is_remote_forced_on_local(pv->state->rev) &&
 	    pv_state_is_done(pv->state)) {
 		// the wipe stops this client, so it cannot run from its callback
 		pv_event_one_shot(_identity_reset_cb);

@@ -1,0 +1,198 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+if [ -z "$PH_USER" ] || [ -z "$PH_TOKEN" ]; then
+    echo "ERROR: PH_USER/PH_TOKEN not set" >&2; exit 1
+fi
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1 \
+    || { echo "ERROR: pvr login failed" >&2; exit 1; }
+bearer=$(jq -r --arg u "$PVTEST_HUB_URL" \
+    'first(.tokens | to_entries[] | select(.key | startswith($u)) | .value["access-token"]) // empty' \
+    "$HOME/.pvr/auth.json" 2>/dev/null)
+[ -n "$bearer" ] || { echo "ERROR: no Hub access token" >&2; exit 1; }
+
+RESET_REV="locals/identity-reset"
+LOCAL_REV="locals/hint-reset-identity-go-remote"
+
+devmeta() { pvcontrol devmeta ls | jq -M -r ".[\"$1\"] // \"unset\""; }
+
+wait_for_mode() {
+    wait_for_value "devmeta pantavisor.mode" "$1" 60 \
+        || { echo "ERROR: timeout waiting for pantavisor.mode $1" >&2; exit 1; }
+    echo "mode: $(devmeta pantavisor.mode)"
+}
+
+# never printed: only compared between the two registrations
+creds_secret() { pvcontrol conf ls | jq -r '.[] | select(.key == "PH_CREDS_SECRET") | .value'; }
+
+# Print field $2 of the Hub device $1, e.g. '.["identity-lock"].state'
+hub_device() {
+    curl -s -H "Authorization: Bearer $bearer" "$PVTEST_HUB_URL/devices/$1" \
+        | jq -r "$2 // empty"
+}
+
+hub_status() {
+    pvr stepinfo "$PVTEST_HUB_URL/trails/$1/steps/$2" 2>/dev/null \
+        | sed -n '/^{/,$p' | jq -r '.progress.status // empty'
+}
+
+wait_for_hub_status() {
+    wait_for_value "hub_status $1 $2" "$3" 120 \
+        || { echo "ERROR: timeout waiting for Hub rev $2 to reach $3" >&2; exit 1; }
+}
+
+# Wait for the autotok claim of a device id other than $1. Sets device_id
+wait_for_autoclaim() {
+    wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+        || { echo "ERROR: timeout waiting for pantahub.state idle after auto-claim" >&2; exit 1; }
+    devmeta pantahub.state
+    wait_for_status "[ -n \"\$(pv_exec cat /run/pantavisor/pv/device-id)\" ] && [ \"\$(pv_exec cat /run/pantavisor/pv/device-id)\" != \"$1\" ]" 0 30 \
+        || { echo "ERROR: timeout waiting for a new device-id hint file" >&2; exit 1; }
+    device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+    # idle comes before the device posts its current state as the new trail
+    wait_for_value "pvr curl -s -o /dev/null -w '%{http_code}' $PVTEST_HUB_URL/trails/$device_id/steps/0" "200" 120 \
+        || { echo "ERROR: timeout waiting for the Hub trail" >&2; exit 1; }
+}
+
+# Lock the identity of Hub device $1 and request its reset
+lock_and_reset() {
+    local req code
+    for req in identity-lock identity-lock/reset; do
+        code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+            -H "Authorization: Bearer $bearer" \
+            "$PVTEST_HUB_URL/devices/$1/$req")
+        [ "$code" = "200" ] || { echo "ERROR: PUT $req failed with HTTP $code" >&2; exit 1; }
+    done
+    hub_device "$1" '.["identity-lock"].state'
+}
+
+# Wait for the transition to the reset revision and the wipe of revision $1
+wait_for_reset_transition() {
+    wait_for_target_ready "" "$RESET_REV" DONE >&2 \
+        || { echo "ERROR: timeout waiting for $RESET_REV to reach DONE" >&2; exit 1; }
+    pvcontrol steps show-progress "$RESET_REV" | jq -M -r '.status'
+    # remote is forced on the reset revision regardless of REMOTE_ALWAYS
+    wait_for_mode remote
+    # the wipe runs at the first login after DONE
+    wait_for_status "! pv_exec ls -d \"$(pv_storage_dir)/trails/$1\" > /dev/null 2>&1" 0 120
+    if pv_exec ls -d "$(pv_storage_dir)/trails/$1" > /dev/null 2>&1; then echo "$1: kept"; else echo "$1: removed"; fi
+}
+
+# Wait for the autotok re-claim after resetting Hub device $1 and for $1 to see
+# the reset confirmed. Sets device_id
+wait_for_reset_confirmed() {
+    local new_secret
+    wait_for_autoclaim "$1"
+    if [ "$device_id" != "$1" ]; then echo "device-id: changed"; else echo "device-id: unchanged"; fi
+    new_secret=$(creds_secret)
+    [ -n "$new_secret" ] || { echo "ERROR: empty PH_CREDS_SECRET after claim" >&2; exit 1; }
+    if [ "$new_secret" != "$prev_secret" ]; then echo "secret: changed"; else echo "secret: unchanged"; fi
+    prev_secret="$new_secret"
+    if [ "$(hub_device "$device_id" .parent_device_id)" = "$1" ]; then echo "parent: previous Hub id"; else echo "parent: other"; fi
+    wait_for_value "hub_device $1 '.[\"identity-lock\"].state'" "identity-reset-done" 120 \
+        || { echo "ERROR: timeout waiting for the identity reset to be confirmed" >&2; exit 1; }
+    hub_device "$1" '.["identity-lock"].state'
+    if [ "$(hub_device "$1" '.["identity-lock"]["new-identity-id"]')" = "$device_id" ]; then echo "new-identity: new Hub id"; else echo "new-identity: other"; fi
+}
+
+# Post the current device revision with edits applied by $2 to the trail of $1
+post_hub_rev() {
+    local co
+    co="$(mktemp -d)/checkout"
+    pvr_clone_local_or_die "$co"
+    (
+        cd "$co" || exit 1
+        eval "$2"
+        pvr add . > /dev/null 2>&1
+        pvr commit -m "hint reset identity test" > /dev/null 2>&1
+        pvr_post_rev -m "hint reset identity test" "$PVTEST_HUB_URL/trails/$1"
+    )
+}
+
+# the framework only knows the last device id; delete every Hub id's device even on failure
+cleanup() {
+    for d in $device_a $device_b; do
+        pvr dev delete -y "$(pvr_device_url "$d")" > /dev/null 2>&1
+    done
+    if [ -n "$autotok_id" ]; then
+        curl -s -X DELETE \
+            -H "Authorization: Bearer $bearer" \
+            "$PVTEST_HUB_URL/devices/tokens/$autotok_id" > /dev/null 2>&1
+    fi
+    # the revoked autotok would make the next identity reset fail to register
+    pv_exec sh -c "for f in /run/pantavisor/pv/phconfig/pantahub.config /run/pantavisor/pv/phconfig/unclaimed.config; do [ -f \$f ] && sed -i '/^PH_FACTORY_AUTOTOK=/d' \$f; done; rm -f /run/pantavisor/pv/phconfig/parent.config; true" \
+        || echo "ERROR: could not remove PH_FACTORY_AUTOTOK" >&2
+}
+trap cleanup EXIT
+
+echo "== auto-claim device (first Hub id) =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }
+devmeta pantahub.state
+autotok_json=$(curl -s -X POST \
+    -H "Authorization: Bearer $bearer" \
+    -H "Content-Type: application/json" \
+    -d '{}' \
+    "$PVTEST_HUB_URL/devices/tokens")
+autotok=$(echo "$autotok_json" | jq -r '.token // empty')
+autotok_id=$(echo "$autotok_json" | jq -r '.id // empty')
+[ -n "$autotok" ] || { echo "ERROR: could not generate factory autotok" >&2; exit 1; }
+# overwriting drops PH_CREDS_ID, so the device registers again with the autotok
+pv_exec sh -c "echo PH_FACTORY_AUTOTOK=$autotok > /run/pantavisor/pv/phconfig/unclaimed.config"
+pvcontrol commands reboot "pvtest: inject autotok and reboot" > /dev/null 2>&1
+wait_for_down 30 \
+    || { echo "ERROR: pv-ctrl never went down after reboot" >&2; exit 1; }
+wait_for_target_ready \
+    || { echo "ERROR: timeout waiting for device to come back after reboot" >&2; exit 1; }
+# REMOTE_ALWAYS=0: the local base revision boots in local mode
+wait_for_mode local
+pvcontrol commands go-remote > /dev/null 2>&1 \
+    || { echo "ERROR: pvcontrol commands go-remote failed" >&2; exit 1; }
+wait_for_autoclaim ""
+device_a="$device_id"
+prev_secret=$(creds_secret)
+[ -n "$prev_secret" ] || { echo "ERROR: empty PH_CREDS_SECRET after claim" >&2; exit 1; }
+
+echo "== local revision (reboot) =="
+co_local="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$co_local"
+(
+    cd "$co_local" || exit 1
+    # a platform-less object forces a reboot update
+    mkdir -p pvtest-hint-reset-identity-go-remote
+    dd if=/dev/urandom of=pvtest-hint-reset-identity-go-remote/random.bin bs=4096 count=1 2>/dev/null
+    pvr add . > /dev/null 2>&1
+    pvr commit -m "reboot update" > /dev/null 2>&1
+    pvr post --rev "$LOCAL_REV" > /dev/null 2>&1
+)
+wait_for_target_ready "" "$LOCAL_REV" DONE >&2 \
+    || { echo "ERROR: timeout waiting for $LOCAL_REV to reach DONE" >&2; exit 1; }
+pvcontrol steps show-progress "$LOCAL_REV" | jq -M -r '.status'
+wait_for_mode local
+
+echo "== lock and reset first Hub id identity =="
+lock_and_reset "$device_a"
+# in local mode the Hub client is stopped; go-remote logs in and gets the hint
+pvcontrol commands go-remote > /dev/null 2>&1 \
+    || { echo "ERROR: pvcontrol commands go-remote failed" >&2; exit 1; }
+
+echo "== identity reset transition =="
+wait_for_reset_transition "$LOCAL_REV"
+
+echo "== auto-claim device (second Hub id) =="
+wait_for_reset_confirmed "$device_a"
+device_b="$device_id"
+
+echo "== Hub revision 1 (broken) on second Hub id =="
+rev=$(post_hub_rev "$device_b" \
+    "sed -i 's|lxc\.init\.cmd = /usr/bin/pv-app|lxc.init.cmd = /nonexistingbin|g' pv-example-app/lxc.container.conf")
+echo "posted: $rev"
+[ "$rev" = "1" ] || { echo "ERROR: expected Hub revision 1, got '$rev'" >&2; exit 1; }
+wait_for_hub_status "$device_b" 1 ERROR
+pvr stepinfo "$PVTEST_HUB_URL/trails/$device_b/steps/1" | sed -n '/^{/,$p' \
+    | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
+wait_for_target_ready "" "$RESET_REV" DONE >&2 \
+    || { echo "ERROR: timeout waiting for rollback to $RESET_REV" >&2; exit 1; }
+wait_for_mode remote
+devmeta pantavisor.revision

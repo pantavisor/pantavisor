@@ -124,7 +124,7 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 	}
 
 	if (!pv_config_get_bool(PV_CONTROL_REMOTE) &&
-	    cmd->op == CMD_GO_REMOTE) {
+	    (cmd->op == CMD_GO_REMOTE || cmd->op == CMD_RESET_IDENTITY)) {
 		return _cmd_reject(
 			cmd, PV_HTTP_CONFLICT, -1,
 			"Cannot do this operation when remote mode is disabled by config");

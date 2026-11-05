@@ -1,0 +1,14 @@
+== local mode ==
+UPDATE_METADATA: 409 Cannot do this operation while on local mode
+== remote control disabled by config ==
+GO_REMOTE: 409 Cannot do this operation when remote mode is disabled by config
+RESET_IDENTITY: 409 Cannot do this operation when remote mode is disabled by config
+== update ongoing ==
+REBOOT_DEVICE: 503 Cannot do this operation while update is ongoing
+POWEROFF_DEVICE: 503 Cannot do this operation while update is ongoing
+LOCAL_RUN: 503 Cannot do this operation while update is ongoing
+LOCAL_RUN_COMMIT: 503 Cannot do this operation while update is ongoing
+MAKE_FACTORY: 503 Cannot do this operation while update is ongoing
+RESET_IDENTITY: 503 Cannot do this operation while update is ongoing
+TESTING
+UPDATED
