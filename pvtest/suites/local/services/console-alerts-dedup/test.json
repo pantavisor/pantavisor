@@ -1,6 +1,6 @@
 {
 	"#spec": "pv-test@1",
-	"description": "WALL console alert skipped when a stdout output shows it",
+	"description": "Container status console alert skipped when a stdout output shows it",
 	"setup": {
 		"config": {
 			"env": "PV_CONTROL_REMOTE=0 PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct",

@@ -66,6 +66,9 @@
 #define pv_log(level, msg, ...)                                                \
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
 	     ##__VA_ARGS__)
+#define pv_log_alert(level, msg, ...)                                          \
+	vlog_alert(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__, \
+		   ##__VA_ARGS__)
 #include "log.h"
 
 static const char *syslog[][2] = { { "file", "/var/log/syslog" },
@@ -238,8 +241,8 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 		return;
 
 	p->status.current = status;
-	pv_log(WALL, "platform '%s' status is now %s", p->name,
-	       pv_platform_status_string(status));
+	pv_log_alert(INFO, "platform '%s' status is now %s", p->name,
+		     pv_platform_status_string(status));
 
 	if (status == PLAT_STOPPED) {
 		if (p->log_path[0])

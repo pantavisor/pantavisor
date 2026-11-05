@@ -139,6 +139,15 @@ void __log(char *module, int level, const char *fmt, ...)
 	va_end(args);
 }
 
+void __log_alert(char *module, int level, const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	pv_logserver_send_vlog_alert(module, level, fmt, args);
+	va_end(args);
+}
+
 const char *pv_log_level_name(int level)
 {
 	if (level < FATAL || level >= ALL)

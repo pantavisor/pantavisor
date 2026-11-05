@@ -1483,8 +1483,9 @@ static const char *pv_ls_skip_func_prefix(const char *msg)
 	return end + 2;
 }
 
-int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
-			   int level, const char *msg, va_list args)
+static int pv_ls_send_vlog(bool is_platform, char *platform, char *src,
+			   int level, bool mirror, const char *msg,
+			   va_list args)
 {
 	time_t now = time(NULL);
 	struct pv_ls_log log = {
@@ -1501,7 +1502,8 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	bool filtered =
 		(level != FATAL) && (level > pv_config_get_int(PV_LOG_LEVEL));
 
-	bool alert = pv_log_level_is_alert(level);
+	bool alert = pv_log_level_is_alert(level) ||
+		     (mirror && pv_config_get_bool(PV_LOG_CONSOLE_ALERTS));
 
 	if (filtered && !alert)
 		return 0;
@@ -1525,7 +1527,7 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	}
 
 	if (alert && (filtered || !pv_ls_stdout_shows()))
-		pv_wall_log(log.lvl, log.src, "%s",
+		pv_wall_log(mirror ? WALL : log.lvl, log.src, "%s",
 			    pv_ls_skip_func_prefix(log.data.buf));
 
 	if (filtered || logserver.pid < 1) {
@@ -1553,6 +1555,20 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	pv_buffer_drop(log_buf);
 	pv_buffer_drop(msg_buf);
 	return len;
+}
+
+int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
+			   int level, const char *msg, va_list args)
+{
+	return pv_ls_send_vlog(is_platform, platform, src, level, false, msg,
+			       args);
+}
+
+int pv_logserver_send_vlog_alert(char *src, int level, const char *msg,
+				 va_list args)
+{
+	return pv_ls_send_vlog(false, PV_PLATFORM_STR, src, level, true, msg,
+			       args);
 }
 
 int pv_logserver_send_log(bool is_platform, char *platform, char *src,

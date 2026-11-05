@@ -1,4 +1,4 @@
-== phase 1: PV_LOG_LEVEL allows WALL ==
+== phase 1: PV_LOG_LEVEL allows INFO ==
 -- line format --
 [TIME] [PANTAVISOR] [platforms] WALL: platform 'pv-example-app' status is now <STATUS>
 -- statuses on the console --
@@ -10,7 +10,9 @@ STOPPED
 STOPPING
 -- also written to the logs --
 yes
-== phase 2: PV_LOG_LEVEL filters WALL ==
+-- level in pantavisor.log --
+INFO
+== phase 2: PV_LOG_LEVEL 3 filters INFO ==
 -- statuses on the console --
 INSTALLED
 MOUNTED
@@ -20,14 +22,14 @@ STOPPED
 STOPPING
 -- also written to the logs --
 no
-== phase 3: alerts disabled at runtime, PV_LOG_LEVEL filters WALL ==
+== phase 3: alerts disabled at runtime, PV_LOG_LEVEL filters INFO ==
 -- PV_LOG_CONSOLE_ALERTS as the target sees it --
 "0"
 -- console alert lines --
 0
 -- also written to the logs --
 no
-== phase 4: alerts disabled at runtime, PV_LOG_LEVEL allows WALL ==
+== phase 4: alerts disabled at runtime, PV_LOG_LEVEL allows INFO ==
 -- console alert lines --
 0
 -- still written to the logs --

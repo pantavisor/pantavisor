@@ -1,27 +1,27 @@
 #!/bin/sh
 #
-# WALL console alerts: docs/reference/logserver-sockets.md#console-alerts
+# Console alerts: docs/reference/logserver-sockets.md#console-alerts
 #
-# Pantavisor mirrors WALL, ERROR and FATAL to /dev/console (wall.c). An appengine
+# Pantavisor mirrors container status changes (as WALL), ERROR and FATAL to
+# /dev/console (wall.c). An appengine
 # container has no /dev/console of its own, so pv_console_capture_* puts a FIFO
 # there and reads back exactly what pantavisor wrote.
 #
 # test.json pins PV_LOG_SERVER_OUTPUTS=filetree so no stdout output can suppress
 # the alert -- that skip is console-alerts-dedup's job. A container status change
-# is the only WALL producer (platforms.c), so a restart is the trigger.
+# is the only status line mirrored this way (platforms.c), so a restart is the
+# trigger. The line is logged at INFO and shown on the console as WALL.
 #
 # Three rows of #relation-to-logging are covered here:
-#   PV_LOG_LEVEL allows WALL  -> alert printed, message logged
-#   PV_LOG_LEVEL filters WALL -> alert printed, message NOT logged
-#   PV_LOG_CONSOLE_ALERTS=0   -> alert never printed, logging follows PV_LOG_LEVEL
-# WALL is 3 and the appengine default PV_LOG_LEVEL is 5, so phase 1 needs no
-# config change; phase 2 lowers the level to WARN (2) through user metadata,
-# which is read live and needs no reboot. PV_LOG_CONSOLE_ALERTS is read live
-# too: phases 3 and 4 turn alerts off through user metadata with WALL filtered
-# and allowed, and phase 5 deletes the key to check alerts come back at the
-# boot value. Both PV_LOG_LEVEL cases matter with alerts off because is_alert
-# also gates the early return in __log: a filtered WALL never reaches the log
-# server at all.
+#   PV_LOG_LEVEL 4 or more  -> alert printed, message logged at INFO
+#   PV_LOG_LEVEL below 4    -> alert printed, message NOT logged
+#   PV_LOG_CONSOLE_ALERTS=0 -> alert never printed, logging follows PV_LOG_LEVEL
+# The appengine default PV_LOG_LEVEL is 5, so phase 1 needs no config change;
+# phase 2 lowers the level to 3 (WALL) through user metadata, which is read
+# live and needs no reboot. Level 3 is the edge: the line needs INFO (4), so it
+# is no longer logged. PV_LOG_CONSOLE_ALERTS is read live too: phases 3 and 4
+# turn alerts off through user metadata with the line filtered and allowed, and
+# phase 5 deletes the key to check alerts come back at the boot value.
 
 PLAT=pv-example-app
 LOGS="$(pv_storage_dir)/logs"
@@ -54,6 +54,14 @@ recapture() {
 	pv_console_capture_start || { echo "ERROR: could not re-capture the console" >&2; exit 1; }
 }
 
+# Levels the status line was logged at in pantavisor.log, one per line
+logged_levels() {
+	pv_exec sh -c "find '$LOGS' -name pantavisor.log -exec grep -h \"platform '$PLAT' status is now\" {} +" \
+		| tr -d '\r' \
+		| sed -n "s/^\\[pantavisor\\] [0-9]* \\([A-Z]*\\)[[:space:]]* -- \\[platforms\\]: (pv_platform_set_status:[0-9]*) platform '$PLAT' status is now .*/\\1/p" \
+		| sort -u
+}
+
 # How many status-change lines pantavisor has written to its own log tree
 logged() {
 	pv_exec sh -c "grep -rhs \"platform '$PLAT' status is now\" '$LOGS' | wc -l" \
@@ -73,7 +81,7 @@ restart_and_settle() {
 pv_console_capture_start || { echo "ERROR: could not capture the console" >&2; exit 1; }
 trap 'pv_console_capture_stop; pvcontrol usrmeta delete PV_LOG_LEVEL > /dev/null 2>&1; pvcontrol usrmeta delete PV_LOG_CONSOLE_ALERTS > /dev/null 2>&1' EXIT
 
-echo "== phase 1: PV_LOG_LEVEL allows WALL =="
+echo "== phase 1: PV_LOG_LEVEL allows INFO =="
 logged_before=$(logged)
 restart_and_settle
 echo "-- line format --"
@@ -82,9 +90,11 @@ echo "-- statuses on the console --"
 statuses
 echo "-- also written to the logs --"
 [ "$(logged)" -gt "$logged_before" ] && echo yes || echo no
+echo "-- level in pantavisor.log --"
+logged_levels
 
-echo "== phase 2: PV_LOG_LEVEL filters WALL =="
-pvcontrol usrmeta save PV_LOG_LEVEL 2 > /dev/null
+echo "== phase 2: PV_LOG_LEVEL 3 filters INFO =="
+pvcontrol usrmeta save PV_LOG_LEVEL 3 > /dev/null
 recapture
 logged_before=$(logged)
 restart_and_settle
@@ -93,7 +103,7 @@ statuses
 echo "-- also written to the logs --"
 [ "$(logged)" -gt "$logged_before" ] && echo yes || echo no
 
-echo "== phase 3: alerts disabled at runtime, PV_LOG_LEVEL filters WALL =="
+echo "== phase 3: alerts disabled at runtime, PV_LOG_LEVEL filters INFO =="
 pvcontrol usrmeta save PV_LOG_CONSOLE_ALERTS 0 > /dev/null
 echo "-- PV_LOG_CONSOLE_ALERTS as the target sees it --"
 alerts_value
@@ -105,7 +115,7 @@ console_lines
 echo "-- also written to the logs --"
 [ "$(logged)" -gt "$logged_before" ] && echo yes || echo no
 
-echo "== phase 4: alerts disabled at runtime, PV_LOG_LEVEL allows WALL =="
+echo "== phase 4: alerts disabled at runtime, PV_LOG_LEVEL allows INFO =="
 pvcontrol usrmeta delete PV_LOG_LEVEL > /dev/null
 recapture
 logged_before=$(logged)
