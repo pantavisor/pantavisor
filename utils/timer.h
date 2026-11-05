@@ -27,7 +27,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum { RELATIV_TIMER, ABSOLUTE_TIMER } timer_type_t;
+// BOOT_TIMER is relative like RELATIV_TIMER but keeps counting during suspend
+typedef enum { RELATIV_TIMER, ABSOLUTE_TIMER, BOOT_TIMER } timer_type_t;
 
 uint64_t timer_get_current_time_sec(timer_type_t type);
 

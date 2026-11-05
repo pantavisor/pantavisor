@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Hub summary line at DEBUG: one line every PH_LOG_SUMMARY_INTERVAL seconds with the number of Hub requests and failures; a change through user meta applies without a reboot and 0 stops the lines",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1 PV_LOG_LEVEL=5 PH_LOG_SUMMARY_INTERVAL=5 PV_LOG_SERVER_OUTPUTS=filetree",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

@@ -27,6 +27,11 @@
 void pv_pantahub_proto_init(void);
 void pv_pantahub_proto_close(void);
 
+// logs the requests and failures since the last line, then starts over
+void pv_pantahub_proto_log_summary(const char *status);
+// forgets the requests counted so far and restarts the measured window
+void pv_pantahub_proto_reset_summary(void);
+
 void pv_pantahub_proto_reset_fail(void);
 
 bool pv_pantahub_proto_is_online(void);

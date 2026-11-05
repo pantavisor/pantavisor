@@ -61,6 +61,7 @@ typedef enum {
 	BOOTLOADER,
 	CGROUP_VER,
 	DURATION,
+	DURATION_OFF,
 	INIT_MODE,
 	INT,
 	LOG_SERVER_OUTPUT_UPDATE_MASK,
@@ -159,6 +160,8 @@ static struct pv_config_entry entries[] = {
 	{ INT, "PH_LIBEVENT_HTTP_TIMEOUT", PH | OEM, 0, false, .value.i = 60 },
 	{ INT, "PH_LIBEVENT_HTTP_RETRIES", PH | OEM | RUN, 0, false,
 	  .value.i = 1 },
+	{ DURATION_OFF, "PH_LOG_SUMMARY_INTERVAL", PH | OEM | RUN, 0, false,
+	  .value.i = 60 },
 	{ DURATION, "PH_METADATA_DEVMETA_HEARTBEAT", PH | OEM | RUN, 0, false,
 	  .value.i = 60 },
 	{ INT, "PH_METADATA_DEVMETA_INTERVAL", PH | OEM | RUN, 0, false,
@@ -1205,11 +1208,14 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 			       value, entry->key);
 			return -1;
 		}
-	} else if (entry->type == DURATION) {
+	} else if (entry->type == DURATION || entry->type == DURATION_OFF) {
 		// bare number = seconds, or a single-unit literal (30s/10min/1h/1d);
 		// same behavior as an INT parse failure: warn and leave the default
-		int seconds;
-		if (!pv_parse_duration(value, &seconds)) {
+		int seconds = 0;
+		// DURATION_OFF also takes 0, which turns the feature off
+		bool zero_off =
+			entry->type == DURATION_OFF && !strcmp(value, "0");
+		if (!zero_off && !pv_parse_duration(value, &seconds)) {
 			pv_log(WARN,
 			       "invalid duration format '%s' for key '%s'",
 			       value, entry->key);
@@ -1238,6 +1244,7 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		_set_config_by_entry_bootloader_type(entry, value);
 		break;
 	case DURATION:
+	case DURATION_OFF:
 		_set_config_by_entry_int(entry, value_int);
 		break;
 	case CGROUP_VER:
@@ -1512,6 +1519,8 @@ static int pv_config_save_creds_to_file(char *path)
 			continue;
 
 		switch (entry->type) {
+		case DURATION:
+		case DURATION_OFF:
 		case INT:
 			// a user metadata override must not reach the file
 			write_config_tuple_int(fd, entry->key,
@@ -1709,6 +1718,7 @@ static void _add_config_entry_alias_json(config_index_t ci,
 	case BOOTLOADER:
 	case CGROUP_VER:
 	case DURATION:
+	case DURATION_OFF:
 	case INIT_MODE:
 	case INT:
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
@@ -1764,6 +1774,7 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 			 _get_system_cgroup_version_str(entries[ci].value.i));
 		break;
 	case DURATION:
+	case DURATION_OFF:
 		snprintf(out, len, "%d", entries[ci].value.i);
 		break;
 	case INIT_MODE:
@@ -1875,6 +1886,7 @@ static void _print_config_entry(config_index_t ci)
 		       _get_mod_level_str(modified));
 		break;
 	case DURATION:
+	case DURATION_OFF:
 		pv_log(INFO, "%s = %d (%s)", key, entries[ci].value.i,
 		       _get_mod_level_str(modified));
 		break;

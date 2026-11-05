@@ -1,0 +1,109 @@
+#!/bin/sh
+#
+# Hub summary line at DEBUG (docs/overview/storage.md#liveness-lines):
+#
+#   hub: 12 requests, 0 failures in 5s (online)
+#
+# test.json sets PH_LOG_SUMMARY_INTERVAL=5 (the default is 60 seconds). The
+# value is set again from the Hub user meta during the test. A change applies
+# the next time the Hub client handles a Hub answer or changes state, so the
+# waits below allow for that. Times come from the time stamp (seconds) of each
+# line.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1
+
+KEY=PH_LOG_SUMMARY_INTERVAL
+# whole line: with counts, or the form for no requests
+LINE_RE='\[pantahub_proto\].*hub: ([0-9]+ requests, [0-9]+ failures|no requests) in [0-9]+s \([a-z ]+\)'
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+PVLOG="$LOGROOT/current/pantavisor/pantavisor.log"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+bearer=$(jq -r 'first(.tokens[]) | .["access-token"] // empty' "$HOME/.pvr/auth.json" 2>/dev/null)
+TMP=$(mktemp -d)
+
+hub_get_usrmeta() {
+	curl -s -H "Authorization: Bearer $bearer" "$PVTEST_HUB_URL/devices/$device_id" | jq -c '."user-meta" // {}'
+}
+# $1 = new value of the key, or "-" to remove it; other user meta is kept
+hub_set_key() {
+	local body
+	if [ "$1" = "-" ]; then
+		body=$(jq -c "del(.\"$KEY\")" "$TMP/orig")
+	else
+		body=$(jq -c --arg v "$1" ".\"$KEY\" = \$v" "$TMP/orig")
+	fi
+	curl -s -X PUT -H "Authorization: Bearer $bearer" -H "Content-Type: application/json" \
+		-d "$body" "$PVTEST_HUB_URL/devices/$device_id/user-meta" > /dev/null
+}
+
+hub_get_usrmeta > "$TMP/orig"
+jq -e . "$TMP/orig" > /dev/null 2>&1 || { echo "ERROR: could not read user meta from the Hub" >&2; rm -rf "$TMP"; exit 1; }
+trap 'hub_set_key -; rm -rf "$TMP"' EXIT
+
+# Fills $TMP/lines with all summary lines so far
+fetch() { pv_fetch_file "$PVLOG" "$TMP/pantavisor.log"; tr -d '\r' < "$TMP/pantavisor.log" | grep -E "$LINE_RE" > "$TMP/lines"; }
+count() { fetch; wc -l < "$TMP/lines" | tr -d ' '; }
+# Wait until there are at least $1 lines
+wait_lines() { wait_for_status "[ \"\$(count)\" -ge $1 ]" 0 "${2:-60}"; }
+# Seconds between the last two lines
+gap() {
+	fetch
+	tail -n2 "$TMP/lines" | sed -n 's/^\[pantavisor\] \([0-9]*\) .*/\1/p' | tr '\n' ' ' | awk '{ print $2 - $1 }'
+}
+# Wait until the last two lines are at most $1 seconds apart
+wait_gap_max() { wait_for_status "g=\$(gap); [ -n \"\$g\" ] && [ \"\$g\" -le $1 ]" 0 "${2:-90}"; }
+conf() { pvcontrol conf ls | jq -M -r --arg k "$KEY" '.[] | select(.key == $k) | "\($k) = \(.value) (\(.modified))"' | tr -d '\r'; }
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+# A late timer line is fine under load; only a gap under (interval - 1) or over twice the interval fails
+between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
+# A line with requests, shown with the numbers masked
+has_requests() { fetch; grep -Eq 'hub: [1-9][0-9]* requests, [0-9]+ failures in [0-9]+s \(online\)' "$TMP/lines"; }
+wait_for_conf() { wait_for_status "[ \"\$(pvcontrol conf ls | jq -r --arg k $KEY '.[] | select(.key == \$k) | .value')\" = $1 ]" 0 "${2:-60}"; }
+
+echo "== wait for device idle =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+	|| { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+
+echo "== interval from the environment =="
+echo "config: $(conf)"
+echo "a line with requests appears: $(yesno wait_for_status has_requests 0 60)"
+fetch
+grep -E 'hub: [1-9][0-9]* requests, [0-9]+ failures in [0-9]+s \(online\)' "$TMP/lines" | tail -n1 \
+	| sed -e 's/^.*hub: /hub: /' -e 's/[0-9][0-9]*/N/g'
+wait_lines "$(( $(count) + 2 ))" 30 > /dev/null 2>&1
+g=$(gap)
+echo "about 5 seconds apart: $(yesno between "$g" 4 10)"
+echo "gap between lines was ${g}s" >&2
+
+echo "== interval changed at run time =="
+hub_set_key 2
+wait_for_conf 2 60 > /dev/null 2>&1
+echo "config: $(conf)"
+echo "about 2 seconds apart: $(yesno wait_gap_max 4 90)"
+echo "gap between lines was $(gap)s" >&2
+
+echo "== disabled with 0 =="
+hub_set_key 0
+wait_for_conf 0 60 > /dev/null 2>&1
+echo "config: $(conf)"
+# the Hub client sees the change at its next answer, then no more lines come
+sleep 15
+B=$(count)
+sleep 10
+echo "no new line while 0: $([ "$(count)" = "$B" ] && echo yes || echo no)"
+
+echo "== turned back on =="
+hub_set_key 5
+echo "a line comes again: $(yesno wait_lines "$((B + 1))" 60)"
+# the line must cover only the time since it came back on, not the 25 seconds off
+w=$(tail -n1 "$TMP/lines" | sed -n 's/.* in \([0-9]*\)s (.*/\1/p')
+echo "first line covers only the time since turning it on: $([ -n "$w" ] && [ "$w" -le 15 ] && echo yes || echo no)"
+echo "window was ${w}s" >&2

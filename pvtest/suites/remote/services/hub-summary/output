@@ -1,0 +1,15 @@
+== wait for device idle ==
+== interval from the environment ==
+config: PH_LOG_SUMMARY_INTERVAL = 5 (env)
+a line with requests appears: yes
+hub: N requests, N failures in Ns (online)
+about 5 seconds apart: yes
+== interval changed at run time ==
+config: PH_LOG_SUMMARY_INTERVAL = 2 (metadata)
+about 2 seconds apart: yes
+== disabled with 0 ==
+config: PH_LOG_SUMMARY_INTERVAL = 0 (metadata)
+no new line while 0: yes
+== turned back on ==
+a line comes again: yes
+first line covers only the time since turning it on: yes

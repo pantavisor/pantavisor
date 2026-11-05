@@ -400,6 +400,33 @@ Disabling them only silences the console; logging still follows `PV_LOG_LEVEL`. 
 complete list of what emits them and how they relate to the log level — today,
 [container status changes](containers.md#status) and Pantavisor errors.
 
+### Liveness lines
+
+Per-poll lines for Hub requests are logged at TRACE, so a device at the default level can look silent for hours. While the Hub client is running, a summary line shows what Pantavisor asked of the Hub:
+
+| Line | Level | Interval | Says |
+|------|-------|----------|------|
+| `hub: ...` | DEBUG | `PH_LOG_SUMMARY_INTERVAL`, `60` s by default | Hub requests and failures since the previous line |
+
+The `hub:` line counts every request to the Hub (registration, claim, login, sync, polls, uploads and downloads) and the ones that failed, over the time since the previous line. The status in parentheses is `device not claimed`, `not logged in`, `offline` or `online`. When nothing was requested it says so:
+
+```
+hub: 12 requests, 0 failures in 60s (online)
+hub: no requests in 60s (offline)
+```
+
+The line needs `PV_LOG_LEVEL=5` or higher. In local mode the Hub client is not running, so there is no `hub:` line.
+
+`PH_LOG_SUMMARY_INTERVAL` goes in `pantahub.config` and can also be set in the OEM config. To change it or turn it off from the device:
+
+```bash
+pvcontrol usrmeta save PH_LOG_SUMMARY_INTERVAL 5   # every 5 seconds
+pvcontrol usrmeta save PH_LOG_SUMMARY_INTERVAL 0   # off
+pvcontrol usrmeta delete PH_LOG_SUMMARY_INTERVAL   # back to the default
+```
+
+A change takes effect the next time the Hub client handles an answer from the Hub or changes state, which is every few seconds while the Hub is reachable (the update poll runs every `PH_UPDATER_INTERVAL`, `5` s by default). While the interval is `0` the counts are dropped, so the first line after turning it back on covers only the time since then.
+
 ### Log Directory Size Management
 
 Pantavisor manages log storage at two levels:

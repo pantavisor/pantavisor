@@ -129,6 +129,28 @@ struct pv_pantahub *_get_ph_instance()
 	return global_ph;
 }
 
+static void _summary_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_summary_cb);
+	pv_pantahub_proto_log_summary(pv_pantahub_status_string());
+}
+
+// no-op while the interval is unchanged, so it can run on every Hub tick
+static void _refresh_summary()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	int interval = pv_config_get_int(PH_LOG_SUMMARY_INTERVAL);
+
+	if (!ph)
+		return;
+
+	// do not carry the counts into the line that comes after turning it on
+	if (interval <= 0)
+		pv_pantahub_proto_reset_summary();
+
+	pv_event_periodic_set(&ph->summary_timer, interval, _summary_cb);
+}
+
 static void _close_state()
 {
 	struct pv_pantahub *ph = _get_ph_instance();
@@ -154,6 +176,8 @@ int pv_pantahub_stop()
 		return -1;
 
 	_close_state();
+	// not in _close_state: a state change must not push the next line back
+	pv_event_periodic_stop(&ph->summary_timer);
 
 	// callbacks of still in-flight requests must find no client
 	global_ph = NULL;
@@ -558,6 +582,8 @@ static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 	if (!ph)
 		return;
 
+	_refresh_summary();
+
 	switch (ph->state) {
 	case PH_STATE_INIT:
 		_run_state_init();
@@ -655,6 +681,8 @@ void pv_pantahub_evaluate_state()
 	struct pv_pantahub *ph = _get_ph_instance();
 	if (!pv || !ph)
 		return;
+
+	_refresh_summary();
 
 	if (!pv_pantahub_proto_is_registered()) {
 		_next_state(PH_STATE_REGISTER);
@@ -807,6 +835,21 @@ bool pv_pantahub_is_reporting()
 		return false;
 
 	return (ph->state == PH_STATE_REPORT);
+}
+
+const char *pv_pantahub_status_string()
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	if (!pv || !pv->remote_mode)
+		return "local mode";
+	if (pv->unclaimed)
+		return "device not claimed";
+	if (!pv_pantahub_proto_is_auth())
+		return "not logged in";
+	if (!pv_pantahub_is_online())
+		return "offline";
+	return "online";
 }
 
 bool pv_pantahub_is_online()

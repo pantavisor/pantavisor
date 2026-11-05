@@ -32,6 +32,10 @@ struct pv_event_periodic {
 
 void pv_event_periodic_start(struct pv_event_periodic *timer, int interval,
 			     event_callback_fn cb);
+// like start, but the first call comes after one interval, and an interval of
+// 0 or less stops the timer; cheap to call again with an unchanged interval
+void pv_event_periodic_set(struct pv_event_periodic *timer, int interval,
+			   event_callback_fn cb);
 void pv_event_periodic_stop(struct pv_event_periodic *timer);
 
 #endif
