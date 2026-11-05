@@ -479,7 +479,7 @@ static void _on_request_unresponsive()
 	if (!pv_pantahub_proto_is_online())
 		return;
 
-	pv_log(DEBUG, "Pantacor Hub client is now offline");
+	pv_log(INFO, "Pantacor Hub client is now offline");
 	session.online = false;
 
 	// update devmeta key
@@ -494,7 +494,7 @@ static void _on_request_responsive()
 	if (pv_pantahub_proto_is_online())
 		goto out;
 
-	pv_log(DEBUG, "Pantacor Hub client is now online");
+	pv_log(INFO, "Pantacor Hub client is now online");
 	session.online = true;
 
 	// update devmeta key
@@ -836,6 +836,8 @@ static void _recv_get_device_cb(struct evhttp_request *req, void *ctx)
 	int status;
 	struct pv_device device;
 	struct pantavisor *pv = pv_get_instance();
+	static char last_challenge[256] = "";
+
 	memset(&device, 0, sizeof(device));
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_device_cb);
@@ -862,7 +864,7 @@ static void _recv_get_device_cb(struct evhttp_request *req, void *ctx)
 	}
 
 	if (device.owner && strlen(device.owner)) {
-		pv_log(DEBUG, "device successfuly claimed");
+		pv_log(INFO, "device has been claimed, proceeding normally");
 		pv->unclaimed = false;
 		if (pv_config_save_creds())
 			pv_log(WARN, "could not save credentials");
@@ -883,6 +885,13 @@ static void _recv_get_device_cb(struct evhttp_request *req, void *ctx)
 	if (device.challenge) {
 		pv_log(DEBUG, "device ID: '%s'", device.id ? device.id : "");
 		pv_log(DEBUG, "challenge: '%s'", device.challenge);
+		// polled until claimed; log each new challenge once
+		if (strcmp(device.challenge, last_challenge)) {
+			pv_log(INFO, "device challenge: '%s'",
+			       device.challenge);
+			snprintf(last_challenge, sizeof(last_challenge), "%s",
+				 device.challenge);
+		}
 		_save_hint(device.challenge);
 	}
 out:

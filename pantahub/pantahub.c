@@ -658,9 +658,9 @@ int pv_pantahub_start()
 	global_ph->state = PH_STATE_INIT;
 
 	if (pv->unclaimed) {
-		pv_log(DEBUG, "device is not claimed yet");
+		pv_log(INFO, "device is not claimed yet");
 	} else {
-		pv_log(DEBUG, "device is already claimed");
+		pv_log(INFO, "device is already claimed");
 		_save_hint_file(DEVICE_ID_FNAME,
 				pv_config_get_str(PH_CREDS_ID));
 	}

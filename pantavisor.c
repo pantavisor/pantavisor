@@ -279,7 +279,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// we know if we are in local if the running revision has the local format
 	if (pv_storage_is_revision_local(pv->state->rev)) {
-		pv_log(DEBUG, "running local revision %s", pv->state->rev);
+		pv_log(INFO, "running local revision %s", pv->state->rev);
 		pv->remote_mode = false;
 		if (pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS)) {
 			pv_log(DEBUG,
@@ -911,7 +911,7 @@ static pv_state_t _pv_block_reboot(struct pantavisor *pv)
 		return PV_STATE_BLOCK_REBOOT;
 	}
 
-	pv_log(DEBUG, "continuing with normal reboot");
+	pv_log(INFO, "continuing with normal reboot");
 
 	return PV_STATE_REBOOT;
 }
@@ -1022,8 +1022,8 @@ static void _next_state(pv_state_t next_state)
 	pv_state_t prev_state = state;
 	state = next_state;
 
-	// WAIT re-enters every poll tick; only a real transition is DEBUG
-	pv_log(prev_state == next_state ? TRACE : DEBUG, "next state: '%s'",
+	// WAIT re-enters every poll tick; only a real transition is INFO
+	pv_log(prev_state == next_state ? TRACE : INFO, "next state: '%s'",
 	       pv_state_string(next_state));
 
 	// Release the boot lock the first time the top-level FSM reaches
