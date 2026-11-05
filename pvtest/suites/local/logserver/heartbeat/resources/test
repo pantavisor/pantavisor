@@ -1,0 +1,80 @@
+#!/bin/sh
+#
+# INFO heartbeat in pantavisor.log (docs/overview/storage.md#liveness-lines):
+#
+#   alive: revision 0, state WAIT, local mode, 1/1 containers started, running for 0h00m
+#
+# test.json sets PV_LOG_HEARTBEAT_INTERVAL=5 (the default is 10 minutes). The
+# first line comes one interval after pantavisor settles into WAIT. The wait
+# state refreshes the timer about every 2 seconds, so a change through user meta
+# takes effect within that, and 0 stops the lines. PV_LOG_LEVEL=5 and a short
+# PH_LOG_SUMMARY_INTERVAL are set only to show that local mode has no hub: line,
+# because the Hub client is not running. Times come from the time stamp
+# (seconds) of each line.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+PVLOG="$LOGROOT/current/pantavisor/pantavisor.log"
+
+TMP=$(mktemp -d)
+trap 'pvcontrol usrmeta delete PV_LOG_HEARTBEAT_INTERVAL > /dev/null 2>&1; rm -rf "$TMP"' EXIT
+
+# Number of heartbeat lines in the log so far
+beats() { pv_exec grep -c 'alive: revision' "$PVLOG" | tr -d ' \r'; }
+# Wait until there are at least $1 heartbeat lines
+wait_beats() { wait_for_status "[ \"\$(beats)\" -ge $1 ]" 0 "${2:-30}"; }
+fetch() { pv_fetch_file "$PVLOG" "$TMP/pantavisor.log"; tr -d '\r' < "$TMP/pantavisor.log" | grep 'alive: revision' > "$TMP/beats"; }
+# Seconds between the last two heartbeat lines
+gap() {
+	fetch
+	tail -n2 "$TMP/beats" | sed -n 's/^\[pantavisor\] \([0-9]*\) .*/\1/p' | tr '\n' ' ' | awk '{ print $2 - $1 }'
+}
+conf() { pvcontrol conf ls | jq -M -r --arg k PV_LOG_HEARTBEAT_INTERVAL '.[] | select(.key == $k) | "PV_LOG_HEARTBEAT_INTERVAL = \(.value) (\(.modified))"' | tr -d '\r'; }
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+# A late timer line is fine under load; only a gap under (interval - 1) or over twice the interval fails
+between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
+
+echo "== default interval from the environment =="
+echo "config: $(conf)"
+echo "heartbeat lines appear: $(yesno wait_beats 3 30)"
+fetch
+echo "last line, variable parts masked:"
+tail -n1 "$TMP/beats" | sed -e 's/^.*alive: /alive: /' \
+	-e 's/revision [^,]*,/revision N,/' \
+	-e 's/[0-9][0-9]*\/[0-9][0-9]* containers/X\/Y containers/' \
+	-e 's/running for .*/running for HhMMm/'
+started=$(tail -n1 "$TMP/beats" | sed -n 's/.* \([0-9]*\)\/\([0-9]*\) containers.*/\1 \2/p')
+echo "all containers started: $([ -n "$started" ] && [ "${started% *}" = "${started#* }" ] && [ "${started% *}" -gt 0 ] && echo yes || echo no)"
+g=$(gap)
+echo "about 5 seconds apart: $(yesno between "$g" 4 10)"
+echo "gap between lines was ${g}s" >&2
+
+echo "== no Hub summary in local mode =="
+# the line is at DEBUG and PH_LOG_SUMMARY_INTERVAL is 2 seconds, so any would be here by now
+hubs=$(pv_exec grep -cE '\[pantahub_proto\].*hub: ([0-9]+ requests, [0-9]+ failures|no requests) in [0-9]+s \([a-z ]+\)' "$PVLOG" | tr -d ' \r')
+echo "no hub: line: $([ "$hubs" = 0 ] && echo yes || echo no)"
+
+echo "== interval changed at run time =="
+pvcontrol usrmeta save PV_LOG_HEARTBEAT_INTERVAL 2 > /dev/null
+echo "config: $(conf)"
+B=$(beats)
+wait_beats "$((B + 3))" 30 > /dev/null 2>&1
+g=$(gap)
+echo "about 2 seconds apart: $(yesno between "$g" 1 4)"
+echo "gap between lines was ${g}s" >&2
+
+
+echo "== disabled with 0 =="
+pvcontrol usrmeta save PV_LOG_HEARTBEAT_INTERVAL 0 > /dev/null
+echo "config: $(conf)"
+# one more line can still arrive from the timer already armed
+sleep 4
+B=$(beats)
+sleep 8
+echo "no new line while 0: $([ "$(beats)" = "$B" ] && echo yes || echo no)"

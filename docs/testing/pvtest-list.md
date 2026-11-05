@@ -147,6 +147,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/logserver/filetree-singlefile` | `PV_LOG_LEVEL=2`, filetree+singlefile, golang/strftime timestamps, absolute tsec, dmesg and loggers on | ✓ |
 | `local/logserver/dmesg-overrun` | `/dev/kmsg` ring buffer overrun: dmesg stays subscribed, overrun line once per 10 s window with a count | ✓ |
 | `local/logserver/stdout` | `PV_LOG_LEVEL=6`, filetree with `stdout.pantavisor`, invalid timestamp format, relative tsec, dmesg skipped | ✓ |
+| `local/logserver/heartbeat` | INFO `alive:` line at the `PV_LOG_HEARTBEAT_INTERVAL` pace, run-time change through user meta, `0` stops it, no `hub:` line in local mode | ✓ |
 | `local/logserver/nullsink` | `PV_LOG_SERVER_OUTPUTS=nullsink`: every source accepted, nothing written | ✓ |
 | `local/logserver/rotation-and-revisions` | Log directories across update and rollback, update output, rotation and cleanup under a small `PV_LOG_DIR_MAXSIZE` | ✓ |
 

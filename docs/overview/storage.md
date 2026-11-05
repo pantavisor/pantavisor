@@ -402,30 +402,47 @@ complete list of what emits them and how they relate to the log level — today,
 
 ### Liveness lines
 
-Per-poll lines for Hub requests are logged at TRACE, so a device at the default level can look silent for hours. While the Hub client is running, a summary line shows what Pantavisor asked of the Hub:
+Per-poll lines for Hub requests are logged at TRACE, so a device at the default level can look silent for hours. Two lines show Pantavisor is still running:
 
 | Line | Level | Interval | Says |
 |------|-------|----------|------|
+| `alive: ...` | INFO | `PV_LOG_HEARTBEAT_INTERVAL`, `10min` by default | revision, state, Hub status, containers started and how long Pantavisor has been running |
 | `hub: ...` | DEBUG | `PH_LOG_SUMMARY_INTERVAL`, `60` s by default | Hub requests and failures since the previous line |
 
-The `hub:` line counts every request to the Hub (registration, claim, login, sync, polls, uploads and downloads) and the ones that failed, over the time since the previous line. The status in parentheses is `device not claimed`, `not logged in`, `offline` or `online`. When nothing was requested it says so:
+The `alive:` line is the local sign of life and is logged in every mode. The first one comes one interval after Pantavisor settles into its wait state, not at boot. The running time is measured with the boot clock, so it keeps counting while the system is suspended:
+
+```
+alive: revision 42, state WAIT, hub online, 5/5 containers started, running for 3h12m
+```
+
+The Hub status is `local mode`, `device not claimed`, `not logged in`, `offline` or `online`; the `alive:` line prints it as `hub <status>`.
+
+The `hub:` line only exists while the Hub client is running, so there is none in local mode. It counts every request to the Hub (registration, claim, login, sync, polls, uploads and downloads) and the ones that failed, over the time since the previous line. The status in parentheses is the same as above, without `local mode`. When nothing was requested it says so:
 
 ```
 hub: 12 requests, 0 failures in 60s (online)
 hub: no requests in 60s (offline)
 ```
 
-The line needs `PV_LOG_LEVEL=5` or higher. In local mode the Hub client is not running, so there is no `hub:` line.
+The `hub:` line needs `PV_LOG_LEVEL=5` or higher.
 
-`PH_LOG_SUMMARY_INTERVAL` goes in `pantahub.config` and can also be set in the OEM config. To change it or turn it off from the device:
+`PV_LOG_HEARTBEAT_INTERVAL` goes in `pantavisor.config` and `PH_LOG_SUMMARY_INTERVAL` in `pantahub.config`; either can also be set in the OEM config. To change or turn them off from the device:
 
 ```bash
-pvcontrol usrmeta save PH_LOG_SUMMARY_INTERVAL 5   # every 5 seconds
-pvcontrol usrmeta save PH_LOG_SUMMARY_INTERVAL 0   # off
-pvcontrol usrmeta delete PH_LOG_SUMMARY_INTERVAL   # back to the default
+pvcontrol usrmeta save PV_LOG_HEARTBEAT_INTERVAL 5min   # every 5 minutes
+pvcontrol usrmeta save PV_LOG_HEARTBEAT_INTERVAL 0      # off
+pvcontrol usrmeta delete PV_LOG_HEARTBEAT_INTERVAL      # back to the default
+pvcontrol usrmeta save PH_LOG_SUMMARY_INTERVAL 0        # no hub: lines
 ```
 
-A change takes effect the next time the Hub client handles an answer from the Hub or changes state, which is every few seconds while the Hub is reachable (the update poll runs every `PH_UPDATER_INTERVAL`, `5` s by default). While the interval is `0` the counts are dropped, so the first line after turning it back on covers only the time since then.
+A change takes effect the next time the interval is checked:
+
+| Line | Checked | Typical delay |
+|------|---------|---------------|
+| `alive:` | on every pass of the wait state | about 2 seconds |
+| `hub:` | every time the Hub client handles an answer from the Hub or changes state | a few seconds while the Hub answers (the update poll runs every `PH_UPDATER_INTERVAL`, `5` s by default), longer when the Hub is slow to answer |
+
+While `PH_LOG_SUMMARY_INTERVAL` is `0` the counts are dropped, so the first `hub:` line after turning it back on covers only the time since then.
 
 ### Log Directory Size Management
 

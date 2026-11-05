@@ -1,0 +1,15 @@
+== default interval from the environment ==
+config: PV_LOG_HEARTBEAT_INTERVAL = 5 (env)
+heartbeat lines appear: yes
+last line, variable parts masked:
+alive: revision N, state WAIT, hub local mode, X/Y containers started, running for HhMMm
+all containers started: yes
+about 5 seconds apart: yes
+== no Hub summary in local mode ==
+no hub: line: yes
+== interval changed at run time ==
+config: PV_LOG_HEARTBEAT_INTERVAL = 2 (metadata)
+about 2 seconds apart: yes
+== disabled with 0 ==
+config: PV_LOG_HEARTBEAT_INTERVAL = 0 (metadata)
+no new line while 0: yes
