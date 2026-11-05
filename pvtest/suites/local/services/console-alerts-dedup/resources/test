@@ -9,8 +9,8 @@
 # unlike in console-alerts.
 #
 # Two rows of docs/reference/logserver-sockets.md#relation-to-logging:
-#   allowed by PV_LOG_LEVEL, a stdout output shows it -> alert SKIPPED, logged
-#   filtered by PV_LOG_LEVEL                          -> alert printed, not logged
+#   INFO allowed by PV_LOG_LEVEL, a stdout output shows it -> alert SKIPPED, logged
+#   INFO filtered by PV_LOG_LEVEL                          -> alert printed, not logged
 # The second row is what keeps a filtered message reaching the console even when
 # stdout is configured, and it is the only reason the skip is conditional.
 
@@ -44,7 +44,7 @@ restart_and_settle() {
 pv_console_capture_start || { echo "ERROR: could not capture the console" >&2; exit 1; }
 trap 'pv_console_capture_stop; pvcontrol usrmeta delete PV_LOG_LEVEL > /dev/null 2>&1' EXIT
 
-echo "== phase 1: WALL allowed and stdout_direct shows it =="
+echo "== phase 1: INFO allowed and stdout_direct shows it =="
 logged_before=$(logged)
 restart_and_settle
 echo "-- console alert lines --"
@@ -52,8 +52,8 @@ console_lines
 echo "-- also written to the logs --"
 [ "$(logged)" -gt "$logged_before" ] && echo yes || echo no
 
-echo "== phase 2: WALL filtered, stdout_direct still configured =="
-pvcontrol usrmeta save PV_LOG_LEVEL 2 > /dev/null
+echo "== phase 2: INFO filtered, stdout_direct still configured =="
+pvcontrol usrmeta save PV_LOG_LEVEL 3 > /dev/null
 pv_console_capture_stop
 pv_console_capture_start || { echo "ERROR: could not re-capture the console" >&2; exit 1; }
 logged_before=$(logged)

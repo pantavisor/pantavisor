@@ -1,9 +1,9 @@
-== phase 1: WALL allowed and stdout_direct shows it ==
+== phase 1: INFO allowed and stdout_direct shows it ==
 -- console alert lines --
 0
 -- also written to the logs --
 yes
-== phase 2: WALL filtered, stdout_direct still configured ==
+== phase 2: INFO filtered, stdout_direct still configured ==
 -- statuses on the console --
 INSTALLED
 MOUNTED

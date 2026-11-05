@@ -310,9 +310,8 @@ Overview: [Storage → Console alerts](../overview/storage.md#console-alerts).
 |-------|-------|------------------------------|
 | `FATAL` | `0` | always |
 | `ERROR` | `1` | `1` |
-| `WALL` | `3` | `3`, one step before `INFO` (`4`) |
 
-Default `PV_LOG_LEVEL` is `0`: only `FATAL` is logged, all three still reach the console.
+Default `PV_LOG_LEVEL` is `0`: only `FATAL` is logged, and all alerts still reach the console.
 
 Outputs that count as "a stdout output shows it" (second row of the first table):
 

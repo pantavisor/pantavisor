@@ -66,7 +66,11 @@ enum log_level {
 
 #define LOG_MAX_FILE_SIZE (2 * 1024 * 1024)
 
+#define vlog_alert(module, level, ...)                                         \
+	__log_alert(module, level, ##__VA_ARGS__);
+
 void __log(char *module, int level, const char *fmt, ...);
+void __log_alert(char *module, int level, const char *fmt, ...);
 
 /*
  * Don't free the return value!

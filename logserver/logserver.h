@@ -36,6 +36,9 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 			  int level, const char *msg, ...);
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args);
+// logs at level and also mirrors the line on the console as a WALL alert
+int pv_logserver_send_vlog_alert(char *src, int level, const char *msg,
+				 va_list args);
 
 void pv_logserver_transition(const char *rev);
 void pv_logserver_reconfigure(void);

@@ -376,9 +376,8 @@ or other remote sessions:
 The timestamp is seconds since boot, the same way `dmesg` prints one, so alerts line up with kernel
 messages on the same console.
 
-Alerts come from a dedicated `WALL` level, used for events meant for the console, and from every
-`ERROR` and `FATAL` that Pantavisor itself logs; container logs are not mirrored. `WALL` becomes
-visible in the logs one step before `INFO` does, but an alert reaches the console even when
+Alerts cover container status changes and every `ERROR` and `FATAL` that Pantavisor itself logs;
+container logs are not mirrored. An alert reaches the console even when
 [`PV_LOG_LEVEL`](../reference/pantavisor-configuration.md#summary) keeps it out of the logs. When a
 stdout [output type](#output-types) is configured, Pantavisor enables the kernel's `ignore_loglevel`
 so that copy of the message reaches the console too, and sets it back to its previous value once no
