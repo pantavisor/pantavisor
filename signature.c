@@ -625,11 +625,14 @@ out:
 	return ret;
 }
 
-static int _get_cn(struct mbedtls_x509_crt *cert, char *cn, int len)
+/* _get_cn copies the subject CN of cert into cn, or leaves it empty when
+ * the certificate has none: a leaf without a CN never matches PV_OEM_NAME. */
+static void _get_cn(struct mbedtls_x509_crt *cert, char *cn, int len)
 {
 	mbedtls_x509_name *name = &cert->subject;
 
-	do {
+	cn[0] = '\0';
+	for (; name; name = name->next) {
 		const char *oid_name;
 		if ((!mbedtls_oid_get_attr_short_name(&name->oid, &oid_name)) &&
 		    (pv_str_matches("CN", strlen("CN"), oid_name,
@@ -637,18 +640,18 @@ static int _get_cn(struct mbedtls_x509_crt *cert, char *cn, int len)
 			SNPRINTF_WTRUNC(cn, len, "%.*s", (int)name->val.len,
 					name->val.p);
 		}
-	} while ((name = name->next) != 0);
+	}
 }
 
-static int _set_path_trust_crts(struct mbedtls_x509_crt *certs,
-				bool oem_signable, char *path)
+static void _set_path_trust_crts(struct mbedtls_x509_crt *certs,
+				 bool oem_signable, char *path)
 {
 	config_index_t name = PV_SECUREBOOT_TRUSTSTORE;
 
 	char *oem_name = pv_config_get_str(PV_OEM_NAME);
 	if (oem_signable && oem_name) {
 		char cert_cn[256];
-		_get_cn(certs, cert_cn, 256);
+		_get_cn(certs, cert_cn, sizeof(cert_cn));
 
 		if (pv_str_matches(oem_name, strlen(oem_name), cert_cn,
 				   strlen(cert_cn)))
