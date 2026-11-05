@@ -230,6 +230,8 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_LOG_DIR_MAXSIZE", PV | OEM, 0, false, .value.s = "0" },
 	{ STR, "PV_LOG_FILETREE_TIMESTAMP_FORMAT", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },
+	{ DURATION_OFF, "PV_LOG_HEARTBEAT_INTERVAL", PV | OEM | RUN, 0, false,
+	  .value.i = 600 },
 	{ INT, "PV_LOG_HYSTERESIS_FACTOR", PV | OEM, 0, false, .value.i = 4 },
 	{ INT, "PV_LOG_LEVEL", PV | OEM | RUN, 0, false, .value.i = 0 },
 	{ BOOL, "PV_LOG_LOGGERS", PV | OEM, 0, false, .value.b = true },

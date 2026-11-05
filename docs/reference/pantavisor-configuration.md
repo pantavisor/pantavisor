@@ -107,6 +107,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](../overview/storage.md#logs) directory |
 | `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto | `0` | max size of the [log directory](../overview/storage.md#log-directory-size-management); `0` auto-sizes to 10% of the backing partition, or 100% if it is tmpfs |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for filetree logs |
+| `PV_LOG_HEARTBEAT_INTERVAL` | duration: seconds, or `30s`, `10min`, `1h`, `1d`; `0` disables | `600` | seconds between the INFO [heartbeat line](../overview/storage.md#liveness-lines) in the Pantavisor log |
 | `PV_LOG_HYSTERESIS_FACTOR` | positive integer | `4` | controls the gap between high and low watermarks for [log directory cleanup](../overview/storage.md#log-directory-size-management) |
 | `PV_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` WALL, `4` INFO, `5` DEBUG, `6` TRACE | `0` | set Pantavisor [log](../overview/storage.md#logs) verbosity level |
 | `PV_LOG_LOGGERS` | `0` or `1` | `1` | enable loggers for containers |
@@ -246,6 +247,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_LOG_DIR`                         | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LOG_DIR_MAXSIZE`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT`   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_LOG_HEARTBEAT_INTERVAL`          | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_HYSTERESIS_FACTOR`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_LEVEL`                       | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_LOGGERS`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |

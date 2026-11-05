@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "INFO heartbeat line: PV_LOG_HEARTBEAT_INTERVAL sets the pace, a change takes effect without reboot, and 0 stops it",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_LOG_LEVEL=5 PH_LOG_SUMMARY_INTERVAL=2 PV_LOG_HEARTBEAT_INTERVAL=5 PV_LOG_SERVER_OUTPUTS=filetree",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

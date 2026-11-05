@@ -461,11 +461,52 @@ out:
 	return pv_wait_update();
 }
 
+static pv_state_t state = PV_STATE_INIT;
+
+static struct pv_event_periodic heartbeat_timer;
+static uint64_t heartbeat_start_sec;
+
+static void _heartbeat_cb(evutil_socket_t fd, short events, void *arg)
+{
+	struct pantavisor *pv = pv_get_instance();
+	int started = 0, total = 0;
+	struct pv_platform *p, *tmp;
+	uint64_t up;
+
+	if (!pv || !pv->state)
+		return;
+
+	dl_list_for_each_safe(p, tmp, &pv->state->platforms, struct pv_platform,
+			      list)
+	{
+		total++;
+		if (pv_platform_is_started(p) || pv_platform_is_ready(p))
+			started++;
+	}
+
+	up = timer_get_current_time_sec(BOOT_TIMER) - heartbeat_start_sec;
+	pv_log(INFO,
+	       "alive: revision %s, state %s, hub %s, %d/%d containers started, running for %ldh%02ldm",
+	       pv->state->rev, pv_state_string(state) + strlen("STATE_"),
+	       pv_pantahub_status_string(), started, total, (long)(up / 3600),
+	       (long)(up % 3600 / 60));
+}
+
+// no-op while the interval is unchanged, so it can run on every WAIT tick
+static void _refresh_heartbeat(void)
+{
+	pv_event_periodic_set(&heartbeat_timer,
+			      pv_config_get_int(PV_LOG_HEARTBEAT_INTERVAL),
+			      _heartbeat_cb);
+}
+
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
 	struct timer t;
 	struct timer_state tstate;
 	pv_state_t next_state = PV_STATE_WAIT;
+
+	_refresh_heartbeat();
 
 	// check if any platform has exited and we need to tear down
 	if (pv_state_run(pv->state)) {
@@ -780,6 +821,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	ph_logger_stop_force();
 	ph_logger_close();
 
+	pv_event_periodic_stop(&heartbeat_timer);
 	pv_pantahub_stop();
 	pv_event_rest_cleanup();
 	pv_config_unload_creds();
@@ -883,8 +925,6 @@ pv_state_func_t *const state_table[MAX_STATES] = {
 	_pv_init,   _pv_run,	  _pv_wait,	    _pv_command, _pv_rollback,
 	_pv_reboot, _pv_poweroff, _pv_block_reboot, _pv_error,	 NULL,
 };
-
-static pv_state_t state = PV_STATE_INIT;
 
 // Invariant: at most one _pv_run_state_cb is pending at any time, either as an
 // immediate one-shot (when wake_pending is true) or as the persistent
@@ -1028,6 +1068,8 @@ int pv_start()
 
 	if (pv_event_base_init() < 0)
 		return 1;
+
+	heartbeat_start_sec = timer_get_current_time_sec(BOOT_TIMER);
 
 	// bring up suspend-blocking wakelocks before the FSM runs, then hold the
 	// device awake from the first instruction until it reaches steady state
