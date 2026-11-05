@@ -203,5 +203,6 @@ Remote experience tests require an active Pantacor Hub connection and exercise t
 | Test | Description | Done |
 |------|-------------|------|
 | `remote/services/ph-logger-cloud-push` | `ph-logger` cloud push | ✓ |
+| `remote/services/hub-summary` | DEBUG `hub:` summary at the `PH_LOG_SUMMARY_INTERVAL` pace with request and failure counts; run-time change through Hub user meta, `0` stops it, back on counts only from the restart | ✓ |
 | `remote/control/device-user-metadata` | Device/User Metadata Exchange | ✓ |
 

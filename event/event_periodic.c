@@ -30,6 +30,32 @@
 	     ##__VA_ARGS__)
 #include "log.h"
 
+static void _arm(struct pv_event_periodic *timer, int interval,
+		 event_callback_fn cb)
+{
+	if (timer->ev) {
+		event_del(timer->ev);
+		event_free(timer->ev);
+	}
+
+	// to be executed after the first timeout and on
+	timer->ev = event_new(pv_event_get_base(), -1, EV_PERSIST, cb, NULL);
+	if (!timer->ev) {
+		pv_log(ERROR, "could not create timer event");
+		return;
+	}
+
+	struct timeval time = { interval, 0 };
+	if (event_add(timer->ev, &time) < 0) {
+		pv_log(ERROR, "could not add timer event");
+		return;
+	}
+	timer->interval = interval;
+
+	pv_log(TRACE, "add event: type='periodic' cb=%p interval=%d",
+	       (void *)cb, interval);
+}
+
 void pv_event_periodic_start(struct pv_event_periodic *timer, int next_interval,
 			     event_callback_fn cb)
 {
@@ -39,30 +65,27 @@ void pv_event_periodic_start(struct pv_event_periodic *timer, int next_interval,
 	if (timer->ev && (next_interval == timer->interval))
 		return;
 
-	if (timer->ev) {
-		event_del(timer->ev);
-		event_free(timer->ev);
-	}
-
 	// to be executed as soon as possible
 	pv_event_one_shot(cb);
 
-	// to be executed after the first timeout and on
-	timer->ev = event_new(pv_event_get_base(), -1, EV_PERSIST, cb, NULL);
-	if (!timer->ev) {
-		pv_log(ERROR, "could not create timer event");
+	_arm(timer, next_interval, cb);
+}
+
+void pv_event_periodic_set(struct pv_event_periodic *timer, int next_interval,
+			   event_callback_fn cb)
+{
+	if (!timer || !pv_event_get_base())
+		return;
+
+	if (next_interval <= 0) {
+		pv_event_periodic_stop(timer);
 		return;
 	}
 
-	struct timeval time = { next_interval, 0 };
-	if (event_add(timer->ev, &time) < 0) {
-		pv_log(ERROR, "could not add timer event");
+	if (timer->ev && (next_interval == timer->interval))
 		return;
-	}
-	timer->interval = next_interval;
 
-	pv_log(TRACE, "add event: type='periodic' cb=%p interval=%d",
-	       (void *)cb, next_interval);
+	_arm(timer, next_interval, cb);
 }
 
 void pv_event_periodic_stop(struct pv_event_periodic *timer)

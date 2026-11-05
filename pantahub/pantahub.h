@@ -35,6 +35,8 @@ void pv_pantahub_on_login(const char *hint);
 bool pv_pantahub_is_reporting(void);
 
 bool pv_pantahub_is_online(void);
+// local mode, device not claimed, not logged in, offline or online
+const char *pv_pantahub_status_string(void);
 bool pv_pantahub_got_any_failure(void);
 
 bool pv_pantahub_is_progress_queue_empty(void);

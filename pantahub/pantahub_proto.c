@@ -147,6 +147,32 @@ struct pv_pantahub_session {
 
 static struct pv_pantahub_session session;
 
+// Hub requests since the last summary line
+static struct hub_counters {
+	int requests;
+	int failures;
+	uint64_t since_sec;
+} counters;
+
+static void _counters_reset(void)
+{
+	memset(&counters, 0, sizeof(counters));
+	counters.since_sec = timer_get_current_time_sec(BOOT_TIMER);
+}
+
+static void _count_request(int send_res)
+{
+	if (!send_res)
+		counters.requests++;
+}
+
+// any 2xx is a success; a missing response is reported as -1
+static void _count_result(int res)
+{
+	if (res < 200 || res >= 300)
+		counters.failures++;
+}
+
 // Hub reads devmeta PUTs as a liveness signal, so we keep a predictable floor
 // under them while suppressing the ones that carry no news.
 static struct devmeta_gate {
@@ -195,6 +221,7 @@ void pv_pantahub_proto_init()
 	session.online = false;
 	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
 	session.any_failed_request = false;
+	_counters_reset();
 
 	session.post_device_active = false;
 	session.open_session_active = false;
@@ -355,6 +382,29 @@ void pv_pantahub_proto_close()
 	_free_object_transfer_list(&session.object_transfer_list);
 	_free_token();
 	pv_pantahub_proto_free_sync();
+	_counters_reset();
+}
+
+void pv_pantahub_proto_log_summary(const char *status)
+{
+	uint64_t window =
+		timer_get_current_time_sec(BOOT_TIMER) - counters.since_sec;
+
+	if (!counters.requests && !counters.failures) {
+		pv_log(DEBUG, "hub: no requests in %llus (%s)",
+		       (unsigned long long)window, status);
+	} else {
+		pv_log(DEBUG, "hub: %d requests, %d failures in %llus (%s)",
+		       counters.requests, counters.failures,
+		       (unsigned long long)window, status);
+	}
+
+	_counters_reset();
+}
+
+void pv_pantahub_proto_reset_summary()
+{
+	_counters_reset();
 }
 
 void pv_pantahub_proto_reset_fail()
@@ -394,7 +444,7 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 			     void *arg, struct evhttp_request **out_req)
 {
 	char *host;
-	int port;
+	int port, res;
 
 	host = pv_config_get_str(PH_CREDS_PROXY_HOST);
 	port = pv_config_get_int(PH_CREDS_PROXY_PORT);
@@ -403,9 +453,12 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 		port = pv_config_get_int(PH_CREDS_PORT);
 	}
 
-	return pv_event_rest_send_by_components(op, host, port, endpoint,
-						autotok, token, body, NULL, cb,
-						arg, out_req, 0, 0);
+	res = pv_event_rest_send_by_components(op, host, port, endpoint,
+					       autotok, token, body, NULL, cb,
+					       arg, out_req, 0, 0);
+	_count_request(res);
+
+	return res;
 }
 
 static void _on_request_unresponsive()
@@ -455,6 +508,7 @@ static int _recv_buffer_status(struct evhttp_request *req, char **body)
 	int res;
 
 	res = pv_event_rest_recv_buffer(req, body, BODY_MAX_LEN);
+	_count_result(res);
 	if (res == -1) {
 		pv_log(WARN, "did not get any response");
 		_on_request_unresponsive();
@@ -1367,6 +1421,7 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 
 	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
 	res = pv_event_rest_recv_done_path(req, path, &written);
+	_count_result(res == 206 ? 200 : res);
 
 	// account the final flush; read received before _remove frees the transfer
 	o = _search_object_transfer(id_ref);
@@ -1420,6 +1475,7 @@ static int _get_object(const char *geturl, const char *id_ref,
 {
 	char path[PATH_MAX];
 	off_t existing;
+	int res;
 	struct pv_object_download_ctx *dctx;
 
 	if (!geturl || !id_ref)
@@ -1449,11 +1505,12 @@ static int _get_object(const char *geturl, const char *id_ref,
 		pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
 	}
 
-	if (pv_event_rest_send_by_url(
-		    EVHTTP_REQ_GET, geturl, _recv_get_object_chunk_cb,
-		    _recv_get_object_done_cb, (void *)dctx, out_req,
-		    pv_config_get_int(PH_UPDATER_DOWNLOAD_RATE_LIMIT),
-		    existing)) {
+	res = pv_event_rest_send_by_url(
+		EVHTTP_REQ_GET, geturl, _recv_get_object_chunk_cb,
+		_recv_get_object_done_cb, (void *)dctx, out_req,
+		pv_config_get_int(PH_UPDATER_DOWNLOAD_RATE_LIMIT), existing);
+	_count_request(res);
+	if (res) {
 		free(dctx);
 		return -1;
 	}
@@ -1743,12 +1800,15 @@ static void _recv_post_object_cb(struct evhttp_request *req, void *ctx)
 	s->req = NULL;
 
 	if (!req) {
+		_count_result(-1);
 		pv_log(WARN, "POST object '%s': no response", s->id);
 		_on_request_unresponsive();
 		goto out;
 	}
 
 	res = pv_event_rest_recv_buffer(req, &body, BODY_MAX_LEN);
+	// the object already being on the Hub is not a failure
+	_count_result(res == 409 ? 200 : res);
 	if (res == -1) {
 		pv_log(WARN, "POST object '%s': no response", s->id);
 		_on_request_unresponsive();
@@ -1816,12 +1876,14 @@ static void _recv_put_object_cb(struct evhttp_request *req, void *ctx)
 	s->req = NULL;
 
 	if (!req) {
+		_count_result(-1);
 		pv_log(WARN, "PUT object '%s': no response", s->id);
 		_on_request_unresponsive();
 		goto out;
 	}
 
 	res = pv_event_rest_recv_buffer(req, &body, BODY_MAX_LEN);
+	_count_result(res);
 	if (res == -1) {
 		pv_log(WARN, "PUT object '%s': no response", s->id);
 		_on_request_unresponsive();
@@ -1857,11 +1919,15 @@ out:
 static int _put_object(struct pv_object_sync *o)
 {
 	char objpath[PATH_MAX];
+	int res;
 
 	pv_paths_storage_object(objpath, PATH_MAX, o->id);
 
-	return pv_event_rest_send_file_by_url(o->puturl, objpath, o->size,
-					      _recv_put_object_cb, o, &o->req);
+	res = pv_event_rest_send_file_by_url(o->puturl, objpath, o->size,
+					     _recv_put_object_cb, o, &o->req);
+	_count_request(res);
+
+	return res;
 }
 
 static int _send_objects(pv_object_sync_state_t state,
@@ -1948,12 +2014,14 @@ static void _recv_post_trail_cb(struct evhttp_request *req, void *ctx)
 	session.post_trail_req = NULL;
 
 	if (!req) {
+		_count_result(-1);
 		pv_log(WARN, "POST /trails/: no response");
 		_on_request_unresponsive();
 		goto out;
 	}
 
 	res = pv_event_rest_recv_buffer(req, &body, BODY_MAX_LEN);
+	_count_result(res);
 	if (res == -1) {
 		pv_log(WARN, "POST /trails/: no response");
 		_on_request_unresponsive();

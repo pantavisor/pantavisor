@@ -63,6 +63,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) sent when the device registers at [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_LOG_SUMMARY_INTERVAL` | duration: seconds, or `30s`, `10min`, `1h`, `1d`; `0` disables | `60` | seconds between the DEBUG [`hub:` summary line](../overview/storage.md#liveness-lines) of Hub requests and failures; not logged in local mode, where the Hub client is not running |
 | `PH_METADATA_DEVMETA_HEARTBEAT` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `60` | upper bound between [device metadata](../overview/storage.md#device-metadata) pushes; a push happens even when nothing changed, so [Pantacor Hub](../overview/remote-control.md#pantacor-hub) keeps seeing the device as alive |
 | `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](../overview/storage.md#device-metadata) to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_METADATA_DEVMETA_THRESHOLD` | percent | `1` | relative change a numeric [device metadata](pantavisor-metadata.md#change-thresholds) field needs before it triggers a push of its own |
@@ -201,6 +202,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PH_FACTORY_AUTOTOK`                 | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_LIBEVENT_HTTP_RETRIES`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_LIBEVENT_HTTP_TIMEOUT`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| `PH_LOG_SUMMARY_INTERVAL`            | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_HEARTBEAT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_THRESHOLD`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
