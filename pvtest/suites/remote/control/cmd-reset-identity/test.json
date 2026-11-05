@@ -1,9 +1,9 @@
 {
 	"#spec": "pv-test@1",
-	"description": "Identity reset is rejected unless on a DONE local revision, then re-claim reprocesses revision 1 under a new Hub id",
+	"description": "With PV_CONTROL_REMOTE_ALWAYS=0, identity reset is rejected unless on a DONE local revision, wipes the credentials in local mode and after go-remote, then re-claim reprocesses revision 1 under a new Hub id",
 	"setup": {
 		"config": {
-			"env": "PV_CONTROL_REMOTE=1 PV_CONTROL_REMOTE_ALWAYS=1 PV_SECUREBOOT_MODE=disabled",
+			"env": "PV_CONTROL_REMOTE=1 PV_CONTROL_REMOTE_ALWAYS=0 PV_SECUREBOOT_MODE=disabled",
 			"usrmeta": ""
 		},
 		"containers": {

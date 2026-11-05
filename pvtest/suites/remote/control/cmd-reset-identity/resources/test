@@ -14,6 +14,18 @@ S=$(pv_storage_dir)
 
 devmeta() { pvcontrol devmeta ls | jq -M -r ".[\"$1\"] // \"unset\""; }
 
+wait_for_mode() {
+    wait_for_value "devmeta pantavisor.mode" "$1" 60 \
+        || { echo "ERROR: timeout waiting for pantavisor.mode $1" >&2; exit 1; }
+    echo "mode: $(devmeta pantavisor.mode)"
+}
+
+go_remote() {
+    pvcontrol commands go-remote > /dev/null 2>&1 \
+        || { echo "ERROR: pvcontrol commands go-remote failed" >&2; exit 1; }
+    wait_for_mode remote
+}
+
 # never printed: only compared between the two registrations
 creds_secret() { pvcontrol conf ls | jq -r '.[] | select(.key == "PH_CREDS_SECRET") | .value'; }
 
@@ -61,6 +73,23 @@ reset_identity_device() {
     devmeta pantahub.claimed
 }
 
+# Print the HTTP code of command op $1; pvcontrol hides 204
+cmd_code() {
+    pvcurl -s -w '\nHTTP_CODE=%{http_code}\n' --unix-socket /run/pantavisor/pv/pv-ctrl \
+        -X POST -H 'Content-Type: application/json' \
+        --data "{\"op\":\"$1\",\"payload\":\"\"}" http://localhost/commands \
+        | sed -n 's/^HTTP_CODE=//p' | tr -d '\r'
+}
+
+# The command $@ must be rejected synchronously
+cmd_rejected() {
+    local err
+    if err=$(pvcontrol cmd "$@" 2>&1 > /dev/null); then
+        echo "ERROR: pvcontrol cmd $* was accepted" >&2; exit 1
+    fi
+    echo "$err" | jq -M -r '.Error'
+}
+
 # The identity reset must be rejected synchronously and leave the device claimed
 reset_identity_rejected() {
     local err
@@ -100,6 +129,9 @@ claim_device ""
 device_a="$device_id"
 secret_a=$(creds_secret)
 
+echo "== make factory rejected on claimed device =="
+cmd_rejected make-factory
+
 echo "== Hub revision 1 (non-reboot) on first Hub id =="
 rev=$(post_hub_rev "$device_a" \
     "sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' pv-example-app/lxc.container.conf")
@@ -110,6 +142,9 @@ wait_for_revision_state "1" "UPDATED" \
 pvcontrol steps show-progress 1 | jq -M -r '.status'
 wait_for_hub_status "$device_a" 1 UPDATED
 hub_status "$device_a" 1
+
+echo "== go remote while remote =="
+cmd_code GO_REMOTE
 
 echo "== reset identity rejected on Hub revision =="
 reset_identity_rejected
@@ -143,10 +178,14 @@ cd - > /dev/null
 wait_for_target_ready "" "$LOCAL_DONE" DONE >&2 \
     || { echo "ERROR: timeout waiting for $LOCAL_DONE to reach DONE" >&2; exit 1; }
 pvcontrol steps show-progress "$LOCAL_DONE" | jq -M -r '.status'
+wait_for_mode local
 
-echo "== reset identity =="
+echo "== reset identity (local mode) =="
 reset_identity_device
 if pv_exec ls -d "$S/trails/1" > /dev/null 2>&1; then echo "rev 1: kept"; else echo "rev 1: removed"; fi
+echo "reset identity again: $(cmd_code RESET_IDENTITY)"
+# the wipe does not start the Hub client in local mode
+go_remote
 
 echo "== claim device (second Hub id) =="
 claim_device "$device_a"
@@ -162,14 +201,17 @@ rev=$(post_hub_rev "$device_b" \
     "sed -i 's|lxc\.init\.cmd = /usr/bin/pv-app|lxc.init.cmd = /nonexistingbin|g' pv-example-app/lxc.container.conf")
 echo "posted: $rev"
 [ "$rev" = "1" ] || { echo "ERROR: expected Hub revision 1, got '$rev'" >&2; exit 1; }
-wait_for_hub_status "$device_b" 1 ERROR
-pvr stepinfo "$PVTEST_HUB_URL/trails/$device_b/steps/1" | sed -n '/^{/,$p' \
-    | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
 wait_for_target_ready "" "$LOCAL_DONE" DONE >&2 \
     || { echo "ERROR: timeout waiting for rollback to $LOCAL_DONE" >&2; exit 1; }
 devmeta pantavisor.revision
+# the rollback boots the local revision in local mode, so Hub gets the error after go-remote
+wait_for_mode local
+go_remote
+wait_for_hub_status "$device_b" 1 ERROR
+pvr stepinfo "$PVTEST_HUB_URL/trails/$device_b/steps/1" | sed -n '/^{/,$p' \
+    | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
 
-echo "== reset identity =="
+echo "== reset identity (go-remote) =="
 reset_identity_device
 wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
     || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }

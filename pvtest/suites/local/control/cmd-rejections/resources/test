@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+# Rejections of pv_ctrl_cmd_add() reachable without Hub. Each one prints the HTTP
+# code and the error, as 503 means both "update ongoing" and "command in progress".
+# A rejected command never runs, so a reboot or poweroff here fails the test.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+REV="locals/cmd-rejections"
+
+# Post command op $1 with payload $2 and print "<code> <error>"
+cmd() {
+	pvcurl -s -w '\nHTTP_CODE=%{http_code}\n' --unix-socket /run/pantavisor/pv/pv-ctrl \
+		-X POST -H 'Content-Type: application/json' \
+		--data "{\"op\":\"$1\",\"payload\":\"$2\"}" http://localhost/commands \
+		| tr -d '\r' | awk '
+			/^HTTP_CODE=/ { sub(/^HTTP_CODE=/, ""); code = $0; next }
+			{ body = body $0 }
+			END {
+				err = body
+				if (match(body, /"Error":"[^"]*"/))
+					err = substr(body, RSTART + 9, RLENGTH - 10)
+				print code " " err
+			}'
+}
+
+wait_for_current_settled \
+	|| { echo "ERROR: device did not settle" >&2; exit 1; }
+
+echo "== local mode =="
+echo "UPDATE_METADATA: $(cmd UPDATE_METADATA '')"
+
+echo "== remote control disabled by config =="
+echo "GO_REMOTE: $(cmd GO_REMOTE '')"
+echo "RESET_IDENTITY: $(cmd RESET_IDENTITY '')"
+
+echo "== update ongoing =="
+export HOME="$(mktemp -d)"
+pvr_clone_local_or_die "$HOME/checkout"
+cd "$HOME/checkout"
+mkdir -p _config/pv-example-app
+dd if=/dev/urandom of=_config/pv-example-app/pvtest-cmd-rejections bs=4096 count=1 2>/dev/null
+pvr add . > /dev/null 2>&1
+pvr commit -m "cmd rejections" > /dev/null 2>&1
+pvr post --rev "$REV" > /dev/null 2>&1
+cd - > /dev/null
+# PV_UPDATER_COMMIT_DELAY keeps the update in TESTING long enough
+wait_for_value "pvcontrol steps show-progress $REV | jq -r '.status'" "TESTING" 120 \
+	|| { echo "ERROR: timeout waiting for $REV to reach TESTING" >&2; exit 1; }
+for op in REBOOT_DEVICE POWEROFF_DEVICE LOCAL_RUN LOCAL_RUN_COMMIT MAKE_FACTORY RESET_IDENTITY; do
+	echo "$op: $(cmd "$op" "$REV")"
+done
+pvcontrol steps show-progress "$REV" | jq -M -r '.status'
+wait_for_revision_state "$REV" "UPDATED" \
+	|| { echo "ERROR: timeout waiting for $REV to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress "$REV" | jq -M -r '.status'

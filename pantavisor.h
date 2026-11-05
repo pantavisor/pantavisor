@@ -64,6 +64,7 @@ pv_system_transition_t pv_run_update(void);
 
 void pv_issue_nonreboot(void);
 void pv_issue_reboot(void);
+bool pv_is_remote_forced_on_local(const char *rev);
 void pv_reset_identity(void);
 void pv_reset_identity_transition(void);
 void pv_issue_poweroff(void);

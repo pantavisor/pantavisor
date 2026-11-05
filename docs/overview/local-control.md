@@ -7,7 +7,7 @@ description: "The pv-ctrl socket, Pantabox, pvcontrol, and writing your own loca
 
 With local control, we mean the control that is performed from one of the [containers](containers.md) running in the [revision](revisions.md) using the [control socket](../reference/pantavisor-commands.md), which offers an HTTP REST API to control and monitor Pantavisor.
 
-This kind of control can be performed even if the device is already [claimed in Pantacor Hub](remote-control.md#pantacor-hub). It can also be the only option if you [disable remote control](../reference/pantavisor-configuration.md#summary) or if you install a [local revision](../reference/pantavisor-commands.md#steps) at any given time, which will interrupt Pantacor Hub remote control unless a [go remote command](../reference/pantavisor-commands.md#commands) is issued. This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary).
+This kind of control can be performed even if the device is already [claimed in Pantacor Hub](remote-control.md#pantacor-hub). It can also be the only option if you [disable remote control](../reference/pantavisor-configuration.md#summary) or if you install a [local revision](../reference/pantavisor-commands.md#steps) at any given time, which will interrupt Pantacor Hub remote control unless a [go remote command](../reference/pantavisor-commands.md#commands) is issued. This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary). The only exception is `locals/identity-reset`, the temporary revision of an [identity reset](remote-control.md#pantacor-hub-client), which stays under remote control.
 
 ## Available Operations
 

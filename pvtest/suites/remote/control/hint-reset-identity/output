@@ -1,29 +1,32 @@
 == auto-claim device (first Hub id) ==
 claim
+mode: local
 idle
 == Hub revision 1 (non-reboot) on first Hub id ==
 posted: 1
 UPDATED
 UPDATED
-== lock and reset first Hub id identity ==
+mode: remote
+== lock and reset first Hub id identity (Hub revision) ==
 identity-reset-requested
-== identity reset transition ==
+== identity reset transition (Hub revision) ==
 DONE
-rev 1: removed
+mode: remote
+1: removed
 == auto-claim device (second Hub id) ==
 idle
 device-id: changed
 secret: changed
-parent: first Hub id
-== identity reset confirmed by second Hub id ==
+parent: previous Hub id
 identity-reset-done
-new-identity: second Hub id
+new-identity: new Hub id
 == Hub revision 1 (broken) on second Hub id ==
 posted: 1
 {
   "status": "ERROR",
   "status-msg": "A container could not be started"
 }
+mode: remote
 locals/identity-reset
 == revision 1 per Hub id ==
 first: DONE

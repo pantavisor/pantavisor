@@ -200,7 +200,7 @@ A command is not always accepted. These are the non-`200` responses and what cau
 | `204` | — | `GO_REMOTE` | device is already in remote mode |
 | `204` | — | `RESET_IDENTITY` | device is already unclaimed |
 | `409` | — | `UPDATE_METADATA` | device is not in remote mode |
-| `409` | — | `GO_REMOTE` | remote control is disabled by [`PV_CONTROL_REMOTE`](pantavisor-configuration.md#summary) |
+| `409` | — | `GO_REMOTE`, `RESET_IDENTITY` | remote control is disabled by [`PV_CONTROL_REMOTE`](pantavisor-configuration.md#summary) |
 | `409` | — | `DEFER_REBOOT` | the [debug shell](pantavisor-configuration.md#summary) is not active |
 | `409` | — | `RESET_IDENTITY` | the running revision is not a [local revision](#steps) |
 | `409` | — | `RESET_IDENTITY` | the running revision is not `DONE` |
@@ -256,7 +256,7 @@ To get an existing step json:
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/033e779113f2499a2bfb55c0c374803fba9c820361d71bbda616643007cacd5a"
 ```
 
-To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must not contain any other "/" character. `locals/identity-reset` is reserved for [identity reset from Hub](../overview/remote-control.md#pantacor-hub-client) and is rejected with `409`. These revisions that are installed using the socket ([locals](../overview/local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](../overview/remote-control.md)), as you will have to manually request the transition to locals using the [run command](#commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued.
+To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must not contain any other "/" character. `locals/identity-reset` is reserved for [identity reset from Hub](../overview/remote-control.md#pantacor-hub-client) and is rejected with `409`. These revisions that are installed using the socket ([locals](../overview/local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](../overview/remote-control.md)), as you will have to manually request the transition to locals using the [run command](#commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued, with the exception of `locals/identity-reset`.
 
 ```
 curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/locals/example"
