@@ -1513,15 +1513,23 @@ static int pv_config_save_creds_to_file(char *path)
 
 		switch (entry->type) {
 		case INT:
-			write_config_tuple_int(fd, entry->key, entry->value.i);
+			// a user metadata override must not reach the file
+			write_config_tuple_int(fd, entry->key,
+					       entry->meta_saved ?
+						       entry->base_value.i :
+						       entry->value.i);
 			break;
-		case STR:
-			if (!entry->value.s)
+		case STR: {
+			const char *s = entry->meta_saved ?
+						entry->base_value.s :
+						entry->value.s;
+
+			if (!s)
 				continue;
 
-			write_config_tuple_string(fd, entry->key,
-						  entry->value.s);
+			write_config_tuple_string(fd, entry->key, s);
 			break;
+		}
 		default:
 			pv_log(WARN, "unknown type for config entry %s",
 			       entry->key);
