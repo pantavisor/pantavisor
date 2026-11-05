@@ -243,11 +243,11 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		       "could not get progress neither from disk nor from Hub, using default");
 	}
 
-	pv_log(DEBUG, "queueing update");
+	pv_log(INFO, "queueing update");
 	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_QUEUED,
 			       PV_UPDATE_PROGRESS_MSG_QUEUED);
 
-	pv_log(DEBUG, "verifying update");
+	pv_log(INFO, "verifying update");
 
 	u->progress.retries++;
 
@@ -281,7 +281,7 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	}
 	_reset_object_list_retries(u);
 
-	pv_log(DEBUG, "starting update");
+	pv_log(INFO, "starting update");
 
 	// hold the device awake across download, install and the post-boot
 	// test/commit phase; released in pv_update_finish
@@ -318,7 +318,7 @@ static void _finish_object_metadata_setting()
 		return;
 
 	update_size = pv_update_progress_get_size(&u->progress);
-	pv_log(DEBUG, "update size %jd B", update_size);
+	pv_log(INFO, "update size %jd B", update_size);
 	free_size = pv_storage_gc_run_needed(update_size);
 
 	if (update_size > free_size) {
@@ -497,7 +497,7 @@ int pv_update_install_object(const char *in_path)
 	if (!pv_state_are_all_objects_installed(s))
 		goto out;
 
-	pv_log(DEBUG, "all objects installed: _finish_update_installation");
+	pv_log(INFO, "all objects installed");
 	_finish_update_installation();
 out:
 	if (sha256sum)
@@ -585,7 +585,7 @@ void pv_update_run(const char *rev)
 		goto out;
 	pv->update = u;
 
-	pv_log(DEBUG, "loading rev '%s' to be run", rev);
+	pv_log(INFO, "loading rev '%s' to be run", rev);
 
 	pv_logserver_start_update(rev);
 	u->logserver_started = true;
@@ -696,13 +696,13 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 
 	// if we are currently trying a revision that already failed
 	if (pv_bootloader_trying_update() && pv_update_is_failed()) {
-		pv_log(DEBUG, "revision already failed");
+		pv_log(INFO, "revision already failed");
 		pv_update_finish();
 		return -1;
 	}
 
 	if (pv_update_is_failed()) {
-		pv_log(DEBUG, "coming from a rolled back revision");
+		pv_log(INFO, "coming from a rolled back revision");
 		pv_update_finish();
 		return 0;
 	}
@@ -923,7 +923,7 @@ void pv_update_finish()
 	if (!u)
 		return;
 
-	pv_log(DEBUG, "finishing update");
+	pv_log(INFO, "finishing update");
 
 	// release only if this update acquired it (finish also runs for
 	// done/failed/factory revisions that never acquired)
