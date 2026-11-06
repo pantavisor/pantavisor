@@ -23,6 +23,7 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantahub.online` | 0 or 1 | 1 if connection to Pantacor Hub was established |
 | `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, login, reset confirm, claim, wait Hub, prep sync, sync objects, sync state, report, idle, prep download or download) |
 | `pantavisor.arch` | string | CPU architecture |
+| `pantavisor.buildinfo` | string | build manifest, the same text as `pvcontrol buildinfo` cut at 4096 bytes; not set when the build has no manifest (see [build manifest](#build-manifest)) |
 | `pantavisor.cgroup.layout` | `hybrid`, `legacy`, `unified` or `unknown` | cgroup layout of the system (see [checking which version is in use](../overview/cgroups.md#checking-which-version-is-in-use)) |
 | `pantavisor.cgroup.version` | `1` or `2` | cgroup version Pantavisor uses: `2` for `unified`, `1` for `hybrid` and `legacy` |
 | `pantavisor.cpumodel` | string | CPU model name |
@@ -35,6 +36,14 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `storage` | json | disk usage of the device (see [refreshed on read](#refreshed-on-read)) |
 | `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) plus `uptime` and `idle` (see [`sysinfo` format](#sysinfo-format)) |
 | `time` | json | time information (see [refreshed on read](#refreshed-on-read)) |
+
+## Build manifest
+
+`pantavisor.buildinfo` holds the first 4096 bytes of the text `pvcontrol buildinfo` prints. The key is not set when the build has no manifest.
+
+```bash
+pvcontrol devmeta ls | jq -r '.["pantavisor.buildinfo"]'
+```
 
 ## Refreshed on read
 
