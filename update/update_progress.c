@@ -197,12 +197,32 @@ static void _set_progress(struct pv_update_progress *p)
 	}
 }
 
+static void _log_status_change(struct pv_update_progress *p)
+{
+	const char *msg = p->msg ? p->msg : "";
+
+	if (p->logged_msg && p->logged_status == p->status &&
+	    !strcmp(p->logged_msg, msg))
+		return;
+
+	pv_log(INFO, "update of revision '%s' status is now %s: %s",
+	       p->rev_ref ? p->rev_ref : "",
+	       _ser_update_progress_status(p->status), msg);
+
+	free(p->logged_msg);
+	p->logged_msg = strdup(msg);
+	p->logged_status = p->status;
+}
+
 static void _report(struct pv_update_progress *p, bool reload_logs)
 {
 	char *progress_str = NULL;
 
 	if (!p || !p->report_cb)
 		return;
+
+	// download byte progress keeps the same message, so it stays silent
+	_log_status_change(p);
 
 	// adding update logs from disk (only change on failure paths, so the
 	// byte-progress cadence reuses the in-memory copy)
@@ -303,6 +323,11 @@ int pv_update_progress_parse(const char *json, struct pv_update_progress *p)
 	p->retries = pv_json_get_value_int(json, "retries", tokv, tokc);
 
 	p->logs = pv_json_get_value(json, "logs", tokv, tokc);
+
+	// restored progress is not a change, so do not log it
+	free(p->logged_msg);
+	p->logged_msg = strdup(p->msg ? p->msg : "");
+	p->logged_status = p->status;
 
 	ret = 0;
 out:

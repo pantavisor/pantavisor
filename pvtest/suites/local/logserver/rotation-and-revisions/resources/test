@@ -77,6 +77,11 @@ kv "good-$RUN"
 wait_for_status "pv_exec grep -qF -- 'good-$RUN' '$LOGROOT/$GOOD/$SENDER/syslog/pvtest-rev'" 0 15 > /dev/null 2>&1
 echo "container line in the new revision: $(yesno pv_exec grep -qF -- "good-$RUN" "$LOGROOT/$GOOD/$SENDER/syslog/pvtest-rev")"
 echo "container line in the initial revision: $(yesno pv_exec grep -rqF -- "good-$RUN" "$LOGROOT/$INITIAL")"
+# one INFO line per status change and one commit countdown line, in the new revision's pantavisor.log
+count_log() { pv_exec grep -cE -- "$1" "$LOGROOT/$GOOD/pantavisor/pantavisor.log" | tr -d '\r'; }
+echo "testing status lines: $(count_log "INFO.* update of revision '$GOOD' status is now TESTING: ")"
+echo "done status lines: $(count_log "INFO.* update of revision '$GOOD' status is now DONE: ")"
+echo "commit countdown lines: $(count_log "INFO.* committing new update in ")"
 
 echo "== broken update rolls back =="
 sed -i 's|lxc\.init\.cmd = /usr/bin/pv-app|lxc.init.cmd = /nonexistingbin|g' "$SENDER/lxc.container.conf"

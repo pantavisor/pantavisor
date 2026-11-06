@@ -92,6 +92,9 @@ struct pv_update_progress {
 	int retries;
 	struct pv_download_info total;
 	char *rev_ref;
+	// last status and message written to the INFO log
+	pv_update_progress_status_t logged_status;
+	char *logged_msg;
 	void (*report_cb)(const char *, const char *);
 };
 
