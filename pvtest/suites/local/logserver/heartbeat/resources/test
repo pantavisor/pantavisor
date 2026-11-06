@@ -30,14 +30,19 @@ beats() { pv_exec grep -c 'alive: revision' "$PVLOG" | tr -d ' \r'; }
 # Wait until there are at least $1 heartbeat lines
 wait_beats() { wait_for_status "[ \"\$(beats)\" -ge $1 ]" 0 "${2:-30}"; }
 fetch() { pv_fetch_file "$PVLOG" "$TMP/pantavisor.log"; tr -d '\r' < "$TMP/pantavisor.log" | grep 'alive: revision' > "$TMP/beats"; }
-# Seconds between the last two heartbeat lines
-gap() {
-	fetch
-	tail -n2 "$TMP/beats" | sed -n 's/^\[pantavisor\] \([0-9]*\) .*/\1/p' | tr '\n' ' ' | awk '{ print $2 - $1 }'
-}
 conf() { pvcontrol conf ls | jq -M -r --arg k PV_LOG_HEARTBEAT_INTERVAL '.[] | select(.key == $k) | "PV_LOG_HEARTBEAT_INTERVAL = \(.value) (\(.modified))"' | tr -d '\r'; }
+# Wait for 4 lines starting at line number $1, then check that their average gap is between $2 and $3 seconds
+pace() {
+	wait_beats "$(($1 + 3))" 60 > /dev/null 2>&1 || return 1
+	fetch
+	sed -n "$1,$(($1 + 3))p" "$TMP/beats" | sed -n 's/^\[pantavisor\] \([0-9]*\) .*/\1/p' > "$TMP/times"
+	[ "$(wc -l < "$TMP/times")" -eq 4 ] || return 1
+	span=$(( $(tail -n1 "$TMP/times") - $(head -n1 "$TMP/times") ))
+	echo "total ${span}s over 3 gaps, average $(awk -v s="$span" 'BEGIN { printf "%.1f", s / 3 }')s" > "$TMP/pace"
+	between "$span" "$(($2 * 3))" "$(($3 * 3))"
+}
 yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
-# A late timer line is fine under load; only a gap under (interval - 1) or over twice the interval fails
+# A late line is followed by one on the original schedule, so two neighbouring lines can be close together under load; the pace is the average over several lines
 between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
 
 echo "== default interval from the environment =="
@@ -51,9 +56,9 @@ tail -n1 "$TMP/beats" | sed -e 's/^.*alive: /alive: /' \
 	-e 's/running for .*/running for HhMMm/'
 started=$(tail -n1 "$TMP/beats" | sed -n 's/.* \([0-9]*\)\/\([0-9]*\) containers.*/\1 \2/p')
 echo "all containers started: $([ -n "$started" ] && [ "${started% *}" = "${started#* }" ] && [ "${started% *}" -gt 0 ] && echo yes || echo no)"
-g=$(gap)
-echo "about 5 seconds apart: $(yesno between "$g" 4 10)"
-echo "gap between lines was ${g}s" >&2
+r=$(yesno pace "$(($(beats) + 1))" 4 10)
+echo "about 5 seconds apart: $r"
+cat "$TMP/pace" >&2
 
 echo "== no Hub summary in local mode =="
 # the line is at DEBUG and PH_LOG_SUMMARY_INTERVAL is 2 seconds, so any would be here by now
@@ -63,12 +68,12 @@ echo "no hub: line: $([ "$hubs" = 0 ] && echo yes || echo no)"
 echo "== interval changed at run time =="
 pvcontrol usrmeta save PV_LOG_HEARTBEAT_INTERVAL 2 > /dev/null
 echo "config: $(conf)"
+# the first line after the change is the start; the pace is taken from the lines after it
 B=$(beats)
-wait_beats "$((B + 3))" 30 > /dev/null 2>&1
-g=$(gap)
-echo "about 2 seconds apart: $(yesno between "$g" 1 4)"
-echo "gap between lines was ${g}s" >&2
-
+wait_beats "$((B + 1))" 30 > /dev/null 2>&1
+r=$(yesno pace "$((B + 2))" 1 4)
+echo "about 2 seconds apart: $r"
+cat "$TMP/pace" >&2
 
 echo "== disabled with 0 =="
 pvcontrol usrmeta save PV_LOG_HEARTBEAT_INTERVAL 0 > /dev/null
