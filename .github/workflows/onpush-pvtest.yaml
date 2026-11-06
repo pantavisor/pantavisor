@@ -173,7 +173,7 @@ jobs:
       TMPDIR: "tmp-scarthgap"
       configs: kas/build-configs/release/docker-x86_64-scarthgap.yaml:kas/build-configs/shared-vols.yaml
       PV_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-    runs-on: ["self-hosted"]
+    runs-on: ["bsp-builder"]
     container:
       image: ghcr.io/pantacor/kas/kas:next-v7
       volumes:
