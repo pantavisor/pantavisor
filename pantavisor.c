@@ -102,6 +102,8 @@ struct pantavisor *pv_get_instance()
 static struct timer timer_rollback_remote;
 static struct timer timer_wait_delay;
 static struct timer timer_commit;
+// the commit countdown is logged at INFO once per timer start
+static bool commit_countdown_logged;
 
 static const int PV_WAIT_PERIOD = 1;
 
@@ -342,6 +344,7 @@ static pv_state_t pv_wait_update()
 			timer_start(&timer_commit,
 				    pv_config_get_int(PV_UPDATER_COMMIT_DELAY),
 				    0, RELATIV_TIMER);
+			commit_countdown_logged = false;
 			// progress update state to testing
 			pv_update_set_testing();
 			break;
@@ -360,8 +363,16 @@ static pv_state_t pv_wait_update()
 		// progress if possible the state of testing update
 		struct timer_state tstate = timer_current_state(&timer_commit);
 		if (!tstate.fin) {
-			pv_log(INFO, "committing new update in %jd seconds",
-			       (intmax_t)tstate.sec);
+			if (!commit_countdown_logged) {
+				pv_log(INFO,
+				       "committing new update in %jd seconds",
+				       (intmax_t)tstate.sec);
+				commit_countdown_logged = true;
+			} else {
+				pv_log(DEBUG,
+				       "committing new update in %jd seconds",
+				       (intmax_t)tstate.sec);
+			}
 			return PV_STATE_WAIT;
 		}
 

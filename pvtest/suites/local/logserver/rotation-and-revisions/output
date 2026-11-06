@@ -2,6 +2,9 @@
 current is the new revision: yes
 container line in the new revision: yes
 container line in the initial revision: no
+testing status lines: 1
+done status lines: 1
+commit countdown lines: 1
 == broken update rolls back ==
 running: rollback point
 current is the rollback point: yes

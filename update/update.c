@@ -101,6 +101,7 @@ static void _free_update(struct pv_update *update)
 		free(update->progress.msg);
 	if (update->progress.logs)
 		free(update->progress.logs);
+	free(update->progress.logged_msg);
 	if (update->state)
 		pv_state_free(update->state);
 
