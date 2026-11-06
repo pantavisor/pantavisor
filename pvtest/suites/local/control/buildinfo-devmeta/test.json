@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "pantavisor.buildinfo device metadata follows /etc/build: cut at 4096 bytes, removed when the file is gone",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}
