@@ -26,8 +26,6 @@
 #include <linux/limits.h>
 #include <sys/types.h>
 
-typedef int (*logfn)(int, char *, ...);
-
 struct pv_ls_rot {
 	char path[PATH_MAX];
 	off_t total_size;
@@ -37,7 +35,7 @@ struct pv_ls_rot {
 	off_t cur_size;
 };
 
-struct pv_ls_rot pv_ls_rotation_init(const char *rev, logfn log);
+struct pv_ls_rot pv_ls_rotation_init(const char *rev);
 void pv_ls_rotation_update(struct pv_ls_rot *rot, const char *rev);
 int pv_ls_rotation_log_rot(struct pv_ls_rot *rot, const char *fname);
 void pv_ls_rotation_add(struct pv_ls_rot *rot, int len);
