@@ -21,7 +21,6 @@
  */
 
 #include <linux/limits.h>
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
@@ -41,6 +40,7 @@
 #include "proto/logserver_proto.h"
 #include "internal/logserver_rotation.h"
 #include "internal/logserver_pvlog.h"
+#include "internal/logserver_epoll.h"
 #include "outputs/logserver_out.h"
 #include "utils/logserver_utils.h"
 #include "outputs/logserver_null.h"
@@ -75,9 +75,9 @@
 #define PH_LOGGER_MAX_EPOLL_FD (50)
 #define PV_LS_FLAG_STOP (1 << 0)
 #define PV_LS_BACKLOG (20)
-#define PV_LS_MAX_EV (5)
 #define PV_LS_MAX_HEADER_LEN (50)
 #define PV_LS_UPDATE_ROTATION_INTERVAL (50)
+#define PV_LS_EPOLL_MAX_EV (5)
 
 // /dev/kmsg: memory devices driver, Documentation/admin-guide/devices.txt
 #define PV_LS_KMSG_MAJOR (1)
@@ -291,42 +291,6 @@ static bool pv_ls_is_kmsg(int fd)
 	       st.st_rdev == makedev(PV_LS_KMSG_MAJOR, PV_LS_KMSG_MINOR);
 }
 
-static int pv_ls_epoll_command(int fd, int cmd)
-{
-	struct epoll_event ev;
-	ev.events = EPOLLIN | EPOLLRDHUP;
-	ev.data.fd = fd;
-	errno = 0;
-	return epoll_ctl(logserver.epfd, cmd, fd, &ev);
-}
-
-static int pv_ls_epoll_add(int fd)
-{
-	return pv_ls_epoll_command(fd, EPOLL_CTL_ADD);
-}
-
-static int pv_ls_epoll_del(int fd)
-{
-	return pv_ls_epoll_command(fd, EPOLL_CTL_DEL);
-}
-
-static int pv_ls_epoll_wait(struct epoll_event *ev)
-{
-	int ready = 0;
-	errno = 0;
-	do {
-		ready = epoll_wait(logserver.epfd, ev, PV_LS_MAX_EV, -1);
-
-		if (errno != 0 && errno != EINTR) {
-			pv_log(ERROR, "error calling epoll_wait: %s",
-			       strerror(errno));
-			return 0;
-		}
-	} while (ready < 0);
-
-	return ready;
-}
-
 static int pv_ls_log_msg_data(const struct pv_ls_log *log, int output)
 {
 	if ((output > 0 && !(logserver.active_out & output)) || output < 0)
@@ -490,7 +454,7 @@ static void pv_ls_remove_platform_socket(const char *path)
 			continue;
 
 		unlink(path);
-		pv_ls_epoll_del(it->fd);
+		pv_ls_epoll_del(logserver.epfd, it->fd);
 		close(it->fd);
 		dl_list_del(&it->list);
 		pv_ls_fd_free(it);
@@ -519,7 +483,7 @@ static void pv_ls_create_platform_socket(const char *plat, const char *path)
 	if (!lfd->path)
 		goto clean;
 
-	if (pv_ls_epoll_add(lfd->fd) != 0) {
+	if (pv_ls_epoll_add(logserver.epfd, lfd->fd) != 0) {
 		pv_log(ERROR, "socket %s for %s cannot be watched: %s", path,
 		       plat, strerror(errno));
 		unlink(path);
@@ -909,7 +873,7 @@ static void pv_ls_remove_fd(int fd)
 		pv_ls_conninfo_free(ci);
 	}
 
-	pv_ls_epoll_del(fd);
+	pv_ls_epoll_del(logserver.epfd, fd);
 	close(fd);
 }
 
@@ -995,7 +959,7 @@ static int pv_ls_process_fd(int curfd)
 		goto clean_all;
 	}
 
-	if (pv_ls_epoll_add(lfd->fd) != 0) {
+	if (pv_ls_epoll_add(logserver.epfd, lfd->fd) != 0) {
 		ret = -1;
 		goto clean_all;
 	}
@@ -1019,14 +983,13 @@ clean_all:
 	return ret;
 }
 
-static void pv_ls_loop()
+static int pv_ls_loop()
 {
-	struct epoll_event ev[PV_LS_MAX_EV];
-	int n_events = pv_ls_epoll_wait(ev);
+	struct epoll_event ev[PV_LS_EPOLL_MAX_EV];
+	int n_events = pv_ls_epoll_wait(logserver.epfd, ev, PV_LS_EPOLL_MAX_EV);
 
-	if (n_events < 1) {
-		return;
-	}
+	if (n_events < 1)
+		return n_events;
 
 	int logsock = logserver.logsock;
 	int fdsock = logserver.fdsock;
@@ -1063,7 +1026,7 @@ static void pv_ls_loop()
 						    &ci->list);
 			}
 
-			if (pv_ls_epoll_add(fd) != 0) {
+			if (pv_ls_epoll_add(logserver.epfd, fd) != 0) {
 				pv_ls_remove_fd(fd);
 				continue;
 			}
@@ -1100,6 +1063,8 @@ static void pv_ls_loop()
 			pv_ls_remove_fd(curfd);
 		}
 	}
+
+	return 0;
 }
 
 static int pv_ls_open_client_socket(const char *fname)
@@ -1165,7 +1130,7 @@ static void pv_ls_drop_fds(struct dl_list *lst)
 	struct pv_ls_fd *it, *tmp;
 	dl_list_for_each_safe(it, tmp, lst, struct pv_ls_fd, list)
 	{
-		pv_ls_epoll_del(it->fd);
+		pv_ls_epoll_del(logserver.epfd, it->fd);
 		dl_list_del(&it->list);
 		pv_ls_fd_free(it);
 	}
@@ -1206,15 +1171,19 @@ static pid_t pv_ls_start_service(const char *running_revision)
 		pv_ls_utils_sync_start();
 		pv_log(DEBUG, "starting logserver loop");
 
+		int ret = EXIT_SUCCESS;
 		while (!(logserver.flags & PV_LS_FLAG_STOP)) {
-			pv_ls_loop();
+			if (pv_ls_loop() < 0) {
+				ret = EXIT_FAILURE;
+				break;
+			}
 		}
 
 		pv_ls_drop_fds(&logserver.fdlst);
 		pv_ls_drop_fds(&logserver.tmplst);
 		pv_ls_drop_fds(&logserver.psock);
 
-		_exit(EXIT_SUCCESS);
+		_exit(ret);
 	}
 
 	if (pvsignals_setmask(&oldmask)) {
@@ -1368,13 +1337,10 @@ int pv_logserver_init(const char *rev)
 	pv_ls_apply_outputs(pv_ls_config_outputs());
 	pv_ls_setup_stdout();
 
-	errno = 0;
-	logserver.epfd = epoll_create1(0);
+	logserver.epfd = pv_ls_epoll_create();
 
-	if (logserver.epfd < 0) {
-		pv_log(ERROR, "could not create logserver epoll fd");
+	if (logserver.epfd < 0)
 		return -1;
-	}
 
 	logserver.logsock = pv_ls_open_server_socket(LOGCTRL_FNAME);
 	if (logserver.logsock < 0)
@@ -1391,13 +1357,13 @@ int pv_logserver_init(const char *rev)
 	dl_list_init(&logserver.conninfo);
 	dl_list_init(&logserver.psock);
 
-	if (pv_ls_epoll_add(logserver.logsock) == -1) {
+	if (pv_ls_epoll_add(logserver.epfd, logserver.logsock) == -1) {
 		pv_log(WARN,
 		       "could not init log socket, logs will not be captured");
 		goto out;
 	}
 
-	if (pv_ls_epoll_add(logserver.fdsock) == -1) {
+	if (pv_ls_epoll_add(logserver.epfd, logserver.fdsock) == -1) {
 		pv_log(WARN,
 		       "could not init fd socket, some containers logs will be lost");
 		goto out;

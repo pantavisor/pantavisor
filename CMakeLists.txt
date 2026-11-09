@@ -263,7 +263,9 @@ add_executable(pantavisor
 			logger.h
 			logserver/logserver.c
 			logserver/logserver.h
-            logserver/internal/logserver_pvlog.h
+			logserver/internal/logserver_epoll.c
+			logserver/internal/logserver_epoll.h
+			logserver/internal/logserver_pvlog.h
 			logserver/internal/logserver_rotation.c
 			logserver/internal/logserver_rotation.h
 			logserver/outputs/logserver_filetree.c
