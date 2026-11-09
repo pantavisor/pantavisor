@@ -40,6 +40,7 @@
 #include "proto/logserver_binary.h"
 #include "proto/logserver_proto.h"
 #include "internal/logserver_rotation.h"
+#include "internal/logserver_pvlog.h"
 #include "outputs/logserver_out.h"
 #include "utils/logserver_utils.h"
 #include "outputs/logserver_null.h"
@@ -84,6 +85,8 @@
 #define PV_LS_KMSG_OVERRUN_INTERVAL (10)
 
 #define MODULE_NAME "logserver"
+#define pv_log(level, msg, ...)                                                \
+	pv_ls_pv_log(MODULE_NAME, level, msg, ##__VA_ARGS__)
 
 typedef enum {
 	LOG_CMD_NULL = 0,
@@ -180,7 +183,6 @@ static pv_ls_outputs_builder_t pv_ls_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
 	pv_ls_stdout_pantavisor_new
 };
 
-static int pv_log(int level, char *msg, ...);
 static void pv_ls_remove_fd(int fd);
 static void pv_ls_apply_outputs(int outputs);
 
@@ -364,7 +366,7 @@ static int pv_ls_log_msg_data(const struct pv_ls_log *log, int output)
 	return 0;
 }
 
-static int pv_log(int level, char *msg, ...)
+int pv_ls_pv_log(const char *module_name, int level, char *msg, ...)
 {
 	va_list args;
 	va_start(args, msg);
@@ -382,7 +384,7 @@ static int pv_log(int level, char *msg, ...)
 					  .tsec = pv_ls_timestamp_get_tsec(now),
 					  .time = now,
 					  .plat = PV_PLATFORM_STR,
-					  .src = "logserver",
+					  .src = (char *)module_name,
 					  .running_rev = logserver.running_rev,
 					  .updated_rev = logserver.updated_rev,
 					  .data.buf = buf,
@@ -392,8 +394,8 @@ static int pv_log(int level, char *msg, ...)
 
 		pv_buffer_drop(pv_buffer);
 	} else {
-		pv_logserver_send_vlog(false, PV_PLATFORM_STR, MODULE_NAME,
-				       level, msg, args);
+		pv_logserver_send_vlog(false, PV_PLATFORM_STR,
+				       (char *)module_name, level, msg, args);
 	}
 
 	va_end(args);
@@ -1401,7 +1403,7 @@ int pv_logserver_init(const char *rev)
 		goto out;
 	}
 
-	logserver.rot = pv_ls_rotation_init(rev, pv_log);
+	logserver.rot = pv_ls_rotation_init(rev);
 
 	pv_ls_start_service(rev);
 	pv_log(DEBUG, "started log service with pid %d", logserver.pid);

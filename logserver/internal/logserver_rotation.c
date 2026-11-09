@@ -25,6 +25,7 @@
 #endif
 
 #include "logserver_rotation.h"
+#include "logserver_pvlog.h"
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
@@ -40,7 +41,9 @@
 #include <string.h>
 #include <errno.h>
 
-static logfn pv_log = NULL;
+#define MODULE_NAME "logserver_rotation"
+#define pv_log(level, msg, ...)                                                \
+	pv_ls_pv_log(MODULE_NAME, level, msg, ##__VA_ARGS__)
 
 // maximum log files types in the same folder
 #define PV_LS_ROTATION_MAX_FILES (10)
@@ -145,13 +148,9 @@ void pv_ls_rotation_add(struct pv_ls_rot *rot, int len)
 		rot->cur_size += len;
 }
 
-struct pv_ls_rot pv_ls_rotation_init(const char *rev, logfn log)
+struct pv_ls_rot pv_ls_rotation_init(const char *rev)
 {
 	struct pv_ls_rot rot = { 0 };
-	if (!log)
-		return rot;
-
-	pv_log = log;
 	pv_ls_rotation_update(&rot, rev);
 	pv_ls_rotation_show_status(&rot, DEBUG);
 
