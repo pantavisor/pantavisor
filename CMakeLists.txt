@@ -267,6 +267,7 @@ add_executable(pantavisor
 			logserver/internal/logserver_conninfo.h
 			logserver/internal/logserver_fd.c
 			logserver/internal/logserver_fd.h
+			logserver/internal/logserver_pvlog.h
 			logserver/internal/logserver_rotation.c
 			logserver/internal/logserver_rotation.h
 			logserver/outputs/logserver_filetree.c

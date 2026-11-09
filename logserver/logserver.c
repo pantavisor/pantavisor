@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+#define MODULE_NAME "logserver"
+
 #include <linux/limits.h>
 #include <sys/epoll.h>
 #include <sys/types.h>
@@ -42,6 +44,7 @@
 #include "internal/logserver_conninfo.h"
 #include "internal/logserver_rotation.h"
 #include "internal/logserver_fd.h"
+#include "internal/logserver_pvlog.h"
 #include "outputs/logserver_out.h"
 #include "utils/logserver_utils.h"
 #include "outputs/logserver_null.h"
@@ -84,7 +87,7 @@
 #define PV_LS_KMSG_MINOR (11)
 #define PV_LS_KMSG_OVERRUN_INTERVAL (10)
 
-#define MODULE_NAME "logserver"
+#define PV_LS_PV_LOG_MAX_DEPTH (2)
 
 typedef enum {
 	LOG_CMD_NULL = 0,
@@ -165,7 +168,6 @@ static pv_ls_outputs_builder_t pv_ls_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
 	pv_ls_stdout_pantavisor_new
 };
 
-static int pv_log(int level, char *msg, ...);
 static void pv_ls_remove_fd(int fd);
 static void pv_ls_apply_outputs(int outputs);
 
@@ -254,39 +256,75 @@ static int pv_ls_log_msg_data(const struct pv_ls_log *log, int output)
 	return 0;
 }
 
-static int pv_log(int level, char *msg, ...)
+static int pv_log_depth;
+static unsigned int pv_log_dropped;
+
+static void pv_ls_pv_log_local(const char *module_name, int level,
+			       const char *msg, va_list args)
 {
-	va_list args;
-	va_start(args, msg);
-
-	if (logserver.pid == 0) {
-		struct buffer *pv_buffer = pv_buffer_get(true);
-		char *buf = pv_buffer->buf;
-		int buf_len;
-
-		buf_len = vsnprintf(buf, pv_buffer->size, msg, args);
-
-		time_t now = time(NULL);
-		struct pv_ls_log data = { .code = LOG_PROTOCOL_LEGACY,
-					  .lvl = level,
-					  .tsec = pv_ls_timestamp_get_tsec(now),
-					  .time = now,
-					  .plat = PV_PLATFORM_STR,
-					  .src = "logserver",
-					  .running_rev = logserver.running_rev,
-					  .updated_rev = logserver.updated_rev,
-					  .data.buf = buf,
-					  .data.len = buf_len };
-
-		pv_ls_log_msg_data(&data, 0);
-
-		pv_buffer_drop(pv_buffer);
-	} else {
-		pv_logserver_send_vlog(false, PV_PLATFORM_STR, MODULE_NAME,
-				       level, msg, args);
+	struct buffer *pv_buffer = pv_buffer_get(true);
+	if (!pv_buffer) {
+		pv_log_dropped++;
+		return;
 	}
 
+	char *buf = pv_buffer->buf;
+	int buf_len = vsnprintf(buf, pv_buffer->size, msg, args);
+	if (buf_len < 0)
+		buf_len = 0;
+	else if (buf_len >= pv_buffer->size)
+		buf_len = pv_buffer->size - 1;
+
+	time_t now = time(NULL);
+	struct pv_ls_log data = {
+		.code = LOG_PROTOCOL_LEGACY,
+		.lvl = level,
+		.tsec = pv_ls_timestamp_get_tsec(now),
+		.time = now,
+		.plat = PV_PLATFORM_STR,
+		.src = (char *)module_name,
+		.running_rev = logserver.running_rev,
+		.updated_rev = logserver.updated_rev,
+		.data.buf = buf,
+		.data.len = buf_len,
+	};
+
+	pv_ls_log_msg_data(&data, 0);
+
+	pv_buffer_drop(pv_buffer);
+}
+
+int pv_ls_pv_log(const char *module_name, int level, const char *msg, ...)
+{
+	va_list args;
+
+	if (logserver.pid != 0) {
+		va_start(args, msg);
+		pv_logserver_send_vlog(false, PV_PLATFORM_STR,
+				       (char *)module_name, level, msg, args);
+		va_end(args);
+		return 0;
+	}
+
+	if (pv_log_depth >= PV_LS_PV_LOG_MAX_DEPTH) {
+		pv_log_dropped++;
+		return -1;
+	}
+
+	pv_log_depth++;
+
+	if (pv_log_depth == 1 && pv_log_dropped) {
+		unsigned int n = pv_log_dropped;
+		pv_log_dropped = 0;
+		pv_ls_pv_log(MODULE_NAME, WARN,
+			     "dropped %u re-entrant log lines", n);
+	}
+
+	va_start(args, msg);
+	pv_ls_pv_log_local(module_name, level, msg, args);
 	va_end(args);
+
+	pv_log_depth--;
 	return 0;
 }
 
@@ -925,7 +963,8 @@ static int pv_ls_open_client_socket(const char *fname)
 	errno = 0;
 	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd == -1) {
-		pv_log(ERROR, "unable to open control socket: %s", errno);
+		pv_log(ERROR, "unable to open control socket: %s",
+		       strerror(errno));
 		return -1;
 	}
 
@@ -967,7 +1006,7 @@ static int pv_ls_open_server_socket(const char *fname)
 
 	// queue upto PV_LS_BACKLOG commands
 	if (listen(fd, PV_LS_BACKLOG) == -1) {
-		pv_log(ERROR, "unable to listen to control socket: %d",
+		pv_log(ERROR, "unable to listen to control socket: %s",
 		       strerror(errno));
 		close(fd);
 		return -1;
@@ -995,7 +1034,7 @@ static pid_t pv_ls_start_service(const char *running_revision)
 	logserver.cmd_pid = getpid();
 	if (pvsignals_block_chld(&oldmask)) {
 		pv_log(ERROR,
-		       "failed to block SIGCHLD for starting logserver: ",
+		       "failed to block SIGCHLD for starting logserver: %s",
 		       strerror(errno));
 		return -1;
 	}
@@ -1222,7 +1261,7 @@ int pv_logserver_init(const char *rev)
 		goto out;
 	}
 
-	logserver.rot = pv_ls_rotation_init(rev, pv_log);
+	logserver.rot = pv_ls_rotation_init(rev);
 
 	pv_ls_start_service(rev);
 	pv_log(DEBUG, "started log service with pid %d", logserver.pid);
