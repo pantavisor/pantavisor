@@ -39,6 +39,7 @@
 
 #include "proto/logserver_binary.h"
 #include "proto/logserver_proto.h"
+#include "internal/logserver_conninfo.h"
 #include "internal/logserver_rotation.h"
 #include "outputs/logserver_out.h"
 #include "utils/logserver_utils.h"
@@ -53,7 +54,6 @@
 #include "utils/json.h"
 #include "utils/system.h"
 #include "utils/list.h"
-#include "utils/socket.h"
 #include "utils/pvsignals.h"
 #include "utils/timer.h"
 #include "utils/str.h"
@@ -106,13 +106,6 @@ struct pv_ls_fd {
 	struct dl_list list;
 };
 
-struct pv_ls_conninfo {
-	int fd;
-	pid_t pid;
-	char *cgroup;
-	struct dl_list list;
-};
-
 struct pv_ls {
 	pid_t pid;
 	pid_t cmd_pid;
@@ -131,7 +124,7 @@ struct pv_ls {
 	// only if was sent to the fd_sock
 	struct dl_list tmplst;
 	struct dl_list outputs;
-	struct dl_list conninfo;
+	struct dl_list cinfo;
 	struct dl_list psock;
 	struct {
 		struct timer window;
@@ -183,54 +176,6 @@ static pv_ls_outputs_builder_t pv_ls_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
 static int pv_log(int level, char *msg, ...);
 static void pv_ls_remove_fd(int fd);
 static void pv_ls_apply_outputs(int outputs);
-
-static void pv_ls_conninfo_free(struct pv_ls_conninfo *ci)
-{
-	if (!ci)
-		return;
-	if (ci->cgroup)
-		free(ci->cgroup);
-	free(ci);
-}
-
-static struct pv_ls_conninfo *pv_ls_conninfo_new(int fd)
-{
-	if (fd < 0)
-		return NULL;
-
-	struct pv_ls_conninfo *ci = calloc(1, sizeof(*ci));
-	if (!ci)
-		return NULL;
-
-	ci->pid = pv_socket_get_sender_pid(fd);
-	if (ci->pid < 0)
-		goto err;
-
-	ci->cgroup = pv_cgroup_get_process_name(ci->pid);
-	if (!ci->cgroup)
-		goto err;
-
-	ci->fd = fd;
-
-	return ci;
-err:
-	if (ci)
-		pv_ls_conninfo_free(ci);
-
-	return NULL;
-}
-
-static struct pv_ls_conninfo *pv_ls_conninfo_search(int fd)
-{
-	struct pv_ls_conninfo *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &logserver.conninfo,
-			      struct pv_ls_conninfo, list)
-	{
-		if (it->fd == fd)
-			return it;
-	}
-	return NULL;
-}
 
 static struct pv_ls_fd *pv_ls_fd_new(const char *platform, char *src, int fd,
 				     int level)
@@ -901,11 +846,7 @@ static void pv_ls_remove_fd(int fd)
 	} else if (pv_ls_list_exists(&logserver.tmplst, fd))
 		pv_ls_list_del(&logserver.tmplst, fd, NULL);
 
-	struct pv_ls_conninfo *ci = pv_ls_conninfo_search(fd);
-	if (ci) {
-		dl_list_del(&ci->list);
-		pv_ls_conninfo_free(ci);
-	}
+	pv_ls_cinfo_free(pv_ls_cinfo_list_remove(&logserver.cinfo, fd));
 
 	pv_ls_epoll_del(fd);
 	close(fd);
@@ -1053,12 +994,10 @@ static void pv_ls_loop()
 				continue;
 
 			if (curfd == logsock) {
-				struct pv_ls_conninfo *ci =
-					pv_ls_conninfo_new(fd);
+				struct pv_ls_conninfo *ci = pv_ls_cinfo_new(fd);
 
 				if (ci)
-					dl_list_add(&logserver.conninfo,
-						    &ci->list);
+					dl_list_add(&logserver.cinfo, &ci->lst);
 			}
 
 			if (pv_ls_epoll_add(fd) != 0) {
@@ -1088,7 +1027,7 @@ static void pv_ls_loop()
 			pv_ls_consume_fd(curfd);
 		} else {
 			struct pv_ls_conninfo *ci =
-				pv_ls_conninfo_search(curfd);
+				pv_ls_cinfo_search(&logserver.cinfo, curfd);
 
 			if (!ci)
 				pv_ls_handle_msg(curfd, -1, NULL);
@@ -1211,6 +1150,7 @@ static pid_t pv_ls_start_service(const char *running_revision)
 		pv_ls_drop_fds(&logserver.fdlst);
 		pv_ls_drop_fds(&logserver.tmplst);
 		pv_ls_drop_fds(&logserver.psock);
+		pv_ls_cinfo_list_free(&logserver.cinfo);
 
 		_exit(EXIT_SUCCESS);
 	}
@@ -1386,7 +1326,7 @@ int pv_logserver_init(const char *rev)
 
 	dl_list_init(&logserver.fdlst);
 	dl_list_init(&logserver.tmplst);
-	dl_list_init(&logserver.conninfo);
+	dl_list_init(&logserver.cinfo);
 	dl_list_init(&logserver.psock);
 
 	if (pv_ls_epoll_add(logserver.logsock) == -1) {
