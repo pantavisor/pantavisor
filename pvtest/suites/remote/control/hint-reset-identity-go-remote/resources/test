@@ -71,7 +71,10 @@ lock_and_reset() {
 wait_for_reset_transition() {
     wait_for_target_ready "" "$RESET_REV" DONE >&2 \
         || { echo "ERROR: timeout waiting for $RESET_REV to reach DONE" >&2; exit 1; }
-    pvcontrol steps show-progress "$RESET_REV" | jq -M -r '.status'
+    # the reset's wipe can stall pv-ctrl right after DONE
+    wait_for_value "pvcontrol steps show-progress $RESET_REV | jq -M -r '.status'" DONE 60 \
+        || { echo "ERROR: timeout reading $RESET_REV progress" >&2; exit 1; }
+    echo DONE
     # remote is forced on the reset revision regardless of REMOTE_ALWAYS
     wait_for_mode remote
     # the wipe runs at the first login after DONE
