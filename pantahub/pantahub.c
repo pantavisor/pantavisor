@@ -709,15 +709,6 @@ void pv_pantahub_evaluate_state()
 		return;
 	}
 
-	// the next login brings the hint back
-	if (!pv->update && ph->identity_reset_deferred) {
-		pv_log(DEBUG, "logging in again to resume identity reset");
-		ph->identity_reset_deferred = false;
-		pv_pantahub_proto_logout();
-		_next_state(PH_STATE_LOGIN);
-		return;
-	}
-
 	if (!pv->update || pv_update_is_final()) {
 		_next_state(PH_STATE_IDLE);
 		return;
@@ -772,14 +763,12 @@ static void _identity_reset_cb(evutil_socket_t fd, short event, void *arg)
 static bool _on_identity_reset_requested()
 {
 	struct pantavisor *pv = pv_get_instance();
-	struct pv_pantahub *ph = _get_ph_instance();
 
 	pv_log(INFO, "got identity-reset-requested hint");
 
 	if (pv->update) {
 		pv_log(WARN,
-		       "deferring identity reset request because an update is in progress");
-		ph->identity_reset_deferred = true;
+		       "postponing identity reset request until the update finishes");
 		return false;
 	}
 
