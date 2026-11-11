@@ -201,6 +201,9 @@ rev=$(post_hub_rev "$device_b" \
     "sed -i 's|lxc\.init\.cmd = /usr/bin/pv-app|lxc.init.cmd = /nonexistingbin|g' pv-example-app/lxc.container.conf")
 echo "posted: $rev"
 [ "$rev" = "1" ] || { echo "ERROR: expected Hub revision 1, got '$rev'" >&2; exit 1; }
+# the target is the current revision: fence on the broken update failing first
+wait_for_value "pvcontrol steps show-progress 1 | jq -M -r '.status'" ERROR 300 \
+    || { echo "ERROR: timeout waiting for rev 1 to fail" >&2; exit 1; }
 wait_for_target_ready "" "$LOCAL_DONE" DONE >&2 \
     || { echo "ERROR: timeout waiting for rollback to $LOCAL_DONE" >&2; exit 1; }
 devmeta pantavisor.revision
