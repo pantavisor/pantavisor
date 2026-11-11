@@ -1,0 +1,147 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+# tinyproxy runs in the tester; the device reaches it at the address it sees
+# our SSH session coming from. Hosts vary per Hub, so only yes/no reaches the
+# golden.
+phconf=/run/pantavisor/pv/phconfig/pantahub.config
+port=8888
+tmp=$(mktemp -d)
+proxy_pid=
+
+conf_value() {
+	pvcontrol conf ls | jq -r --arg k "$1" '.[] | select(.key == $k) | .value | select(. != "(null)")'
+}
+
+put_file() {
+	local staged
+	staged=$(pv_stage_file "$1") || return 1
+	pv_exec cp "$staged" "$2" || return 1
+	pv_unstage_file "$staged"
+}
+
+reboot_and_wait() {
+	local cur
+	cur=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+	pvcontrol commands reboot "pvtest: $1" > /dev/null 2>&1
+	wait_for_down 30 && wait_for_target_ready "$1" "$cur" DONE > /dev/null 2>&1
+}
+
+set_phconf() {
+	put_file "$1" "$phconf" && reboot_and_wait "$2"
+}
+
+# $1: port the proxy accepts CONNECT to
+proxy_start() {
+	cat > "$tmp/tinyproxy.conf" <<- EOF
+		Port $port
+		Listen 0.0.0.0
+		Timeout 120
+		MaxClients 20
+		LogFile "$tmp/tinyproxy.log"
+		LogLevel Info
+		ConnectPort $1
+	EOF
+	tinyproxy -d -c "$tmp/tinyproxy.conf" > "$tmp/tinyproxy.out" 2>&1 &
+	proxy_pid=$!
+	wait_for_status "nc -z 127.0.0.1 $port" 0 10
+}
+
+proxy_stop() {
+	[ -n "$proxy_pid" ] || return 0
+	kill "$proxy_pid" 2> /dev/null
+	wait "$proxy_pid" 2> /dev/null
+	proxy_pid=
+}
+
+online() {
+	pvcontrol devmeta ls | jq -r '.["pantahub.online"]'
+}
+
+responsive() {
+	pvcontrol devmeta ls > /dev/null 2>&1 && echo "device responsive: yes" || echo "device responsive: no"
+}
+
+restore() {
+	set_phconf "$tmp/phconf" "after pantahub.config restore" \
+		|| echo "ERROR: could not restore pantahub.config" >&2
+	proxy_stop
+	rm -rf "$tmp"
+}
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+hub_host=$(conf_value PH_CREDS_HOST)
+hub_port=$(conf_value PH_CREDS_PORT)
+log="$(pv_storage_dir)/logs/current/pantavisor/pantavisor.log"
+tester_ip=$(pv_exec sh -c 'echo $SSH_CONNECTION' | cut -d' ' -f1)
+[ -n "$tester_ip" ] \
+	|| { echo "ERROR: could not tell the tester address the device sees" >&2; rm -rf "$tmp"; exit 1; }
+
+pv_fetch_file "$phconf" "$tmp/phconf" && [ -s "$tmp/phconf" ] \
+	|| { echo "ERROR: could not fetch pantahub.config" >&2; rm -rf "$tmp"; exit 1; }
+trap restore EXIT
+
+echo "== start proxy =="
+proxy_start "$hub_port" || { echo "ERROR: tinyproxy did not start: $(cat "$tmp/tinyproxy.out")" >&2; exit 1; }
+
+echo "== route Hub traffic through proxy and reboot =="
+{
+	grep -v '^PH_CREDS_PROXY_' "$tmp/phconf"
+	echo "PH_CREDS_PROXY_HOST=$tester_ip"
+	echo "PH_CREDS_PROXY_PORT=$port"
+	echo "PH_CREDS_PROXY_NOPROXYCONNECT=0"
+} > "$tmp/phconf.proxy"
+set_phconf "$tmp/phconf.proxy" "after reboot with proxy" \
+	|| { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
+
+echo "== device online through proxy =="
+wait_for_value online 1 120 \
+	|| { echo "ERROR: timeout waiting for pantahub.online" >&2; exit 1; }
+online
+grep -q "CONNECT $hub_host:$hub_port HTTP/1.1" "$tmp/tinyproxy.log" \
+	&& echo "Hub API tunnelled: yes" || echo "Hub API tunnelled: no"
+[ "$(pvcontrol devmeta ls | jq -r '.["pantahub.address"]')" = "$tester_ip:$port" ] \
+	&& echo "Hub address is proxy: yes" || echo "Hub address is proxy: no"
+
+echo "== post revision with a new object =="
+checkout="$tmp/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+dd if=/dev/urandom of=pv-example-app/proxy.bin bs=1M count=1 2> /dev/null
+pvr add pv-example-app/proxy.bin > /dev/null 2>&1
+pvr commit -m "add object downloaded through proxy" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "hub proxy forward test" "$PVTEST_HUB_URL/trails/$device_id")
+cd /
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+wait_for_target_ready "after posting revision" "$rev" "DONE|UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for revision $rev" >&2; exit 1; }
+echo "revision installed: yes"
+# signed object URLs point at storage hosts other than the Hub API
+grep 'CONNECT [^ ]* HTTP/1.1' "$tmp/tinyproxy.log" | grep -qv "CONNECT $hub_host:$hub_port " \
+	&& echo "object storage tunnelled: yes" || echo "object storage tunnelled: no"
+
+echo "== proxy refuses the tunnel =="
+proxy_stop
+# any port but the Hub's: tinyproxy answers 403 to the CONNECT
+proxy_start 8443 || { echo "ERROR: tinyproxy did not restart" >&2; exit 1; }
+wait_for_status "pv_exec grep -q \"could not tunnel to $hub_host:$hub_port through proxy $tester_ip:$port: proxy replied 'HTTP/1.[01] 403\" $log" 0 120 \
+	&& echo "refusal logged: yes" || echo "refusal logged: no"
+wait_for_value online 0 180 \
+	|| { echo "ERROR: timeout waiting for pantahub.online to drop" >&2; exit 1; }
+online
+responsive
+
+echo "== proxy down =="
+proxy_stop
+wait_for_status "pv_exec grep -q \"could not tunnel to $hub_host:$hub_port through proxy $tester_ip:$port: connection error\" $log" 0 120 \
+	&& echo "connection failure logged: yes" || echo "connection failure logged: no"
+responsive
+
+echo "== proxy back =="
+proxy_start "$hub_port" || { echo "ERROR: tinyproxy did not restart" >&2; exit 1; }
+wait_for_value online 1 180 \
+	|| { echo "ERROR: timeout waiting for pantahub.online to recover" >&2; exit 1; }
+online
+
+echo "== cleanup =="

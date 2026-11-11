@@ -24,8 +24,11 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <sys/socket.h>
 
 #include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent.h>
@@ -310,6 +313,12 @@ static void _feeder_done_cb(struct evhttp_request *req, void *ctx)
 		done_cb(req, ctx);
 }
 
+struct pv_rest_tunnel;
+static struct dl_list tunnels;
+static struct pv_rest_tunnel *_tunnel_find_by_req(struct evhttp_request *req);
+static struct evhttp_request *_tunnel_discard(struct pv_rest_tunnel *t);
+static void _tunnels_free(void);
+
 int pv_event_rest_init(void)
 {
 	if (rest_initialized)
@@ -317,6 +326,7 @@ int pv_event_rest_init(void)
 
 	dl_list_init(&pacers);
 	dl_list_init(&feeders);
+	dl_list_init(&tunnels);
 
 	mbedtls_x509_crt_init(&cacert);
 	mbedtls_ctr_drbg_init(&ctr_drbg);
@@ -359,6 +369,7 @@ void pv_event_rest_cleanup(void)
 	if (!rest_initialized)
 		return;
 
+	_tunnels_free();
 	dl_list_for_each_safe(p, ptmp, &pacers, struct pv_rest_pacer, list)
 		_pacer_free(p);
 	dl_list_for_each_safe(f, ftmp, &feeders, struct pv_rest_feeder, list)
@@ -377,7 +388,12 @@ void pv_event_rest_cancel_request(struct evhttp_request *req)
 {
 	struct pv_rest_pacer *pacer = _pacer_find_by_req(req);
 	struct pv_rest_feeder *feeder = _feeder_find_by_req(req);
+	struct pv_rest_tunnel *tunnel = _tunnel_find_by_req(req);
 
+	// still connecting through the proxy: req has no connection yet, so
+	// evhttp_cancel_request() just frees it
+	if (tunnel)
+		_tunnel_discard(tunnel);
 	if (pacer)
 		_pacer_free(pacer);
 	if (feeder)
@@ -453,17 +469,38 @@ static void _print_error_cb(enum evhttp_request_error error, void *ctx)
 
 #include <arpa/inet.h>
 
+static void _set_ph_address(const struct sockaddr *sa)
+{
+	const struct sockaddr_in6 *addr_in6;
+	const struct sockaddr_in *addr_in;
+	char ip[INET6_ADDRSTRLEN];
+	char addr[64];
+	int port;
+
+	if (sa->sa_family == AF_INET) {
+		addr_in = (const struct sockaddr_in *)sa;
+		inet_ntop(AF_INET, &(addr_in->sin_addr), ip, INET_ADDRSTRLEN);
+		port = ntohs(addr_in->sin_port);
+	} else if (sa->sa_family == AF_INET6) {
+		addr_in6 = (const struct sockaddr_in6 *)sa;
+		inet_ntop(AF_INET6, &(addr_in6->sin6_addr), ip,
+			  INET6_ADDRSTRLEN);
+		port = ntohs(addr_in6->sin6_port);
+	} else {
+		pv_log(WARN, "unsupported address family: %d", sa->sa_family);
+		return;
+	}
+
+	SNPRINTF_WTRUNC(addr, 64, "%s:%d", ip, port);
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_ADDRESS, addr);
+}
+
 static int _header_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(TRACE, "run event: cb=%p", (void *)_header_cb);
 
 	struct evhttp_connection *evcon;
 	const struct sockaddr *sa;
-	struct sockaddr_in6 *addr_in6;
-	struct sockaddr_in *addr_in;
-	char ip[INET6_ADDRSTRLEN];
-	char addr[64];
-	int port;
 
 	if (!req)
 		return 0;
@@ -474,24 +511,10 @@ static int _header_cb(struct evhttp_request *req, void *ctx)
 		return 0;
 	}
 
+	// tunnelled connections have no connect address; the tunnel sets it
 	sa = evhttp_connection_get_addr(evcon);
-
-	if (sa->sa_family == AF_INET) {
-		addr_in = (struct sockaddr_in *)sa;
-		inet_ntop(AF_INET, &(addr_in->sin_addr), ip, INET_ADDRSTRLEN);
-		port = ntohs(addr_in->sin_port);
-		SNPRINTF_WTRUNC(addr, 64, "%s:%d", ip, port);
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ADDRESS, addr);
-	} else if (sa->sa_family == AF_INET6) {
-		addr_in6 = (struct sockaddr_in6 *)sa;
-		inet_ntop(AF_INET6, &(addr_in6->sin6_addr), ip,
-			  INET6_ADDRSTRLEN);
-		port = ntohs(addr_in6->sin6_port);
-		SNPRINTF_WTRUNC(addr, 64, "%s:%d", ip, port);
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ADDRESS, addr);
-	} else {
-		pv_log(WARN, "unsupported address family: %d", sa->sa_family);
-	}
+	if (sa && sa->sa_family != AF_UNSPEC)
+		_set_ph_address(sa);
 
 	return 0;
 }
@@ -514,7 +537,7 @@ static void _setup_connection(struct evhttp_connection *evcon)
 	evhttp_connection_set_write_timeout_tv(evcon, &time);
 }
 
-static struct bufferevent *_new_tls_bev(const char *host)
+static struct bufferevent *_new_tls_bev(const char *host, evutil_socket_t fd)
 {
 	mbedtls_dyncontext *ssl;
 	struct bufferevent *bev;
@@ -528,7 +551,7 @@ static struct bufferevent *_new_tls_bev(const char *host)
 	mbedtls_ssl_set_hostname(ssl, host);
 
 	bev = bufferevent_mbedtls_socket_new(
-		pv_event_get_base(), -1, ssl, BUFFEREVENT_SSL_CONNECTING,
+		pv_event_get_base(), fd, ssl, BUFFEREVENT_SSL_CONNECTING,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (!bev) {
 		pv_log(ERROR, "could not create TLS bufferevent");
@@ -560,9 +583,355 @@ static int _make_request(struct evhttp_connection *evcon,
 	return 0;
 }
 
+// on failure, req belongs to libevent and pacer/feeder are still the caller's
+static int _start(struct evhttp_connection *evcon, struct bufferevent *bev,
+		  struct evhttp_request *req, enum evhttp_cmd_type op,
+		  const char *endpoint, struct pv_rest_pacer *pacer,
+		  struct pv_rest_feeder *feeder,
+		  void (*done_cb)(struct evhttp_request *, void *), void *ctx)
+{
+	// linked before sending, so a failure can find them
+	if (feeder)
+		_feeder_init(feeder, req, bev, done_cb, ctx);
+	if (pacer)
+		_pacer_init(pacer, req, bev, feeder ? _feeder_done_cb : done_cb,
+			    ctx);
+
+	return _make_request(evcon, req, op, endpoint);
+}
+
+enum pv_rest_proxy {
+	PV_REST_PROXY_NONE,
+	PV_REST_PROXY_CONNECT,
+	PV_REST_PROXY_REVERSE,
+};
+
+static enum pv_rest_proxy _proxy_mode(const char **host, int *port)
+{
+	const char *h = pv_config_get_str(PH_CREDS_PROXY_HOST);
+
+	if (!h || !strlen(h))
+		return PV_REST_PROXY_NONE;
+
+	*host = h;
+	*port = pv_config_get_int(PH_CREDS_PROXY_PORT);
+
+	if (pv_config_get_int(PH_CREDS_PROXY_NOPROXYCONNECT))
+		return PV_REST_PROXY_REVERSE;
+
+	return PV_REST_PROXY_CONNECT;
+}
+
+#define HTTP_PROXY_REPLY_MAX (8 * 1024)
+
+// HTTP CONNECT tunnel through PH_CREDS_PROXY_HOST, set up before the request
+struct pv_rest_tunnel {
+	struct evhttp_request *req; // key for the cancel lookup
+	enum evhttp_cmd_type op;
+	char host[256];
+	int port;
+	char *endpoint;
+	char proxy_host[256];
+	int proxy_port;
+	struct pv_rest_pacer *pacer;
+	struct pv_rest_feeder *feeder;
+	void (*done_cb)(struct evhttp_request *, void *); // real done_cb
+	void *ctx;
+	struct bufferevent *bev; // plain connection to the proxy
+	int attempts;
+	bool got_status;
+	size_t consumed; // reply bytes read so far
+	struct dl_list list;
+};
+
+static struct pv_rest_tunnel *_tunnel_find_by_req(struct evhttp_request *req)
+{
+	struct pv_rest_tunnel *t;
+
+	dl_list_for_each(t, &tunnels, struct pv_rest_tunnel, list)
+	{
+		if (t->req == req)
+			return t;
+	}
+
+	return NULL;
+}
+
+// frees the tunnel only; req, pacer and feeder stay with the caller
+static void _tunnel_free(struct pv_rest_tunnel *t)
+{
+	if (t->bev)
+		bufferevent_free(t->bev);
+	dl_list_del(&t->list);
+	free(t->endpoint);
+	free(t);
+}
+
+// frees the tunnel with its pacer and feeder; returns req, still to be freed
+static struct evhttp_request *_tunnel_discard(struct pv_rest_tunnel *t)
+{
+	struct evhttp_request *req = t->req;
+
+	if (t->pacer)
+		_pacer_free(t->pacer);
+	if (t->feeder)
+		_feeder_free(t->feeder);
+	_tunnel_free(t);
+
+	return req;
+}
+
+static void _tunnels_free(void)
+{
+	struct pv_rest_tunnel *t, *tmp;
+
+	dl_list_for_each_safe(t, tmp, &tunnels, struct pv_rest_tunnel, list)
+		evhttp_request_free(_tunnel_discard(t));
+}
+
+static void _tunnel_fail(struct pv_rest_tunnel *t, const char *reason)
+{
+	void (*done_cb)(struct evhttp_request *, void *) = t->done_cb;
+	void *ctx = t->ctx;
+
+	pv_log(WARN, "could not tunnel to %s:%d through proxy %s:%d: %s",
+	       t->host, t->port, t->proxy_host, t->proxy_port, reason);
+
+	evhttp_request_free(_tunnel_discard(t));
+
+	// same contract as a libevent connection failure
+	if (done_cb)
+		done_cb(NULL, ctx);
+}
+
+static void _tunnel_read_cb(struct bufferevent *bev, void *arg);
+static void _tunnel_event_cb(struct bufferevent *bev, short what, void *arg);
+
+static int _tunnel_open(struct pv_rest_tunnel *t)
+{
+	int timeout = pv_config_get_int(PH_LIBEVENT_HTTP_TIMEOUT);
+	const struct timeval tv = { timeout, 0 };
+
+	t->got_status = false;
+	t->consumed = 0;
+
+	// deferred, so connect errors never run inside this call
+	t->bev = bufferevent_socket_new(pv_event_get_base(), -1,
+					BEV_OPT_CLOSE_ON_FREE |
+						BEV_OPT_DEFER_CALLBACKS);
+	if (!t->bev) {
+		pv_log(ERROR, "could not create proxy bufferevent");
+		return -1;
+	}
+
+	bufferevent_setcb(t->bev, _tunnel_read_cb, NULL, _tunnel_event_cb, t);
+	bufferevent_set_timeouts(t->bev, &tv, &tv);
+
+	if (bufferevent_socket_connect_hostname(t->bev, NULL, AF_INET,
+						t->proxy_host, t->proxy_port)) {
+		pv_log(ERROR, "could not connect to proxy %s:%d", t->proxy_host,
+		       t->proxy_port);
+		bufferevent_free(t->bev);
+		t->bev = NULL;
+		return -1;
+	}
+
+	pv_log(TRACE, "connecting to proxy %s:%d for %s:%d", t->proxy_host,
+	       t->proxy_port, t->host, t->port);
+
+	return 0;
+}
+
+static void _tunnel_ready(struct pv_rest_tunnel *t)
+{
+	struct sockaddr_storage ss;
+	socklen_t len = sizeof(ss);
+	struct evhttp_connection *evcon;
+	struct bufferevent *bev;
+	evutil_socket_t fd;
+
+	fd = bufferevent_getfd(t->bev);
+	if (!getpeername(fd, (struct sockaddr *)&ss, &len))
+		_set_ph_address((struct sockaddr *)&ss);
+
+	// hand the fd over to TLS without closing it
+	bufferevent_setfd(t->bev, -1);
+	bufferevent_free(t->bev);
+	t->bev = NULL;
+
+	bev = _new_tls_bev(t->host, fd);
+	if (!bev) {
+		close(fd);
+		_tunnel_fail(t, "could not start TLS");
+		return;
+	}
+
+	evcon = evhttp_connection_base_bufferevent_reuse_new(
+		pv_event_get_base(), NULL, bev);
+	if (!evcon) {
+		bufferevent_free(bev);
+		_tunnel_fail(t, "could not create HTTP connection");
+		return;
+	}
+	_setup_connection(evcon);
+	// libevent cannot reconnect a connection it did not open
+	evhttp_connection_set_retries(evcon, 0);
+
+	pv_log(TRACE, "tunnel to %s:%d through proxy %s:%d ready", t->host,
+	       t->port, t->proxy_host, t->proxy_port);
+
+	if (_start(evcon, bev, t->req, t->op, t->endpoint, t->pacer, t->feeder,
+		   t->done_cb, t->ctx)) {
+		void (*done_cb)(struct evhttp_request *, void *) = t->done_cb;
+		void *ctx = t->ctx;
+
+		// libevent owns req now, see _send()
+		if (t->pacer)
+			_pacer_free(t->pacer);
+		if (t->feeder)
+			_feeder_free(t->feeder);
+		evhttp_connection_free(evcon);
+		_tunnel_free(t);
+		if (done_cb)
+			done_cb(NULL, ctx);
+		return;
+	}
+
+	_tunnel_free(t);
+}
+
+static void _tunnel_read_cb(struct bufferevent *bev, void *arg)
+{
+	struct pv_rest_tunnel *t = arg;
+	struct evbuffer *in = bufferevent_get_input(bev);
+	char reason[128];
+	char *line;
+	size_t n;
+	int code;
+
+	while ((line = evbuffer_readln(in, &n, EVBUFFER_EOL_CRLF))) {
+		t->consumed += n + 2;
+
+		if (!t->got_status) {
+			if (sscanf(line, "HTTP/1.%*d %d", &code) != 1 ||
+			    code < 200 || code > 299) {
+				SNPRINTF_WTRUNC(reason, sizeof(reason),
+						"proxy replied '%s'", line);
+				free(line);
+				_tunnel_fail(t, reason);
+				return;
+			}
+			t->got_status = true;
+			free(line);
+			continue;
+		}
+
+		free(line);
+
+		// the empty line ends the reply; TLS has not started yet, so
+		// nothing else can follow it
+		if (!n) {
+			if (evbuffer_get_length(in)) {
+				_tunnel_fail(t, "unexpected data after reply");
+				return;
+			}
+			_tunnel_ready(t);
+			return;
+		}
+	}
+
+	if (t->consumed + evbuffer_get_length(in) > HTTP_PROXY_REPLY_MAX)
+		_tunnel_fail(t, "reply too long");
+}
+
+static void _tunnel_event_cb(struct bufferevent *bev, short what, void *arg)
+{
+	struct pv_rest_tunnel *t = arg;
+	const char *reason;
+
+	if (what & BEV_EVENT_CONNECTED) {
+		evbuffer_add_printf(bufferevent_get_output(bev),
+				    "CONNECT %s:%d HTTP/1.1\r\n"
+				    "Host: %s:%d\r\n"
+				    "User-Agent: %s\r\n"
+				    "\r\n",
+				    t->host, t->port, t->host, t->port,
+				    pv_user_agent);
+		bufferevent_enable(bev, EV_READ | EV_WRITE);
+		return;
+	}
+
+	if (what & BEV_EVENT_TIMEOUT)
+		reason = "timeout";
+	else if (what & BEV_EVENT_EOF)
+		reason = "connection closed by proxy";
+	else
+		reason = "connection error";
+
+	// only a connection that got no reply yet is worth another attempt
+	if (!t->consumed &&
+	    t->attempts < pv_config_get_int(PH_LIBEVENT_HTTP_RETRIES)) {
+		t->attempts++;
+		pv_log(DEBUG, "proxy %s:%d: %s, retrying (%d)", t->proxy_host,
+		       t->proxy_port, reason, t->attempts);
+		bufferevent_free(t->bev);
+		t->bev = NULL;
+		if (!_tunnel_open(t))
+			return;
+	}
+
+	_tunnel_fail(t, reason);
+}
+
+static int _tunnel_new(enum evhttp_cmd_type op, const char *host, int port,
+		       const char *endpoint, const char *proxy_host,
+		       int proxy_port, struct evhttp_request *req,
+		       struct pv_rest_pacer *pacer,
+		       struct pv_rest_feeder *feeder,
+		       void (*done_cb)(struct evhttp_request *, void *),
+		       void *ctx)
+{
+	struct pv_rest_tunnel *t;
+
+	t = calloc(1, sizeof(*t));
+	if (!t) {
+		pv_log(ERROR, "could not allocate proxy tunnel");
+		return -1;
+	}
+
+	t->endpoint = strdup(endpoint);
+	if (!t->endpoint) {
+		free(t);
+		return -1;
+	}
+
+	t->req = req;
+	t->op = op;
+	SNPRINTF_WTRUNC(t->host, sizeof(t->host), "%s", host);
+	t->port = port;
+	SNPRINTF_WTRUNC(t->proxy_host, sizeof(t->proxy_host), "%s", proxy_host);
+	t->proxy_port = proxy_port;
+	t->pacer = pacer;
+	t->feeder = feeder;
+	t->done_cb = done_cb;
+	t->ctx = ctx;
+	dl_list_add(&tunnels, &t->list);
+
+	if (_tunnel_open(t)) {
+		dl_list_del(&t->list);
+		free(t->endpoint);
+		free(t);
+		return -1;
+	}
+
+	return 0;
+}
+
+// hub: endpoint on PH_CREDS_HOST, the only kind a reverse proxy serves
 static int _send(enum evhttp_cmd_type op, const char *host, int port,
-		 const char *endpoint, const char *autotok, const char *token,
-		 const char *body, int body_fd, off_t body_size,
+		 const char *endpoint, bool hub, const char *autotok,
+		 const char *token, const char *body, int body_fd,
+		 off_t body_size,
 		 void (*chunk_cb)(struct evhttp_request *, void *),
 		 void (*done_cb)(struct evhttp_request *, void *), void *ctx,
 		 struct evhttp_request **out_req,
@@ -574,9 +943,21 @@ static int _send(enum evhttp_cmd_type op, const char *host, int port,
 	struct evhttp_connection *evcon = NULL;
 	struct evhttp_request *req = NULL;
 	void (*req_done_cb)(struct evhttp_request *, void *) = done_cb;
+	const char *proxy_host = NULL;
+	int proxy_port = 0;
+	enum pv_rest_proxy proxy;
 
 	if (!pv_event_get_base())
 		goto error;
+
+	proxy = _proxy_mode(&proxy_host, &proxy_port);
+	if (proxy == PV_REST_PROXY_REVERSE) {
+		if (hub) {
+			host = proxy_host;
+			port = proxy_port;
+		}
+		proxy = PV_REST_PROXY_NONE;
+	}
 
 	pv_log(TRACE, "%s %s HTTP/1.1", _op_string(op), endpoint);
 
@@ -614,18 +995,6 @@ static int _send(enum evhttp_cmd_type op, const char *host, int port,
 		req_done_cb = _pacer_done_cb;
 	else if (feeder)
 		req_done_cb = _feeder_done_cb;
-
-	bev = _new_tls_bev(host);
-	if (!bev)
-		goto error;
-
-	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
-						       NULL, bev, host, port);
-	if (!evcon) {
-		pv_log(ERROR, "evhttp_connection_base_bufferevent_new failed");
-		goto error;
-	}
-	_setup_connection(evcon);
 
 	req = evhttp_request_new(req_done_cb, ctx);
 	if (!req) {
@@ -691,18 +1060,31 @@ static int _send(enum evhttp_cmd_type op, const char *host, int port,
 			    "application/octet-stream");
 	}
 
-	// linked before sending, so a failure can find them
-	if (feeder)
-		_feeder_init(feeder, req, bev, done_cb, ctx);
-	if (pacer)
-		_pacer_init(pacer, req, bev, feeder ? _feeder_done_cb : done_cb,
-			    ctx);
+	if (proxy == PV_REST_PROXY_CONNECT) {
+		if (_tunnel_new(op, host, port, endpoint, proxy_host,
+				proxy_port, req, pacer, feeder, done_cb, ctx))
+			goto error;
+	} else {
+		bev = _new_tls_bev(host, -1);
+		if (!bev)
+			goto error;
 
-	if (_make_request(evcon, req, op, endpoint)) {
-		// libevent frees req if its uri strdup fails but leaks it if the
-		// connect setup fails; we cannot tell which, so never free it
-		req = NULL;
-		goto error;
+		evcon = evhttp_connection_base_bufferevent_new(
+			pv_event_get_base(), NULL, bev, host, port);
+		if (!evcon) {
+			pv_log(ERROR,
+			       "evhttp_connection_base_bufferevent_new failed");
+			goto error;
+		}
+		_setup_connection(evcon);
+
+		if (_start(evcon, bev, req, op, endpoint, pacer, feeder,
+			   done_cb, ctx)) {
+			// libevent frees req if its uri strdup fails but leaks it if the
+			// connect setup fails; we cannot tell which, so never free it
+			req = NULL;
+			goto error;
+		}
 	}
 
 	pv_log(TRACE, "chunk_cb=%p done_cb=%p", (void *)chunk_cb,
@@ -738,9 +1120,9 @@ int pv_event_rest_send_by_components(
 	struct evhttp_request **out_req, size_t rate_limit_bytes_per_sec,
 	off_t resume_from)
 {
-	return _send(op, host, port, endpoint, autotok, token, body, -1, 0,
-		     chunk_cb, done_cb, ctx, out_req, rate_limit_bytes_per_sec,
-		     resume_from);
+	return _send(op, host, port, endpoint, true, autotok, token, body, -1,
+		     0, chunk_cb, done_cb, ctx, out_req,
+		     rate_limit_bytes_per_sec, resume_from);
 }
 
 static int _parse_url(const char *url, char *host, size_t host_size, int *port,
@@ -810,7 +1192,7 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 		       sizeof(endpoint)))
 		return -1;
 
-	return _send(op, host, port, endpoint, NULL, NULL, NULL, -1, 0,
+	return _send(op, host, port, endpoint, false, NULL, NULL, NULL, -1, 0,
 		     chunk_cb, done_cb, ctx, out_req, rate_limit_bytes_per_sec,
 		     resume_from);
 }
@@ -834,8 +1216,8 @@ int pv_event_rest_send_file_by_url(const char *url, const char *path,
 		return -1;
 	}
 
-	return _send(EVHTTP_REQ_PUT, host, port, endpoint, NULL, NULL, NULL, fd,
-		     size, NULL, done_cb, ctx, out_req, 0, 0);
+	return _send(EVHTTP_REQ_PUT, host, port, endpoint, false, NULL, NULL,
+		     NULL, fd, size, NULL, done_cb, ctx, out_req, 0, 0);
 }
 
 int _recv_status_line(struct evhttp_request *req)

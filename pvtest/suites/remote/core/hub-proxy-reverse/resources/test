@@ -1,0 +1,98 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+# The run's Hub plays the reverse proxy: it serves the API with a certificate
+# for its own name. ingress.pantahub.com serves a self-signed certificate and
+# answers 404 to everything, so whichever side points at it must never answer.
+phconf=/run/pantavisor/pv/phconfig/pantahub.config
+decoy=ingress.pantahub.com
+tmp=$(mktemp -d)
+
+conf_value() {
+	pvcontrol conf ls | jq -r --arg k "$1" '.[] | select(.key == $k) | .value | select(. != "(null)")'
+}
+
+put_file() {
+	local staged
+	staged=$(pv_stage_file "$1") || return 1
+	pv_exec cp "$staged" "$2" || return 1
+	pv_unstage_file "$staged"
+}
+
+reboot_and_wait() {
+	local cur
+	cur=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+	pvcontrol commands reboot "pvtest: $1" > /dev/null 2>&1
+	wait_for_down 30 && wait_for_target_ready "$1" "$cur" DONE > /dev/null 2>&1
+}
+
+# $1 PH_CREDS_HOST, $2 PH_CREDS_PROXY_HOST, $3 reboot label
+set_hosts() {
+	{
+		grep -v -e '^PH_CREDS_HOST=' -e '^PH_CREDS_PORT=' -e '^PH_CREDS_PROXY_' "$tmp/phconf"
+		echo "PH_CREDS_HOST=$1"
+		echo "PH_CREDS_PORT=$hub_port"
+		echo "PH_CREDS_PROXY_HOST=$2"
+		echo "PH_CREDS_PROXY_PORT=$hub_port"
+		echo "PH_CREDS_PROXY_NOPROXYCONNECT=1"
+	} > "$tmp/phconf.proxy"
+	put_file "$tmp/phconf.proxy" "$phconf" && reboot_and_wait "$3"
+}
+
+online() {
+	pvcontrol devmeta ls | jq -r '.["pantahub.online"]'
+}
+
+restore() {
+	put_file "$tmp/phconf" "$phconf" && reboot_and_wait "after pantahub.config restore" \
+		|| echo "ERROR: could not restore pantahub.config" >&2
+	rm -rf "$tmp"
+}
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+hub_host=$(conf_value PH_CREDS_HOST)
+hub_port=$(conf_value PH_CREDS_PORT)
+log="$(pv_storage_dir)/logs/current/pantavisor/pantavisor.log"
+
+pv_fetch_file "$phconf" "$tmp/phconf" && [ -s "$tmp/phconf" ] \
+	|| { echo "ERROR: could not fetch pantahub.config" >&2; rm -rf "$tmp"; exit 1; }
+trap restore EXIT
+
+echo "== Hub as reverse proxy, decoy as Hub host =="
+# online only if no API request goes to PH_CREDS_HOST
+set_hosts "$decoy" "$hub_host" "after reboot with Hub as proxy" \
+	|| { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
+wait_for_value online 1 120 \
+	|| { echo "ERROR: timeout waiting for pantahub.online" >&2; exit 1; }
+online
+pv_exec grep -qE "did not get any response|returned 404|failed \(code=404" "$log" \
+	&& echo "failed requests: yes" || echo "failed requests: no"
+
+echo "== post revision with a new object =="
+# signed object URLs are not served by the API host, so this only installs if
+# objects bypass the reverse proxy
+checkout="$tmp/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+dd if=/dev/urandom of=pv-example-app/proxy.bin bs=1M count=1 2> /dev/null
+pvr add pv-example-app/proxy.bin > /dev/null 2>&1
+pvr commit -m "add object downloaded past the reverse proxy" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "hub proxy reverse test" "$PVTEST_HUB_URL/trails/$device_id")
+cd /
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+wait_for_target_ready "after posting revision" "$rev" "DONE|UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for revision $rev" >&2; exit 1; }
+echo "revision installed: yes"
+
+echo "== decoy as reverse proxy =="
+# the proxy certificate is checked against PH_CREDS_PROXY_HOST: TLS fails
+# before the decoy can answer 404
+set_hosts "$hub_host" "$decoy" "after reboot with decoy as proxy" \
+	|| { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
+wait_for_value "[ \$(pv_exec grep -cE \"did not get any response|returned 404\" $log) -ge 3 ] && echo ok" "ok" 120 \
+	|| { echo "ERROR: timeout waiting for failed Hub requests" >&2; exit 1; }
+online
+pv_exec grep -q 'returned 404' "$log" && echo "404 received: yes" || echo "404 received: no"
+
+echo "== cleanup =="

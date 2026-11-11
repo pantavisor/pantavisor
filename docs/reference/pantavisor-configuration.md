@@ -55,9 +55,9 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_CREDS_ID` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) device ID |
 | `PH_CREDS_PORT` | port | `443` | set port for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_CREDS_PRN` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) device PRN |
-| `PH_CREDS_PROXY_HOST` | IP or hostname | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) proxy address |
-| `PH_CREDS_PROXY_NOPROXYCONNECT` | `0` or `1` | `0` | disable proxy communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
-| `PH_CREDS_PROXY_PORT` | port | `3218` | set port for proxy communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_CREDS_PROXY_HOST` | IP or hostname | empty | set the [Pantacor Hub proxy](../overview/remote-control.md#proxy) address |
+| `PH_CREDS_PROXY_NOPROXYCONNECT` | `0` or `1` | `0` | talk to either forward or reverse [proxy](../overview/remote-control.md#proxy) |
+| `PH_CREDS_PROXY_PORT` | port | `3218` | set the [Pantacor Hub proxy](../overview/remote-control.md#proxy) port |
 | `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials secret |
 | `PH_CREDS_TYPE` | `builtin` or `ext-<handler>` | `builtin` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials type; `ext-<handler>` registers the device by running `/btools/ext-<handler>.register` |
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) sent when the device registers at [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |

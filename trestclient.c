@@ -203,6 +203,16 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	int proxy_port = pv_config_get_int(PH_CREDS_PROXY_PORT);
 	int noproxyconnect = pv_config_get_int(PH_CREDS_PROXY_NOPROXYCONNECT);
 
+	if (proxy_host && !strlen(proxy_host))
+		proxy_host = NULL;
+
+	// a reverse proxy is talked to as if it were the Hub
+	if (proxy_host && noproxyconnect) {
+		host = proxy_host;
+		port = proxy_port;
+		proxy_host = NULL;
+	}
+
 	if (!strcmp(type, "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
 	} else if (strlen(type) >= 4 && !strncmp(type, "ext-", 4)) {
@@ -279,11 +289,10 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		goto err;
 	}
 
-	// a proxy -> dont use tls unless proxyconnect configured
-	if (proxy_host) {
+	// plain connection to the proxy, CONNECT, then TLS to the Hub
+	if (proxy_host)
 		trest_set_proxy_connect(client, proxy_host, proxy_port, false,
-					!noproxyconnect);
-	}
+					true);
 
 	pv_ph_free_certs(cafiles);
 	return client;
