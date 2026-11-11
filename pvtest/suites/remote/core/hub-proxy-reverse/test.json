@@ -1,0 +1,19 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Hub traffic through a reverse proxy (TLS to the proxy)",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1 PV_SECUREBOOT_MODE=disabled",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

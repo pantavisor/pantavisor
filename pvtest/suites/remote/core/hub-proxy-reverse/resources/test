@@ -1,0 +1,151 @@
+# The run's Hub plays the reverse proxy: it serves the API with a certificate
+# for its own name. A TLS server in the tester with a self-signed certificate
+# plays a decoy proxy: it must see no request past the handshake. The Hub host
+# comes from env, which pantahub.config cannot override. Hosts vary per Hub,
+# so only yes/no reaches the golden.
+phconf=/run/pantavisor/pv/phconfig/pantahub.config
+decoy_port=
+tmp=$(mktemp -d)
+decoy_pid=
+
+conf_value() {
+	pvcontrol conf ls | jq -r --arg k "$1" '.[] | select(.key == $k) | .value | select(. != "(null)")'
+}
+
+put_file() {
+	local staged
+	staged=$(pv_stage_file "$1") || return 1
+	pv_exec cp "$staged" "$2" || return 1
+	pv_unstage_file "$staged"
+}
+
+reboot_and_wait() {
+	local cur
+	cur=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+	pvcontrol commands reboot "pvtest: $1" > /dev/null 2>&1
+	wait_for_down 30 && wait_for_target_ready "$1" "$cur" DONE > /dev/null 2>&1 || return 1
+	# the base is a locals revision: it boots in local mode
+	[ "$(pvcontrol devmeta ls | jq -r '.["pantavisor.mode"]')" = remote ] \
+		|| pvcontrol commands go-remote > /dev/null 2>&1
+}
+
+# $1 PH_CREDS_PROXY_HOST, $2 PH_CREDS_PROXY_PORT, $3 reboot label
+set_proxy() {
+	{
+		grep -v '^PH_CREDS_PROXY_' "$tmp/phconf"
+		echo "PH_CREDS_PROXY_HOST=$1"
+		echo "PH_CREDS_PROXY_PORT=$2"
+		echo "PH_CREDS_PROXY_NOPROXYCONNECT=1"
+	} > "$tmp/phconf.proxy"
+	put_file "$tmp/phconf.proxy" "$phconf" && reboot_and_wait "$3"
+}
+
+# a port nothing listens on yet; starts at a pid-derived offset so runs
+# sharing a host (native tester) pick different ones
+free_port() {
+	local p=$((20000 + $$ % 10000)) i=0
+	while [ $i -lt 100 ]; do
+		nc -z 127.0.0.1 $p > /dev/null 2>&1 || { echo $p; return 0; }
+		p=$((p + 1))
+		i=$((i + 1))
+	done
+	return 1
+}
+
+decoy_start() {
+	rm -f "$tmp/decoy.out" "$tmp/decoy.in"
+	if nc -z 127.0.0.1 "$decoy_port" > /dev/null 2>&1; then
+		echo "port $decoy_port already in use" > "$tmp/decoy.out"
+		return 1
+	fi
+	mkfifo "$tmp/decoy.in"
+	openssl s_server -accept "$decoy_port" -cert "$tmp/decoy.crt" \
+		-key "$tmp/decoy.key" -msg < "$tmp/decoy.in" > "$tmp/decoy.out" 2>&1 &
+	decoy_pid=$!
+	# keep stdin open, s_server stops on EOF
+	exec 3> "$tmp/decoy.in"
+	# listening is not enough: the listener must be ours
+	if ! wait_for_status "nc -z 127.0.0.1 $decoy_port > /dev/null 2>&1" 0 10 \
+		|| ! kill -0 "$decoy_pid" 2> /dev/null; then
+		decoy_stop
+		return 1
+	fi
+}
+
+decoy_stop() {
+	[ -n "$decoy_pid" ] || return 0
+	kill "$decoy_pid" 2> /dev/null
+	wait "$decoy_pid" 2> /dev/null
+	exec 3>&-
+	decoy_pid=
+}
+
+handshakes() {
+	grep -c 'ClientHello' "$tmp/decoy.out"
+}
+
+# s_server prints the decrypted data it receives
+requests() {
+	grep -cE '^(GET|POST|PUT|PATCH|DELETE|HEAD) ' "$tmp/decoy.out"
+}
+
+online() {
+	pvcontrol devmeta ls | jq -r '.["pantahub.online"]'
+}
+
+restore() {
+	decoy_stop
+	put_file "$tmp/phconf" "$phconf" && reboot_and_wait "after pantahub.config restore" \
+		|| echo "ERROR: could not restore pantahub.config" >&2
+	rm -rf "$tmp"
+}
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+hub_host=$(conf_value PH_CREDS_HOST)
+hub_port=$(conf_value PH_CREDS_PORT)
+tester_ip=$(pv_exec sh -c 'echo $SSH_CONNECTION' | cut -d' ' -f1)
+
+decoy_port=$(free_port) \
+	|| { echo "ERROR: no free port for the decoy" >&2; rm -rf "$tmp"; exit 1; }
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=pvtest-decoy \
+	-keyout "$tmp/decoy.key" -out "$tmp/decoy.crt" > /dev/null 2>&1 \
+	|| { echo "ERROR: could not create decoy certificate" >&2; rm -rf "$tmp"; exit 1; }
+pv_fetch_file "$phconf" "$tmp/phconf" && [ -s "$tmp/phconf" ] \
+	|| { echo "ERROR: could not fetch pantahub.config" >&2; rm -rf "$tmp"; exit 1; }
+trap restore EXIT
+
+echo "== decoy as reverse proxy =="
+# runs first: a reboot onto a not yet DONE revision needs the Hub to commit it.
+# The proxy certificate is checked: TLS fails before any request is sent
+decoy_start || { echo "ERROR: decoy did not start: $(cat "$tmp/decoy.out")" >&2; exit 1; }
+set_proxy "$tester_ip" "$decoy_port" "after reboot with decoy as proxy" \
+	|| { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
+wait_for_value '[ "$(handshakes)" -ge 3 ] && echo ok' "ok" 120 \
+	|| { echo "ERROR: timeout waiting for handshakes at the decoy" >&2; exit 1; }
+online
+[ "$(requests)" -eq 0 ] && echo "request past handshake: no" || echo "request past handshake: yes"
+decoy_stop
+
+echo "== Hub as reverse proxy =="
+set_proxy "$hub_host" "$hub_port" "after reboot with Hub as proxy" \
+	|| { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
+wait_for_value online 1 120 \
+	|| { echo "ERROR: timeout waiting for pantahub.online" >&2; exit 1; }
+online
+
+echo "== post revision with a new object =="
+# objects come from their signed URLs, not through the reverse proxy
+checkout="$tmp/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+dd if=/dev/urandom of=pv-example-app/proxy.bin bs=1M count=1 2> /dev/null
+pvr add pv-example-app/proxy.bin > /dev/null 2>&1
+pvr commit -m "add object downloaded past the reverse proxy" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "hub proxy reverse test" "$PVTEST_HUB_URL/trails/$device_id")
+cd /
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+wait_for_target_ready "after posting revision" "$rev" "DONE|UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for revision $rev" >&2; exit 1; }
+echo "revision installed: yes"
+
+echo "== cleanup =="

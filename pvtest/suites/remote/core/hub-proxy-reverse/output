@@ -1,0 +1,8 @@
+== decoy as reverse proxy ==
+0
+request past handshake: no
+== Hub as reverse proxy ==
+1
+== post revision with a new object ==
+revision installed: yes
+== cleanup ==

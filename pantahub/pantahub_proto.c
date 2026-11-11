@@ -443,19 +443,13 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 			     void (*cb)(struct evhttp_request *, void *),
 			     void *arg, struct evhttp_request **out_req)
 {
-	char *host;
-	int port, res;
+	int res;
 
-	host = pv_config_get_str(PH_CREDS_PROXY_HOST);
-	port = pv_config_get_int(PH_CREDS_PROXY_PORT);
-	if (!host) {
-		host = pv_config_get_str(PH_CREDS_HOST);
-		port = pv_config_get_int(PH_CREDS_PORT);
-	}
-
-	res = pv_event_rest_send_by_components(op, host, port, endpoint,
-					       autotok, token, body, NULL, cb,
-					       arg, out_req, 0, 0);
+	res = pv_event_rest_send_by_components(op,
+					       pv_config_get_str(PH_CREDS_HOST),
+					       pv_config_get_int(PH_CREDS_PORT),
+					       endpoint, autotok, token, body,
+					       NULL, cb, arg, out_req, 0, 0);
 	_count_request(res);
 
 	return res;
