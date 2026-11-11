@@ -174,10 +174,6 @@ wait_for_mode remote
 
 echo "== lock and reset first Hub id identity (Hub revision) =="
 lock_and_reset "$device_a"
-# the device only sees the hint at its next login
-pvcontrol commands reboot "pvtest: log in again to get the hint" > /dev/null 2>&1
-wait_for_down 30 \
-    || { echo "ERROR: pv-ctrl never went down after reboot" >&2; exit 1; }
 
 echo "== identity reset transition (Hub revision) =="
 wait_for_reset_transition 1
