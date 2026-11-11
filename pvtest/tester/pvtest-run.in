@@ -576,6 +576,11 @@ handle_pre_remote_reset_identity() {
 		pvtest_log ERROR "pvcontrol cmd reset-identity failed: $pv_ctrl_out"
 		return 1
 	fi
+	# pv-ctrl rejects further commands with 503 until the controller processes this one
+	if ! wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.claimed\"'" "0" 30; then
+		pvtest_log ERROR "pantahub.claimed did not become 0 after reset-identity"
+		return 1
+	fi
 	pre_reset_device="$dev"
 	return 0
 }
