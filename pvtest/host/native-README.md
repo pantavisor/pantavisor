@@ -32,13 +32,19 @@ apk add bash jq curl openssh-client coreutils sed util-linux-misc flock tar \
         findutils grep gawk diffutils
 ```
 
+The `remote/core/hub-proxy-*` tests also need:
+
+```sh
+apk add tinyproxy openssl netcat-openbsd
+```
+
 ### Debian / Ubuntu
 
 On a Debian or Ubuntu host:
 
 ```sh
 apt install bash jq curl openssh-client coreutils sed util-linux tar \
-            findutils grep gawk diffutils
+            findutils grep gawk diffutils tinyproxy-bin openssl netcat-openbsd
 ```
 
 ## Host setup

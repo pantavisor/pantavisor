@@ -57,11 +57,14 @@ The client state can be consulted at any moment via [device metadata](../referen
 * **report**: an update finished and device will continue uploading devmeta, downloading usrmeta while reporting its update status.
 * **idle**: device has checked all objects and state JSON is in the cloud. This is where the device will spend most of its time, uploading devmeta, downloading usrmeta and waiting for new updates.
 * **prep download**: a new update (same as a new state JSON) has been received and the device will now download the object metadata information for each of its objects. This includes object size, sha and download URL.
-* **download**: all object metadata is now on memory and we can proceed dowloading all objects that are not already installed in disk. Then we will continue with progressing to the new revision.
+* **download**: all object metadata is now on memory and we can proceed dowloading all objects that are not already installed in disk (for a sense of scale, see [meta-pantavisor's firmware size guide](https://docs.pantavisor.io/development/meta-pantavisor/getting-started/solutions/firmware-size)). Then we will continue with progressing to the new revision.
 
-Only object hashes that changed are downloaded — for a sense of scale, see
-[meta-pantavisor's firmware-size guide](https://docs.pantavisor.io/development/meta-pantavisor/getting-started/solutions/firmware-size)
-for an illustrative example (not a measured benchmark).
+#### Proxy
+
+Setting `PH_CREDS_PROXY_HOST` and `PH_CREDS_PROXY_PORT` [configuration keys](../reference/pantavisor-configuration.md#summary) sends Hub traffic through a proxy. Which kind of proxy depends on `PH_CREDS_PROXY_NOPROXYCONNECT`:
+
+* **Forward proxy** (`0`, the default): the device opens a plain TCP connection to the proxy and asks with an HTTP `CONNECT` to open a tunnel to the Hub. TLS then runs end to end through that tunnel.
+* **Reverse proxy** (`1`): the device talks TLS straight to the proxy as if it were the Hub. Exception being object downloads and uploads, which go directly to the storage addresses the Hub hands out.
 
 ## Other Remote Controllers
 

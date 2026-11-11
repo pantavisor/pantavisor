@@ -1,0 +1,18 @@
+== start proxy ==
+== route Hub traffic through proxy and reboot ==
+== device online through proxy ==
+1
+Hub API tunnelled: yes
+Hub address is proxy: yes
+== post revision with a new object ==
+revision installed: yes
+object storage tunnelled: yes
+== proxy refuses the tunnel ==
+tunnel refused: yes
+0
+device responsive: yes
+== proxy down ==
+device responsive: yes
+== proxy back ==
+1
+== cleanup ==
