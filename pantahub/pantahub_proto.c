@@ -505,6 +505,7 @@ out:
 
 static int _recv_buffer_status(struct evhttp_request *req, char **body)
 {
+	struct pantavisor *pv = pv_get_instance();
 	int res;
 
 	res = pv_event_rest_recv_buffer(req, body, BODY_MAX_LEN);
@@ -520,12 +521,14 @@ static int _recv_buffer_status(struct evhttp_request *req, char **body)
 	if (res == 401) {
 		pv_log(WARN, "unauthorized");
 		_free_token();
-	} else if (res == 403 &&
+	} else if (res == 403 && !pv->update &&
 		   timer_current_state(&session.forbidden_relogin).fin) {
 		pv_log(WARN, "forbidden. Logging in again...");
 		timer_start(&session.forbidden_relogin,
 			    FORBIDDEN_RELOGIN_WINDOW, 0, RELATIV_TIMER);
 		_free_token();
+	} else if (res == 403 && pv->update) {
+		pv_log(DEBUG, "forbidden during update");
 	} else if (res != 200) {
 		pv_log(WARN, "returned %d", res);
 	}
@@ -799,11 +802,6 @@ void pv_pantahub_proto_put_identity_reset_confirm()
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, NULL, session.token, NULL,
 			       _recv_put_identity_reset_confirm_cb, NULL, NULL))
 		session.put_identity_reset_confirm_active = 1;
-}
-
-void pv_pantahub_proto_logout()
-{
-	_free_token();
 }
 
 void _save_hint(const char *challenge)

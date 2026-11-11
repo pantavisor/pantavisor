@@ -49,7 +49,6 @@ struct pv_pantahub {
 	struct pv_event_periodic usrmeta_timer;
 	struct pv_event_periodic devmeta_timer;
 	struct pv_event_periodic summary_timer;
-	bool identity_reset_deferred;
 };
 
 #endif
