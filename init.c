@@ -127,7 +127,7 @@ static int other_mounts()
 		tsh_run("mount -a", 1, NULL);
 
 	mkdir("/run", 0755);
-	ret = mount("none", "/run", "tmpfs", 0, NULL);
+	ret = mount("none", "/run", "tmpfs", 0, "mode=0755");
 	if (ret < 0)
 		exit_error(errno, "Could not mount /run");
 
