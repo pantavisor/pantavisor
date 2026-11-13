@@ -36,7 +36,7 @@ pid_t pv_socket_get_sender_pid(int fd)
 	socklen_t ucred_len = sizeof(ucred);
 
 	// get sender PID
-	if (getsockopt(fd, SOCK_STREAM, SO_PEERCRED, &ucred, &ucred_len) < 0)
+	if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &ucred, &ucred_len) < 0)
 		return -1;
 
 	return ucred.pid;
