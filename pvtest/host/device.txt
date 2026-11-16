@@ -44,7 +44,8 @@
 #           framework will already do the waiting until READY.
 #   exit !0 failure.
 #   stdout/stderr  captured to <workspace>/dev-setbootconfig-<name>-<id>.log.
-# Must not: leave the serial device open on exit.
+# Must not: leave the serial device open on exit, or write to the console once
+#           pantavisor is up (a newline opens its debug shell, holding reboots).
 # Timing: the tester waits up to PVTEST_RETYPE_TIMEOUT (default 300 s) for the
 # call to return. The tester also WARNs if the console shows no activity within
 # 30 s of return.
@@ -70,7 +71,8 @@
 #   exit !0 failure.
 #   stdout/stderr  captured to <workspace>/dev-flash-<name>-<revision>.log
 #           with / in <revision> replaced by _.
-# Must not: leave the serial device open on exit.
+# Must not: leave the serial device open on exit, or write to the console once
+#           pantavisor is up (a newline opens its debug shell, holding reboots).
 # Timing: the tester waits up to PVTEST_RETYPE_TIMEOUT (default 3600 s) for the
 # call to return.
 
