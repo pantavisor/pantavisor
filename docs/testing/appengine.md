@@ -224,7 +224,7 @@ Before committing a new test, always check that it shares these rules:
     hashes, $HOME paths, Hub revision numbers. Also secrets for obvious reasons.
 10. **Output determinism:** Never hand-edit `output`, regenerate it with `run ... -o`.
 11. **Clean up before returning control:** Remove any device or user metadata created
-    during the test.
+    during the test, and restore the previous value of any key the test modified.
 12. **Test must be state-independent:** In case of persistent model, there is no
     isolation mechanism between runs and the storage might be shared between tests.
     Therefore, any test must be written in a way that is independent from the state the
@@ -268,6 +268,22 @@ Before committing a new test, always check that it shares these rules:
     a revision and leaves it unsigned must set `PV_SECUREBOOT_MODE=disabled` in
     `setup.config.env`, so targets can re-type or SKIP accordingly. This doesn't apply
     to unmodified `pv-example-*` containers, which are signed during build time.
+23. **Avoid setting any config keys owned by the harness:** Never set these
+    [configuration keys](../reference/pantavisor-configuration.md), in `test.json` or
+    from the test script:
+    - `PV_DEBUG_SSH` and `PV_DEBUG_SSH_AUTHORIZED_KEYS`: the tester drives the target
+      over its SSH server, so changing them locks the harness out.
+    - `PV_LOOP_INDEX_BASE`: the host assigns a loop device range per slot and appends
+      it after the test config, so a test value is ignored.
+    - `PV_DEBUG_SHELL_AUTOLOGIN`: opens a debug shell on every device boot, which holds
+      each reboot for `PV_DEBUG_SHELL_TIMEOUT` and drops harness commands meanwhile.
+24. **Use any config keys used by the harness for convenience with caution:** These keys
+    might be overridden, but paying special attention to their side effects:
+    - `PH_CREDS_HOST` and `PH_CREDS_PORT`: An override points the target away from the
+       Hub of the run.
+    - `PV_LOG_SERVER_OUTPUTS` and `PV_LOG_TIMESTAMP`: the harness sets
+      `filetree,stdout_direct` and `absolute` for its own logging. An override will
+      change the target logs the harness collects for that test.
 
 ## Updating expected output for an existing test
 
