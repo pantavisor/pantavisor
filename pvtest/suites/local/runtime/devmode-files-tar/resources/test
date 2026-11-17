@@ -1,0 +1,105 @@
+#!/bin/sh
+#
+# pvcontrol devmode files get <container> [<path>] --tar (GET
+# /devmode/files/<container>[/<path>]?format=tar).
+#
+# - the whole container, a folder and a single file come as a tar
+# - names are relative to the container root, never start with / or ./
+# - modes (also setuid and setgid), owners and a symlink are kept
+# - a name longer than 100 bytes comes through
+# - a file changed in devmode has its new content, a file of the image is
+#   the same as in the container, with the same mtime
+# - a path that is not there or leaves the container is refused
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+. "${PVTEST_ROOT:-/work}/local/common/devmode-config"
+
+target="pv-example-norole"
+image_file="usr/bin/curl"
+image_other="etc/passwd"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+work=$(mktemp -d)
+
+cleanup() {
+	rm -rf "$work"
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+	devmode_conf_restore
+}
+trap cleanup EXIT
+
+# run a command and print its exit code and what it said on stderr
+failing() {
+	local err
+	err=$("$@" 2>&1 > /dev/null)
+	echo "exit: $?"
+	echo "$err" | tr -d '\r' | grep -v '^/usr/bin/fallbear-cmd'
+}
+
+in_target() {
+	pventer -c "$target" "$@" 2>&1 | tr -d '\r' | grep -v '^/usr/bin/fallbear-cmd'
+}
+
+# name, mode, owner and type of everything below a folder, sorted
+describe() {
+	(cd "$1" && find . -mindepth 1 | sort | while read -r p; do
+		stat -c '%n %a %u:%g %F' "$p"
+	done)
+}
+
+long=$(printf 'd%.0s' $(seq 1 60))
+long_path="opt/devmode-tar/$long/$long/file-with-a-long-name"
+
+devmode_conf_enable || exit 1
+pvcontrol devmode create > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode revision" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+
+echo "== put files with modes and owners =="
+printf 'config\n' | pvcontrol devmode files put "$target" opt/devmode-tar/conf - --mode 0640 --uid 1000 --gid 1001 > /dev/null
+printf '#!/bin/sh\n' | pvcontrol devmode files put "$target" opt/devmode-tar/run.sh - --mode 4755 --uid 0 --gid 0 > /dev/null
+pvcontrol devmode files put "$target" opt/devmode-tar/sub --type dir --mode 2750 --uid 1000 --gid 1001 > /dev/null
+pvcontrol devmode files put "$target" opt/devmode-tar/link --type symlink --target run.sh --uid 1002 --gid 1003 > /dev/null
+printf 'long\n' | pvcontrol devmode files put "$target" "$long_path" - > /dev/null
+printf 'changed by devmode\n' | pvcontrol devmode files put "$target" "$image_file" - --mode 0755 > /dev/null
+
+echo "== a folder =="
+mkdir "$work/folder"
+pvcontrol devmode files get "$target" opt/devmode-tar --tar | tar -xf - -C "$work/folder"
+echo "tar exit: $?"
+describe "$work/folder" | sed "s/$long/LONG/g"
+echo "symlink target: $(readlink "$work/folder/opt/devmode-tar/link")"
+echo "conf: $(cat "$work/folder/opt/devmode-tar/conf")"
+echo "long name file: $(cat "$work/folder/$long_path")"
+
+echo "== a single file =="
+mkdir "$work/single"
+pvcontrol devmode files get "$target" opt/devmode-tar/conf --tar | tar -xf - -C "$work/single"
+describe "$work/single"
+
+echo "== the whole container =="
+pvcontrol devmode files get "$target" --tar > "$work/all.tar"
+echo "tar exit: $?"
+echo "names starting with / or ./: $(tar -tf "$work/all.tar" | grep -c '^/\|^\./')"
+mkdir "$work/all"
+tar -xf "$work/all.tar" -C "$work/all"
+echo "devmode file: $(cat "$work/all/opt/devmode-tar/conf")"
+echo "changed image file: $(cat "$work/all/$image_file")"
+echo "changed image file mode: $(stat -c %a "$work/all/$image_file")"
+echo "image file same as in the container: $([ "$(sha256sum < "$work/all/$image_other" | cut -d' ' -f1)" = "$(in_target sha256sum "/$image_other" | cut -d' ' -f1)" ] && echo yes || echo no)"
+echo "image file mtime same as in the container: $([ "$(stat -c %Y "$work/all/$image_other")" = "$(in_target stat -c %Y "/$image_other")" ] && echo yes || echo no)"
+echo "container has a bin folder: $([ -d "$work/all/bin" ] || [ -L "$work/all/bin" ] && echo yes || echo no)"
+
+echo "== a path that is not there =="
+failing pvcontrol devmode files get "$target" opt/no-such-dir --tar
+echo "== a path that leaves the container =="
+failing pvcontrol devmode files get "$target" ../etc --tar
+echo "== a file needs a path without --tar =="
+failing pvcontrol devmode files get "$target"
+echo "== an unknown container =="
+failing pvcontrol devmode files get no-such-container --tar
+
