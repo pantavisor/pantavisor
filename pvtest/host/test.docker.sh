@@ -275,6 +275,8 @@ _AE_DOCKER_ARGS=(
 	--cap-add NET_ADMIN --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add MKNOD
 	# SYSLOG: used to exercise logserver use of /dev/kmsg
 	--cap-add SYSLOG
+	# DAC_READ_SEARCH: lxc.cap.keep can only keep what the appengine has (pv-mqtt-sdk keeps it on boards)
+	--cap-add DAC_READ_SEARCH
 	--device /dev/kmsg --device /dev/hwrng --device /dev/loop-control
 	--device-cgroup-rule 'b 7:* rmw'
 	--security-opt apparmor=unconfined --security-opt seccomp=unconfined
