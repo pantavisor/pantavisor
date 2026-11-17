@@ -1,0 +1,15 @@
+== read the certificate chain of the Hub ==
+chain has at least 2 certificates: yes
+== no denylist file ==
+log says no denylist: yes
+state: idle
+== leaf certificate listed, path set in OEM config ==
+log says list loaded from OEM path: yes
+state: login
+== only the top certificate listed ==
+log says 1 entry loaded: yes
+state: login
+== bad line and an unrelated hash ==
+log says 1 entry loaded: yes
+state: idle
+== cleanup ==

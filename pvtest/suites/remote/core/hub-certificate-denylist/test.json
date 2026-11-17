@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Hub certificate denylist, path set in OEM config: a certificate of the Hub chain listed in the denylist file stops all connections to the Hub, for the leaf and for the top of the chain; a list without a match lets the device reach the Hub again",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1 PV_CONTROL_REMOTE_ALWAYS=1",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

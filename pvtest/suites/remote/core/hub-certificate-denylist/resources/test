@@ -1,0 +1,134 @@
+#!/bin/sh
+#
+# Certificate denylist (PV_LIBTHTTP_DENYLIST): one SHA-256 of a certificate's
+# public key per line. A certificate of the Hub chain on the list makes every
+# TLS connection to the Hub fail, so the device never gets past the login
+# state. The list is read once at boot, so each change needs a reboot. The
+# path is set in OEM config of a posted revision, which is applied with a
+# reboot too.
+#
+# The hashes come from the chain the Hub sends right now, so the test keeps
+# working when the Hub certificate is renewed.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+list=/storage/pvtest-denylist
+default_list=/etc/thttp/denylist
+conf_value() {
+	pvcontrol conf ls | jq -r --arg k "$1" '.[] | select(.key == $k) | .value | select(. != "(null)")'
+}
+oem=$(conf_value PV_OEM_NAME)
+policy=$(conf_value PV_POLICY)
+[ -n "$oem" ] || { echo "ERROR: PV_OEM_NAME not set" >&2; exit 1; }
+oem_posted=false
+tmp=$(mktemp -d)
+
+put_file() {
+	local staged
+	staged=$(pv_stage_file "$1") || return 1
+	pv_exec cp "$staged" "$2" || return 1
+	pv_unstage_file "$staged"
+}
+
+reboot_and_wait() {
+	local cur
+	cur=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+	pvcontrol commands reboot "pvtest: $1" > /dev/null 2>&1
+	wait_for_down 30 && wait_for_target_ready "$1" "$cur" DONE > /dev/null 2>&1
+}
+
+# $1 = revision name, $2 = path to put in the OEM config
+post_oem_path() {
+	pvr_clone_local_or_die "$tmp/checkout"
+	cd "$tmp/checkout"
+	mkdir -p "$oem"
+	printf 'PV_LIBTHTTP_DENYLIST=%s\n' "$2" > "$oem/${policy:-default}.config"
+	pvr add . > /dev/null 2>&1
+	pvr commit > /dev/null 2>&1
+	pvr post --rev "$1" > /dev/null 2>&1
+	cd /
+	wait_for_target_ready "after OEM config $1" "$1" "DONE|UPDATED" > /dev/null 2>&1
+	local rc=$?
+	rm -rf "$tmp/checkout"
+	return $rc
+}
+
+cleanup() {
+	pv_exec rm -f "$list"
+	if $oem_posted; then
+		post_oem_path locals/hub-certificate-denylist-restore "$default_list" \
+			|| echo "ERROR: could not restore OEM config" >&2
+	fi
+	reboot_and_wait "after denylist removal" \
+		|| echo "ERROR: device did not come back after cleanup" >&2
+	rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+host=$(conf_value PH_CREDS_HOST)
+port=$(conf_value PH_CREDS_PORT)
+port=${port:-443}
+[ -n "$host" ] || { echo "ERROR: PH_CREDS_HOST not set" >&2; exit 1; }
+log="$(pv_storage_dir)/logs/current/pantavisor/pantavisor.log"
+
+# $1 = file with one certificate in PEM format, prints the hash of its public key
+key_hash() {
+	openssl x509 -in "$1" -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum | cut -d' ' -f1
+}
+
+echo "== read the certificate chain of the Hub =="
+openssl s_client -connect "$host:$port" -servername "$host" -showcerts < /dev/null 2> /dev/null \
+	| awk -v d="$tmp" '/BEGIN CERTIFICATE/ { n++; f = sprintf("%s/cert%d.pem", d, n); in_cert = 1 } in_cert { print > f } /END CERTIFICATE/ { in_cert = 0; close(f) }'
+count=$(ls "$tmp"/cert*.pem 2> /dev/null | wc -l | tr -d ' ')
+echo "chain has at least 2 certificates: $([ "$count" -ge 2 ] && echo yes || echo no)"
+[ "$count" -ge 2 ] || { echo "ERROR: could not read the chain of $host:$port" >&2; exit 1; }
+leaf=$(key_hash "$tmp/cert1.pem")
+top=$(key_hash "$tmp/cert$count.pem")
+[ -n "$leaf" ] && [ -n "$top" ] && [ "$leaf" != "$top" ] \
+	|| { echo "ERROR: could not hash the certificates" >&2; exit 1; }
+
+# $1 = text to match in the pantavisor log
+log_has() { pv_exec grep -q "$1" "$log" && echo yes || echo no; }
+state() { pvcontrol devmeta ls | jq -M -r '.["pantahub.state"]'; }
+# Hub requests failing without an answer, which is what a blocked certificate does
+wait_for_blocked() {
+	wait_for_value "[ \$(pv_exec grep -c 'did not get any response' $log) -ge 3 ] && echo ok" "ok" 90 && return 0
+	pv_exec grep -i -E "pantahub|denylist|thttp|trest|event_rest|ph_logger|login|WARN|ERROR" "$log" | tail -n 40 >&2
+	return 1
+}
+set_list() {
+	put_file "$tmp/list" "$list" && reboot_and_wait "$1"
+}
+
+echo "== no denylist file =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+	|| { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+echo "log says no denylist: $(log_has "no certificate denylist at $default_list")"
+echo "state: $(state)"
+
+echo "== leaf certificate listed, path set in OEM config =="
+printf '# pvtest: leaf of the Hub chain\n%s\n' "$leaf" > "$tmp/list"
+put_file "$tmp/list" "$list" || { echo "ERROR: could not write the list" >&2; exit 1; }
+oem_posted=true
+post_oem_path locals/hub-certificate-denylist "$list" \
+	|| { echo "ERROR: timeout waiting for the OEM config revision" >&2; exit 1; }
+echo "log says list loaded from OEM path: $(log_has "loaded 1 certificate denylist entries from $list")"
+wait_for_blocked || { echo "ERROR: timeout waiting for failed Hub requests" >&2; exit 1; }
+echo "state: $(state)"
+
+echo "== only the top certificate listed =="
+printf '%s\n' "$top" > "$tmp/list"
+set_list "after top listed" || { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
+echo "log says 1 entry loaded: $(log_has 'loaded 1 certificate denylist entries')"
+wait_for_blocked || { echo "ERROR: timeout waiting for failed Hub requests" >&2; exit 1; }
+echo "state: $(state)"
+
+echo "== bad line and an unrelated hash =="
+printf 'this is not a hash\n%s\n' "$(printf 'pvtest unrelated' | sha256sum | cut -d' ' -f1)" > "$tmp/list"
+set_list "after unrelated list" || { echo "ERROR: device did not come back after reboot" >&2; exit 1; }
+echo "log says 1 entry loaded: $(log_has 'loaded 1 certificate denylist entries')"
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+	|| { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+echo "state: $(state)"
+
+echo "== cleanup =="
