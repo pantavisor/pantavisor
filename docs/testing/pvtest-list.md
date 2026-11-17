@@ -167,6 +167,7 @@ Remote experience tests require an active Pantacor Hub connection and exercise t
 | `remote/core/encrypted-pantahub-config` | Encrypted `pantahub.config` handling | ✓ |
 | `remote/core/unencrypted-pantahub-config` | Unencrypted `pantahub.config` handling | |
 | `remote/core/hub-certificate-verification` | Hub TLS certificate verification | ✓ |
+| `remote/core/hub-certificate-denylist` | A certificate of the Hub chain in the denylist file blocks the Hub connection | ✓ |
 
 ### lifecycle
 
