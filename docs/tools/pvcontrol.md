@@ -519,6 +519,8 @@ pvcontrol devmode apply my-system-container --reboot
 pvcontrol devmode files ls my-container
 pvcontrol devmode files put my-container etc/my-app.conf ./my-app.conf --mode 0644
 pvcontrol devmode files get my-container etc/my-app.conf
+pvcontrol devmode files get my-container --tar > my-container.tar
+pvcontrol devmode files get my-container etc/nginx --tar | tar -x -C ./nginx
 pvcontrol devmode files rm my-container etc/motd
 pvcontrol devmode files mv my-container etc/my-app.conf etc/my-app.conf.old
 pvcontrol devmode files chmod my-container opt/my-app/run.sh --mode 0755 --uid 1000
@@ -532,6 +534,7 @@ pvcontrol devmode files chmod my-container opt/my-app/run.sh --mode 0755 --uid 1
 | `apply <container> [--reboot]` | Restarts the container so it sees the inlay files. A container with restart policy `system` needs `--reboot`, which reboots the device into the devmode revision. |
 | `files ls <container>` | `GET /devmode/files/<container>`: JSON list of what devmode changed in the container, with the `sha256` of each file. A removed file of the image has `"type":"deleted"`. |
 | `files get <container> <path>` | `GET /devmode/files/<container>/<path>`: the file, as the container sees it, on standard output. |
+| `files get <container> [<path>] --tar` | `GET /devmode/files/<container>[/<path>]?format=tar`: a tar of the folder `<path>`, or of the whole container without a path, on standard output. Entry names are relative to the container root and carry mode, owner, mtime and symlinks. Sockets, fifos and device nodes are left out. `pvcontrol` keeps the answer in a temporary file first, so the temporary folder needs room for it. |
 | `files put <container> <path> [<file>\|-] [--mode <octal>] [--uid <n>] [--gid <n>] [--type file\|dir\|symlink] [--target <path>]` | `PUT /devmode/files/<container>/<path>`: stores `<file>`, or standard input without a file or with `-`. Missing directories are created. |
 | `files rm <container> <path> [--recursive]` | `DELETE /devmode/files/<container>/<path>`: removes the file or directory from the container; `--recursive` for a directory with content. |
 | `files mv <container> <from> <to>` | `PUT /devmode/files/<container>/<to>?type=rename&from=<from>`: renames a file, directory or symlink; missing directories of `<to>` are created. |
@@ -607,6 +610,7 @@ On a platform without managed drivers these are effectively no-ops returning
 | `devmode apply <container> [--reboot]` | PUT | `/containers/{name}` (`--reboot` adds `?reboot=1`) |
 | `devmode files ls <container>` | GET | `/devmode/files/{name}` |
 | `devmode files get <container> <path>` | GET | `/devmode/files/{name}/{path}` |
+| `devmode files get <container> [<path>] --tar` | GET | `/devmode/files/{name}[/{path}]?format=tar` |
 | `devmode files put <container> <path> [<file>\|-]` | PUT | `/devmode/files/{name}/{path}` |
 | `devmode files rm <container> <path>` | DELETE | `/devmode/files/{name}/{path}` |
 | `devmode files mv <container> <from> <to>` | PUT | `/devmode/files/{name}/{to}?type=rename&from={from}` |

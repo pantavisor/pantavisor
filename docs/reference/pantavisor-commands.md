@@ -220,6 +220,23 @@ To read a file as the container sees it, the inlay on top of the image:
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/os-release"
 ```
 
+To get a folder, or the whole container, in one request, add `format=tar`. The answer is a pax tar stream of the container as it sees it, the image with the devmode changes on top, not what the running container wrote itself and not runtime mounts. A path of a file gives a tar with that file:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container?format=tar" > my-container.tar
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/devmode/files/my-container/etc/nginx?format=tar" | tar -tv
+```
+
+| Part | Description |
+|------|-------------|
+| Header | `Content-Type: application/x-tar`; `X-Pv-Skipped` is the number of entries left out |
+| Names | relative to the container root, for example `etc/nginx/nginx.conf`, never with a leading `/` or `./`; a directory ends with `/`; with a path, the names start with that path |
+| Entries | directories, regular files and symlinks, each with mode (including setuid, setgid and sticky), uid, gid and mtime; a hard link comes as a separate regular file |
+| Left out | sockets, fifos and device nodes, and folders below 128 levels |
+| Long names, big files | pax extended headers hold names and link targets over 100 bytes, sizes over 8 GiB, uid and gid over 2097151 and an mtime that ustar cannot hold |
+
+The stream is written while it is read from the disk, so it needs no memory or disk space for the whole tar. It is sent chunked to an HTTP/1.1 client, and to an HTTP/1.0 client without chunks, where the end of the body is the close of the connection. A `format` other than `tar` answers `400`.
+
 To store a file, send its content as the body. Missing parent directories are created. The body is written to a temporary file next to the target and renamed over it when it is complete, so a file is replaced in one step:
 
 ```
@@ -265,12 +282,13 @@ Changes are made through the overlay that Pantavisor mounts at `/pantavisor/devm
 |--------|------|-------------|
 | `GET` | `/devmode/files/{name}` | manifest of the inlay of a container |
 | `GET` | `/devmode/files/{name}/{path}` | content of a file |
+| `GET` | `/devmode/files/{name}?format=tar`, `/devmode/files/{name}/{path}?format=tar` | tar of the whole container, a folder or a file |
 | `PUT` | `/devmode/files/{name}/{path}` | store a file, a directory or a symlink, rename (`type=rename`) or change mode and owner (`type=attrs`) |
 | `DELETE` | `/devmode/files/{name}/{path}` | remove a file, a directory (`?recursive=1` for one with content) or a symlink |
 
 | Status | Condition |
 |--------|-----------|
-| `400` | the path contains `..`, a bad `mode`, `uid`, `gid` or `type`, `type=rename` without `from`, `type=attrs` without any of `mode`, `uid`, `gid`, `GET` of something that is not a regular file |
+| `400` | the path contains `..`, a bad `mode`, `uid`, `gid` or `type`, `type=rename` without `from`, `type=attrs` without any of `mode`, `uid`, `gid`, `GET` of something that is not a regular file (without `format=tar`), a `format` other than `tar` |
 | `403` | `PV_DEVMODE_ALLOWED` is `false`, or the caller has no `mgmt` role |
 | `404` | the container or the path does not exist |
 | `409` | the running revision is not a devmode revision, a directory is in the way, `DELETE` of a directory with content without `recursive`, or the container has no devmode filesystem |

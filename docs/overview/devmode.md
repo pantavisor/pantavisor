@@ -160,6 +160,13 @@ pvcontrol devmode files chmod my-container opt/my-app/run.sh --mode 0755 --uid 1
 pvcontrol devmode apply my-container
 ```
 
+To take a whole folder, or the container, off the device in one step, `get --tar` writes a tar of it to standard output. The names are relative to the container root, and modes, owners and symlinks are kept:
+
+```bash
+pvcontrol devmode files get my-container --tar > my-container.tar
+pvcontrol devmode files get my-container etc/nginx --tar | tar -tv
+```
+
 `mv` renames a file, directory or symlink in one step and creates the directories of the new path. A directory that comes from the image cannot be renamed on the overlay; copy it and remove the old one instead. `chmod` changes the mode and the owner of a file without sending it again; give any of `--mode`, `--uid` and `--gid`. A symlink only takes an owner. When a call fails, the answer carries the reason as an `errno` next to the message:
 
 ```console
