@@ -24,6 +24,14 @@
 
 #include "state.h"
 
-struct pv_state *pv_parser_get_state(const char *buf, const char *rev);
+typedef enum {
+	// the revision will be run by this pantavisor: unknown enum values fail the parse
+	PV_PARSE_RUN,
+	// the revision is only checked to be installed and may be handed to a newer pantavisor after a reboot: unknown enum values use a fallback
+	PV_PARSE_INSTALL,
+} pv_parse_mode_t;
+
+struct pv_state *pv_parser_get_state(const char *buf, const char *rev,
+				     pv_parse_mode_t mode);
 
 #endif

@@ -64,6 +64,10 @@ struct pv_state {
 	bool using_runlevels;
 	int tryonce;
 	bool done;
+	// unknown enum values abort the parse instead of using a fallback
+	bool parse_strict;
+	// number of unknown enum values replaced by a fallback while parsing
+	int parse_fallbacks;
 };
 
 struct pv_state *pv_state_new(const char *rev, state_spec_t spec);
@@ -97,6 +101,7 @@ void pv_state_stop_lenient(struct pv_state *s);
 int pv_state_stop_force(struct pv_state *s);
 
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending);
+bool pv_state_bsp_changed(struct pv_state *current, struct pv_state *pending);
 void pv_state_transition(struct pv_state *pending, struct pv_state *current);
 
 void pv_state_eval_status(struct pv_state *s);

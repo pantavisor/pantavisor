@@ -1,6 +1,6 @@
 {
 	"#spec": "pv-test@1",
-	"description": "state parser forward compatibility: unknown status_goal/restart_policy values, an unknown extra key, and a key sharing a known key's prefix must never reject a revision",
+	"description": "state parser forward compatibility: a revision without a BSP change and with an unknown status_goal or restart_policy is rejected and never run; an unknown extra key and a key sharing a known key's prefix do not reject a revision",
 	"setup": {
 		"config": {
 			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled"
