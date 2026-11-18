@@ -222,7 +222,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 				pv_signature_sign_state_str(sres));
 			goto out;
 		}
-		pv->state = pv_parser_get_state(json, pv_bootloader_get_rev());
+		pv->state = pv_parser_get_state(json, pv_bootloader_get_rev(),
+						PV_PARSE_RUN);
 		if (!pv->state) {
 			pv_log(ERROR, "state could not be loaded");
 			goto out;

@@ -14,22 +14,43 @@ A Pantavisor revision is defined by a single JSON object called `state.json`. It
 
 ## Compatibility
 
-A revision can upgrade Pantavisor and use a feature of the new version in the same update. The
-Pantavisor that installs it ignores keys it does not know and falls back on values it does not know:
+A revision can upgrade Pantavisor and use a feature of the new version in the same update. To let
+that work, the Pantavisor that installs the revision accepts values it does not know, but only for a
+revision that changes the BSP. The [reboot](../overview/updates.md#reboot-transition) then starts
+the new Pantavisor, which reads the revision again.
 
-| Field | Unknown value | Result |
-|:---|:---|:---|
-| `status_goal` (container or group) | Enum value | `MOUNTED` |
-| `restart_policy` (container or group) | Enum value | `system` |
-| `persistence` (storage object) | Enum value | `boot` |
-| disk `type` (`disks`, `disks_v2`, `disks_v3`) | Enum value | Disk entry skipped |
-| network pool `type` | Enum value | Pool entry skipped |
-| Any object or container key | Key | Ignored |
+A value the running Pantavisor does not know is never run. The revision fails when:
 
-Each fallback logs a warning in the Pantavisor log:
+- it changes the BSP, and the Pantavisor started after the reboot does not know the value either:
+  the boot fails and the update [rolls back](../overview/updates.md#error)
+- it does not change the BSP, so the running Pantavisor would run it: the update is rejected with
+  [WONTGO](../overview/updates.md#wontgo) before it is installed
+- it is read at boot as the current revision: the boot fails
+
+These fields are checked this way:
+
+| Field | Unknown value |
+|:---|:---|
+| `status_goal` (container or group) | Enum value |
+| `restart_policy` (container or group) | Enum value |
+| `persistence` (storage object) | Enum value |
+| disk `type` (`disks`, `disks_v2`, `disks_v3`) | Enum value |
+| network pool `type` | Enum value |
+
+Unknown keys in an object or container are ignored in every case. An unknown `lifecycle_goal`
+uses the `status_goal` of the same container or group.
+
+The Pantavisor log names the field and value. While installing a BSP-changing revision it logs a
+warning:
 
 ```
-unknown status_goal 'NEWGOAL' (newer schema?), using 'MOUNTED'
+unknown status_goal 'NEWGOAL' (newer schema?), accepted only to install the revision
+```
+
+When the revision would be run it logs an error and the revision fails:
+
+```
+unknown status_goal 'NEWGOAL', revision cannot be run
 ```
 
 The update is rejected with [WONTGO](../overview/updates.md#wontgo) only when:
@@ -39,7 +60,6 @@ The update is rejected with [WONTGO](../overview/updates.md#wontgo) only when:
 - the BSP boot image format cannot be installed by the running Pantavisor
 - a signature or checksum fails, or a disk alias is ambiguous
 
-A revision that changes the BSP is parsed again after the [reboot](../overview/updates.md#reboot-transition).
 
 ## 1. Root Level (`state.json`)
 

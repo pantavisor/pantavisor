@@ -1,8 +1,9 @@
 #!/bin/sh
 #
-# The state parser checks structure, not full syntax/semantics: it must
-# never make a revision WONTGO just because it carries a value or key this
-# pantavisor doesn't know yet. See
+# A revision with a key this pantavisor does not know is installed and run.
+# A revision with an enum value it does not know is never run: it is
+# rejected unless it changes the BSP (that case needs a newer pantavisor and
+# is not covered here). See
 # docs/reference/pantavisor-state-format-v2.md#compatibility.
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
@@ -24,35 +25,34 @@ container_field() {
 	pvcontrol containers ls | jq -r --arg f "$1" 'map(select(.name=="pv-example-app"))[0][$f]'
 }
 
-echo "== unknown status_goal value: falls back to MOUNTED, revision still succeeds =="
+# $1: revision name, posted from the current checkout and expected to be rejected
+expect_rejected() {
+	pvr post --rev "$1" > /dev/null 2>&1
+	wait_for_value "pvcontrol steps show-progress $1 | jq -r '.status'" "WONTGO" 120 > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $1 to reach WONTGO" >&2; exit 1; }
+	echo "$1: WONTGO"
+	pvcontrol steps show-progress "$1" | jq -r '."status-msg"'
+}
+
+echo "== unknown status_goal value: revision without a BSP change is rejected, never run =="
 edit_run_json '.status_goal = "FUTURE_GOAL"'
 pvr commit -m "set status_goal to an unknown value" > /dev/null 2>&1
-pvr post --rev "locals/unknown-status-goal" > /dev/null 2>&1
-wait_for_revision_state "locals/unknown-status-goal" "UPDATED" > /dev/null 2>&1 \
-	|| { echo "ERROR: timeout waiting for locals/unknown-status-goal to reach UPDATED" >&2; exit 1; }
-echo "locals/unknown-status-goal: UPDATED"
+expect_rejected "locals/unknown-status-goal"
 container_field status_goal
 
-echo "== unknown restart_policy value: falls back to system, revision still succeeds =="
-# fallback lands on the "system" restart policy, which forces a reboot transition (state.c
-# pv_state_platform_requires_reboot), so this one lands on DONE, not UPDATED.
+echo "== unknown restart_policy value: revision without a BSP change is rejected, never run =="
 edit_run_json '.status_goal = "STARTED" | .restart_policy = "future_policy"'
 pvr commit -m "set restart_policy to an unknown value" > /dev/null 2>&1
-pvr post --rev "locals/unknown-restart-policy" > /dev/null 2>&1
-wait_for_revision_state "locals/unknown-restart-policy" "DONE" > /dev/null 2>&1 \
-	|| { echo "ERROR: timeout waiting for locals/unknown-restart-policy to reach DONE" >&2; exit 1; }
-echo "locals/unknown-restart-policy: DONE"
+expect_rejected "locals/unknown-restart-policy"
 container_field restart_policy
 
 echo "== unknown extra run.json key: ignored, revision still succeeds =="
-# the currently-running platform still carries the "system" fallback from the previous
-# step, so this transition also reboots even though the new restart_policy is "container".
 edit_run_json '.restart_policy = "container" | .some_future_key = "some_future_value"'
 pvr commit -m "add an unknown extra key" > /dev/null 2>&1
 pvr post --rev "locals/unknown-extra-key" > /dev/null 2>&1
-wait_for_revision_state "locals/unknown-extra-key" "DONE" > /dev/null 2>&1 \
-	|| { echo "ERROR: timeout waiting for locals/unknown-extra-key to reach DONE" >&2; exit 1; }
-echo "locals/unknown-extra-key: DONE"
+wait_for_revision_state "locals/unknown-extra-key" "UPDATED" > /dev/null 2>&1 \
+	|| { echo "ERROR: timeout waiting for locals/unknown-extra-key to reach UPDATED" >&2; exit 1; }
+echo "locals/unknown-extra-key: UPDATED"
 container_field status
 
 echo "== key sharing a known key's prefix must not be mistaken for it =="

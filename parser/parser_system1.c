@@ -289,6 +289,21 @@ static bool parse_disks_get_default(const char *str, jsmntok_t *diskv,
 	return parse_disks_get_default_key(str, "default", diskv, diskc);
 }
 
+// a value this parser doesn't know may be newer schema; the revision is only rejected if it would be run
+static void warn_unknown_value(struct pv_state *s, const char *field,
+			       const char *value)
+{
+	s->parse_fallbacks++;
+	if (s->parse_strict) {
+		pv_log(ERROR, "unknown %s '%s', revision cannot be run", field,
+		       value);
+	} else {
+		pv_log(WARN,
+		       "unknown %s '%s' (newer schema?), accepted only to install the revision",
+		       field, value);
+	}
+}
+
 static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 {
 	int tokc, size, ret = 1;
@@ -347,6 +362,7 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 
 		if (d->type == DISK_UNKNOWN) {
 			if (lenient) {
+				s->parse_fallbacks++;
 				pv_log(WARN,
 				       "disk '%s' has unknown type, skipping",
 				       d->name ? d->name : "(null)");
@@ -370,7 +386,8 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 				}
 				continue;
 			}
-			pv_log(ERROR, "disk '%s' has unknown type",
+			pv_log(ERROR,
+			       "disk '%s' has unknown type, revision cannot be run",
 			       d->name ? d->name : "(null)");
 			goto out;
 		}
@@ -513,8 +530,8 @@ out:
 
 static int parse_disks(struct pv_state *s, char *value)
 {
-	// lenient like disks_v3: an unknown disk type must not reject the revision
-	return parse_disks_ex(s, value, true);
+	// an unknown disk type is skipped only when the revision is just being installed
+	return parse_disks_ex(s, value, !s->parse_strict);
 }
 
 static int parse_bsp(struct pv_state *s, char *value, int n)
@@ -678,9 +695,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 			else if (!strcmp(pt, "boot"))
 				v->type = VOL_BOOT;
 			else {
-				pv_log(WARN,
-				       "invalid persistence value '%s' for platform '%s', default to BOOT",
-				       pt, p ? p->name : "(NULL)");
+				warn_unknown_value(s, "persistence", pt);
 				v->type = VOL_BOOT;
 			}
 			free(pt);
@@ -1428,22 +1443,15 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 	return 0;
 }
 
-// a value the running parser doesn't recognize may just be newer schema; never reject the revision over it
-static void warn_unknown_value(const char *field, const char *value,
-			       const char *fallback)
-{
-	pv_log(WARN, "unknown %s '%s' (newer schema?), using '%s'", field,
-	       value, fallback);
-}
-
-static restart_policy_t parse_restart_policy(char *value, size_t len)
+static restart_policy_t parse_restart_policy(struct pv_state *s, char *value,
+					     size_t len)
 {
 	if (pv_str_matches(value, len, "system", strlen("system")))
 		return RESTART_SYSTEM;
 	else if (pv_str_matches(value, len, "container", strlen("container")))
 		return RESTART_CONTAINER;
 
-	warn_unknown_value("restart_policy", value, "system");
+	warn_unknown_value(s, "restart_policy", value);
 	return RESTART_SYSTEM;
 }
 
@@ -1456,14 +1464,15 @@ static int do_action_for_restart_policy(struct json_key_action *jka,
 	if (!(*bundle->platform) || !value)
 		return -1;
 
-	restart = parse_restart_policy(value, strlen(value));
+	restart = parse_restart_policy(bundle->s, value, strlen(value));
 	pv_platform_set_restart_policy(*bundle->platform, restart);
 
 	return 0;
 }
 
 // status_goal is understood by every pantavisor version, so STAGED is deliberately excluded here
-static plat_status_t parse_status_goal(char *value, size_t len)
+static plat_status_t parse_status_goal(struct pv_state *s, char *value,
+				       size_t len)
 {
 	if (pv_str_matches(value, len, "MOUNTED", strlen("MOUNTED")))
 		return PLAT_MOUNTED;
@@ -1472,8 +1481,8 @@ static plat_status_t parse_status_goal(char *value, size_t len)
 	else if (pv_str_matches(value, len, "READY", strlen("READY")))
 		return PLAT_READY;
 
-	// never run something whose goal we don't understand
-	warn_unknown_value("status_goal", value, "MOUNTED");
+	// placeholder so the parse passes; a revision with this is never run (see parse_strict)
+	warn_unknown_value(s, "status_goal", value);
 	return PLAT_MOUNTED;
 }
 
@@ -1500,7 +1509,7 @@ static int do_action_for_status_goal(struct json_key_action *jka, char *value)
 	if (!(*bundle->platform) || !value)
 		return -1;
 
-	status = parse_status_goal(value, strlen(value));
+	status = parse_status_goal(bundle->s, value, strlen(value));
 	pv_platform_set_status_goal(*bundle->platform, status);
 
 	return 0;
@@ -2104,7 +2113,7 @@ static struct pv_state *system1_parse_disks(struct pv_state *this,
 		pv_log(DEBUG, "adding json 'disks_v3.json'");
 		pv_jsons_add(this, "disks_v3.json", value);
 
-		if (parse_disks_ex(this, value, true)) {
+		if (parse_disks_ex(this, value, !this->parse_strict)) {
 			this = NULL;
 			goto out;
 		}
@@ -2181,7 +2190,7 @@ static int parse_groups(struct pv_state *s, char *value)
 						 groupc);
 		if (tmp) {
 			has_status_goal = true;
-			status = parse_status_goal(tmp, strlen(tmp));
+			status = parse_status_goal(s, tmp, strlen(tmp));
 			free(tmp);
 			tmp = NULL;
 		}
@@ -2227,7 +2236,7 @@ static int parse_groups(struct pv_state *s, char *value)
 		tmp = pv_json_get_value_toplevel(str, "restart_policy", groupv,
 						 groupc);
 		if (tmp) {
-			restart = parse_restart_policy(tmp, strlen(tmp));
+			restart = parse_restart_policy(s, tmp, strlen(tmp));
 			free(tmp);
 			tmp = NULL;
 		}
@@ -2485,9 +2494,7 @@ static int parse_network_pools(struct pv_state *s, char *buf)
 		} else if (strcmp(type_str, "macvlan") == 0) {
 			type = POOL_TYPE_MACVLAN;
 		} else {
-			pv_log(WARN,
-			       "network pool '%s' has unknown type '%s' (newer schema?), skipping",
-			       name, type_str);
+			warn_unknown_value(s, "network pool type", type_str);
 			goto free_pool;
 		}
 
@@ -2629,7 +2636,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 	}
 	value = pv_json_get_value_toplevel(buf, "disks_v3", tokv, tokc);
 	if (value) {
-		if (parse_disks_ex(this, value, true)) {
+		if (parse_disks_ex(this, value, !this->parse_strict)) {
 			pv_log(ERROR, "cannot parse disks_v3 in device.json");
 			this = NULL;
 			goto out;
@@ -2888,6 +2895,13 @@ struct pv_state *system1_parse(struct pv_state *this, const char *buf)
 
 	if (!system1_parse_validate(this, buf)) {
 		pv_log(ERROR, "cannot validate json");
+		this = NULL;
+		goto out;
+	}
+
+	if (this->parse_strict && this->parse_fallbacks) {
+		pv_log(ERROR, "revision %s has %d unknown value(s)", this->rev,
+		       this->parse_fallbacks);
 		this = NULL;
 		goto out;
 	}

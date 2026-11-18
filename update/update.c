@@ -138,6 +138,25 @@ static int _enroll_object_list(struct pv_update *update)
 	return 0;
 }
 
+// unknown enum values use a fallback only for a revision that changes the BSP and so boots another pantavisor
+static bool _is_unrunnable_without_reboot(struct pv_update *u)
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	if (!pv || !pv->state || !u->state || !u->state->parse_fallbacks)
+		return false;
+	if (pv_state_bsp_changed(pv->state, u->state))
+		return false;
+
+	pv_log(ERROR,
+	       "revision %s has %d unknown value(s) and does not change the BSP, so this pantavisor would run it, rejecting it",
+	       u->rev, u->state->parse_fallbacks);
+	pv_update_progress_set_str(
+		&u->progress, PV_UPDATE_PROGRESS_STATUS_WONTGO,
+		"State JSON has unknown values this Pantavisor cannot run");
+	return true;
+}
+
 static void _finish_update_installation()
 {
 	struct pv_update *u = _get_update_instance();
@@ -272,7 +291,7 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 					   pv_signature_sign_state_str(sres));
 		goto out;
 	}
-	u->state = pv_parser_get_state(state, rev);
+	u->state = pv_parser_get_state(state, rev, PV_PARSE_INSTALL);
 	if (!u->state) {
 		pv_log(WARN, "state parse failed");
 		pv_update_progress_set(&u->progress,
@@ -280,6 +299,8 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 				       PV_UPDATE_PROGRESS_MSG_NO_PARSE);
 		goto out;
 	}
+	if (_is_unrunnable_without_reboot(u))
+		goto out;
 	_reset_object_list_retries(u);
 
 	pv_log(INFO, "starting update");
@@ -610,7 +631,7 @@ void pv_update_run(const char *rev)
 					   pv_signature_sign_state_str(sres));
 		goto out;
 	}
-	u->state = pv_parser_get_state(json, rev);
+	u->state = pv_parser_get_state(json, rev, PV_PARSE_INSTALL);
 	if (!u->state) {
 		pv_log(WARN, "state parse failed");
 		pv_update_progress_set(&u->progress,
@@ -618,6 +639,8 @@ void pv_update_run(const char *rev)
 				       PV_UPDATE_PROGRESS_MSG_NO_PARSE);
 		goto out;
 	}
+	if (_is_unrunnable_without_reboot(u))
+		goto out;
 
 	pv_log(DEBUG, "pv_update_run successful: _finish_update_installation");
 	_finish_update_installation();

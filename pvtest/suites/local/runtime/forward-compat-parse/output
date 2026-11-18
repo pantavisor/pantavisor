@@ -1,11 +1,13 @@
-== unknown status_goal value: falls back to MOUNTED, revision still succeeds ==
-locals/unknown-status-goal: UPDATED
-MOUNTED
-== unknown restart_policy value: falls back to system, revision still succeeds ==
-locals/unknown-restart-policy: DONE
-system
+== unknown status_goal value: revision without a BSP change is rejected, never run ==
+locals/unknown-status-goal: WONTGO
+State JSON has unknown values this Pantavisor cannot run
+STARTED
+== unknown restart_policy value: revision without a BSP change is rejected, never run ==
+locals/unknown-restart-policy: WONTGO
+State JSON has unknown values this Pantavisor cannot run
+container
 == unknown extra run.json key: ignored, revision still succeeds ==
-locals/unknown-extra-key: DONE
+locals/unknown-extra-key: UPDATED
 STARTED
 == key sharing a known key's prefix must not be mistaken for it ==
 locals/prefix-key: UPDATED

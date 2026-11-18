@@ -115,7 +115,7 @@ Reboot transitions are performed based on the location of the changes belonging 
 
 In this case, Pantavisor will stop all the containers and reboot the board.
 
-After the reboot, the new Pantavisor parses the revision again. If it rejects it, the update rolls back.
+After the reboot, the new Pantavisor parses the revision again, and a value it does not know fails the boot. If it rejects the revision, the update rolls back. Only a revision that changes the BSP is installed with enum values the running Pantavisor does not know; see [Compatibility](../reference/pantavisor-state-format-v2.md#compatibility).
 
 #### Non-reboot transition 
 
@@ -166,6 +166,7 @@ State not fully covered by signatures | The revision has some element that is no
 Signature validation failed | Any of the [revision signatures](storage.md#state-signature) is not up to date with its covered content |
 Unknown error | [Signature](storage.md#state-signature) failed without a known cause |
 State JSON has bad format | [State JSON](revisions.md) could not be parsed; see [what is rejected](../reference/pantavisor-state-format-v2.md#compatibility) |
+State JSON has unknown values this Pantavisor cannot run | The revision does not change the BSP and has an enum value this Pantavisor does not know, such as an unknown `status_goal` |
 
 ### ERROR
 
