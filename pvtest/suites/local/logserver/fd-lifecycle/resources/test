@@ -20,7 +20,11 @@
 #   pv-fd-log      connected sockets on pv-fd-log held by pv-log-server: every
 #                  subscribe/unsubscribe is a one-shot connection, so none stay
 #   fd counts      of pv-log-server and of pantavisor itself, which opens the
-#                  client side of each of those connections
+#                  client side of each of those connections. Both processes
+#                  also hold short-lived fds (one connection per log line, the
+#                  log file open per write), so the baseline is the median of
+#                  several samples and a count passes when it settles at or
+#                  below it; a leak keeps it above
 #
 # A busy loop on a hung-up fd would show as CPU burnt by pv-log-server while
 # nothing logs.
@@ -50,6 +54,13 @@ pid_of() {
 		| tr -d '\r' | sort -n | head -n1
 }
 fds() { pv_exec sh -c "ls /proc/$1/fd | wc -l" | tr -d ' \r'; }
+# Steady-state fd count of pid $1: the median of 5 samples, 1s apart
+fds_median() {
+	for _ in 1 2 3 4 5; do
+		fds "$1"
+		sleep 1
+	done | sort -n | sed -n 3p
+}
 ptys() { pv_exec sh -c "ls -l /proc/$LS/fd | grep -c /dev/pts/ptmx" | tr -d ' \r'; }
 # Connected (state 03) unix sockets bound to pv-fd-log among pv-log-server's fds
 fdlog_conns() {
@@ -89,8 +100,8 @@ console_write "console-0-$RUN"
 echo "console write captured: $(yesno captured "console-0-$RUN")"
 expect "no pv-fd-log connection held" fdlog_conns -eq 0
 PTYS=$(ptys)
-LS_FDS=$(fds "$LS")
-PV_FDS=$(fds "$PV")
+LS_FDS=$(fds_median "$LS")
+PV_FDS=$(fds_median "$PV")
 S0=$(starts)
 echo "baseline: ptys=$PTYS pv-log-server fds=$LS_FDS pantavisor fds=$PV_FDS" >&2
 
@@ -109,8 +120,8 @@ echo "console write after restarts captured: $(yesno captured "console-1-$RUN")"
 echo "same pv-log-server: $([ "$(pid_of pv-log-server)" = "$LS" ] && echo yes || echo no)"
 expect "console ptys back to baseline" ptys -eq "$PTYS"
 expect "no pv-fd-log connection held" fdlog_conns -eq 0
-expect "pv-log-server fds back to baseline" "fds $LS" -eq "$LS_FDS"
-expect "pantavisor fds back to baseline" "fds $PV" -eq "$PV_FDS"
+expect "pv-log-server fds back to baseline" "fds $LS" -le "$LS_FDS"
+expect "pantavisor fds back to baseline" "fds $PV" -le "$PV_FDS"
 
 echo "== stopped =="
 pvcontrol containers stop "$CONT" > /dev/null 2>&1
@@ -131,6 +142,6 @@ console_write "console-2-$RUN"
 echo "console write captured: $(yesno captured "console-2-$RUN")"
 expect "console ptys back to baseline" ptys -eq "$PTYS"
 expect "no pv-fd-log connection held" fdlog_conns -eq 0
-expect "pv-log-server fds back to baseline" "fds $LS" -eq "$LS_FDS"
-expect "pantavisor fds back to baseline" "fds $PV" -eq "$PV_FDS"
+expect "pv-log-server fds back to baseline" "fds $LS" -le "$LS_FDS"
+expect "pantavisor fds back to baseline" "fds $PV" -le "$PV_FDS"
 echo "same pv-log-server: $([ "$(pid_of pv-log-server)" = "$LS" ] && echo yes || echo no)"
