@@ -30,35 +30,31 @@ merges its section into a per-major rolling document on S3:
 https://pantavisor-ci.s3.amazonaws.com/pantavisor/changelog/pantavisor/CHANGELOG-NNN.md
 ```
 
-This repo file is written exactly once per major — by a maintainer running
-`.github/scripts/make-changelog.sh --finalize NNN` just before the stable tag —
+This repo file is written exactly once per major — by meta-pantavisor's tag-sync
+running `.github/scripts/make-changelog.sh --finalize NNN` when the stable tag is
+synced —
 and [`changelog-gate.yaml`](../.github/workflows/changelog-gate.yaml) fails the
 stable release run if that commit is missing or does not match the S3 document.
 
 ## Cutting a stable release
 
-Run this once, after every RC's `tag-changelogs.yaml` run has finished (so the
-S3 accumulator is complete):
+Push the stable `NNN` tag to meta-pantavisor, after every RC's
+`tag-changelogs.yaml` run has finished (so the S3 accumulator is complete).
+meta-pantavisor's tag-sync clones this repo at the pinned `SRCREV`, runs
+`make-changelog.sh --finalize NNN` and pushes the resulting commit
+(`changelogs(NNN): finalize NNN changelog`, touching only
+`CHANGELOG/CHANGELOG-NNN.md`) as the `NNN` tag. Nothing is pushed to `master`,
+so `CHANGELOG-NNN.md` exists only on the tagged commit.
+
+The `NNN` tag then triggers `tag-changelogs.yaml`: the gate checks the file,
+and the GitHub Release is published.
+
+To preview or run it by hand (`--finalize` errors if `NNN` is already tagged):
 
 ```sh
-git switch master && git pull
-
-# Pull the accumulated changelog into the repo and add the stable "## vNNN"
-# section. Commits "changelogs(NNN): finalize NNN changelog". Errors if NNN is
-# already tagged.
 ./.github/scripts/make-changelog.sh --finalize NNN
-
-# Review: the commit should touch only CHANGELOG/CHANGELOG-NNN.md and contain
-# every "## vNNN-rcN" section plus a new "## vNNN".
 git show HEAD
-
-# Push the finalize commit, THEN tag.
-git push origin master
 ```
-
-The stable tag is then created by meta-pantavisor's tag-sync (as usual). Its
-`tag-changelogs.yaml` run refreshes the S3 accumulator and the GitHub Release
-for `NNN`; the committed `CHANGELOG/CHANGELOG-NNN.md` is left as finalized.
 
 Point `CHANGELOG_S3_URL_BASE` at a `file://` directory to test `--finalize`
 without S3.
