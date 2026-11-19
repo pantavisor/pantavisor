@@ -52,6 +52,9 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+# one set of files per call, so calls can run at the same time
+TMPFILE_BASE="/tmp/pvcurl.$$"
+
 URL="${URL:-/}"
 [ "${URL#/}" = "$URL" ] && URL="/$URL"
 
@@ -64,6 +67,19 @@ if ! echo "$HEADERS" | grep -qi "Content-Type:"; then
     HEADERS="${HEADERS}Content-Type: application/json\r\n"
 fi
 
+# "-T -" sends standard input; its length is needed for the request, so it is
+# kept in a file first (the file is not copied again into the request)
+if [ "$UPLOAD_FILE" = "-" ]; then
+    cat > "$TMPFILE_BASE".body || { rm -f "$TMPFILE_BASE".body; exit 1; }
+    UPLOAD_FILE="$TMPFILE_BASE".body
+fi
+
+if [ -n "$UPLOAD_FILE" ] && [ ! -r "$UPLOAD_FILE" ]; then
+    log_err "Error: cannot read $UPLOAD_FILE"
+    rm -f "$TMPFILE_BASE".body
+    exit 26
+fi
+
 {
     printf "%s %s HTTP/1.0\r\n" "$METHOD" "$URL"
     printf "Host: localhost\r\n"
@@ -74,38 +90,46 @@ fi
             FILE_SIZE=$(ls -l "$UPLOAD_FILE" | awk '{print $5}')
         fi
         printf "Content-Length: %s\r\n\r\n" "$FILE_SIZE"
-        cat "$UPLOAD_FILE"
     elif [ -n "$DATA" ]; then
         printf "Content-Length: %s\r\n\r\n" "${#DATA}"
         printf "%s" "$DATA"
     else
         printf "Content-Length: 0\r\n\r\n"
     fi
-} > /tmp/http_req
+} > "$TMPFILE_BASE".req
 
 log_verbose() { [ "$VERBOSE" = true ] && echo "* $@" >&2; }
 
 log_verbose "Connecting to $SOCKET..."
 log_verbose "> $METHOD $URL HTTP/1.0"
 
+# the request is the header file followed by the upload file, if any
+send_request() {
+    if [ -n "$UPLOAD_FILE" ]; then
+        cat "$TMPFILE_BASE".req "$UPLOAD_FILE" | nc "$@"
+    else
+        nc "$@" < "$TMPFILE_BASE".req
+    fi
+}
+
 NC_EXIT=0
 # Use -N (close write on stdin EOF) for non-streaming requests.
 # For GET downloads, omit -N to keep the connection alive while the server
 # streams the response body.
 if [ -n "$OUTPUT_FILE" ] || [ "$METHOD" = "GET" ]; then
-    nc -w "$CONNECT_TIMEOUT" -U "$SOCKET" < /tmp/http_req > /tmp/http_res 2>/tmp/nc_err || NC_EXIT=$?
+    send_request -w "$CONNECT_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
 else
-    nc -N -w "$CONNECT_TIMEOUT" -U "$SOCKET" < /tmp/http_req > /tmp/http_res 2>/tmp/nc_err || NC_EXIT=$?
+    send_request -N -w "$CONNECT_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
 fi
 
 if [ "$NC_EXIT" -ne 0 ]; then
-    [ "$SILENT" = false ] && [ -f /tmp/nc_err ] && cat /tmp/nc_err >&2
-    rm -f /tmp/http_req /tmp/http_res /tmp/nc_err
+    [ "$SILENT" = false ] && [ -f "$TMPFILE_BASE".err ] && cat "$TMPFILE_BASE".err >&2
+    rm -f "$TMPFILE_BASE".req "$TMPFILE_BASE".body "$TMPFILE_BASE".res "$TMPFILE_BASE".err
     exit "$NC_EXIT"
 fi
 
 if [ "$VERBOSE" = true ]; then
-    head -n 1 /tmp/http_res | tr -d '\r' >&2
+    head -n 1 "$TMPFILE_BASE".res | tr -d '\r' >&2
 fi
 
 extract_body() {
@@ -117,20 +141,20 @@ extract_body() {
         case "$line" in
             ""| "$(printf '\r')") break ;;
         esac
-    done < /tmp/http_res
-    tail -c +$((HBYTES + 1)) /tmp/http_res
+    done < "$TMPFILE_BASE".res
+    tail -c +$((HBYTES + 1)) "$TMPFILE_BASE".res
 }
 
 if [ -n "$OUTPUT_FILE" ]; then
     extract_body > "$OUTPUT_FILE"
 elif [ "$SHOW_HEADERS" = true ]; then
-    cat /tmp/http_res
+    cat "$TMPFILE_BASE".res
 else
     extract_body
 fi
 
 if [ -n "$WRITE_OUT" ]; then
-    HTTP_STATUS_LINE=$(head -n 1 /tmp/http_res)
+    HTTP_STATUS_LINE=$(head -n 1 "$TMPFILE_BASE".res)
     HTTP_CODE=$(echo "$HTTP_STATUS_LINE" | awk '{print $2}')
     # Strip surrounding single quotes (from pvcontrol word-splitting)
     CLEAN_FMT=$(echo "$WRITE_OUT" | sed "s/^'//;s/'$//")
@@ -138,4 +162,4 @@ if [ -n "$WRITE_OUT" ]; then
     printf "%b" "$OUT_STR"
 fi
 
-rm -f /tmp/http_req /tmp/http_res /tmp/nc_err
+rm -f "$TMPFILE_BASE".req "$TMPFILE_BASE".body "$TMPFILE_BASE".res "$TMPFILE_BASE".err

@@ -684,6 +684,15 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 {
 	struct pv_volume *v, *tmp;
 
+	// management containers get every inlay bind mounted, so they must exist
+	if ((p->roles & PLAT_ROLE_MGMT) && pv_volumes_mount_devmode(s)) {
+		pv_log(ERROR, "devmode volumes could not be mounted");
+		return -1;
+	}
+
+	// an inlay that a devmode reset moved away is not in use any more
+	pv_volumes_devmode_sweep_old(s, p);
+
 	// Skip already-mounted volumes (e.g. re-entering here to start a STAGED platform).
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
 	{
@@ -694,6 +703,9 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 				return -1;
 			}
 	}
+
+	// mgmt containers see what the container wrote itself, once its lxc-overlay is mounted
+	pv_volumes_devmode_layer_mount(s, p);
 
 	pv_platform_set_mounted(p);
 
@@ -1111,6 +1123,8 @@ int pv_state_stop_force(struct pv_state *s)
 		ret |= -2;
 	}
 
+	pv_volumes_umount_devmode(s);
+
 	// Platform volumes are unmounted when each platform transitions to
 	// STOPPED (in pv_platform_set_status). Only BSP volumes (plat==NULL)
 	// need explicit unmount here.
@@ -1290,6 +1304,14 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 // returns: -1 if there was an error and reboot is mandatory
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
 {
+	// the inlay volumes and the mgmt bind mounts are part of the container
+	// start, so entering, leaving or switching devmode revisions restarts
+	// everything
+	if (pv_storage_is_devmode_change(current->rev, pending->rev)) {
+		pv_log(INFO, "devmode revision change requires reboot");
+		return 1;
+	}
+
 	if (pv_state_compare_jsons(current, pending) ||
 	    pv_state_compare_objects(current, pending)) {
 		pv_log(INFO,

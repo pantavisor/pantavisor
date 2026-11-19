@@ -1,0 +1,12 @@
+== device metadata ==
+pantavisor.devmode.allowed: 0
+== devmode is not allowed ==
+exit: 255
+{"Error":"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config"}
+== from a container with the mgmt role ==
+exit: 255
+{"Error":"Devmode is disabled, enable PV_DEVMODE_ALLOWED in pantavisor.config or the OEM config"}
+== from a container without the mgmt role ==
+{"Error":"Request not sent from mgmt platform"}403
+== no command ran ==
+file created: no

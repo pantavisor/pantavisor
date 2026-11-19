@@ -49,7 +49,14 @@ void pv_ctrl_utils_send_json_file(struct evhttp_request *req, const char *path);
 void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 			      const char *err_str);
 
+// errname is a string that outlives the call, for example "ENOENT"; NULL leaves it out
+void pv_ctrl_utils_send_error_errno(struct evhttp_request *req, int code,
+				    const char *err_str, const char *errname);
+
 void pv_ctrl_utils_send_ok(struct evhttp_request *req);
+
+// like send_ok, but the body tells the caller that the device reboots now
+void pv_ctrl_utils_send_reboot(struct evhttp_request *req);
 
 int pv_ctrl_utils_split_path(const char *uri,
 			     char parts[PV_CTRL_MAX_SPLIT][NAME_MAX]);
@@ -68,5 +75,8 @@ void pv_ctrl_utils_drain_req(struct evhttp_request *req);
 void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req);
 void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
 					    int code, const char *err_str);
+void pv_ctrl_utils_drain_on_arrive_with_err_errno(struct evhttp_request *req,
+						  int code, const char *err_str,
+						  const char *errname);
 
 #endif

@@ -38,5 +38,17 @@ int pv_ctrl_endpoints_xconnect_graph_init(void);
 int pv_ctrl_endpoints_daemons_init(void);
 int pv_ctrl_endpoints_storage_init(void);
 int pv_ctrl_endpoints_wakelock_init(void);
+int pv_ctrl_endpoints_devmode_init(void);
+int pv_ctrl_endpoints_exec_init(void);
+
+// 0 while a devmode revision runs and devmode is allowed, else an HTTP code and a message
+int pv_ctrl_devmode_check(const char **msg);
+int pv_ctrl_endpoints_devmode_files_init(void);
+#include <stddef.h>
+
+struct pv_state;
+struct pv_platform;
+void pv_ctrl_devmode_inlay_path(struct pv_state *s, struct pv_platform *p,
+				char *buf, size_t size);
 
 #endif

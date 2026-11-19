@@ -68,6 +68,27 @@ In regards of how the interaction with the bootloader is done, Pantavisor can be
 
 In this mode, both Pantavisor and U-Boot will write and read to and from a file in [storage](storage.md) that contains the revision information that U-Boot needs so it can boot up at any time. With that information, Kernel and initrd will be loaded from that same [storage](storage.md) by U-Boot.
 
+#### Where `pv_trying` is stored
+
+While a new revision is being tried, U-Boot keeps a `pv_trying` marker so it can tell "already tried" from "first try" and fall back to `pv_rev` if the try never reached Pantavisor. The generic boot script keeps it in a `pv.env` file on the boot partition, written with `env export` and read back with `env import` on every boot.
+
+Pantavisor clears `pv_trying` only when [devmode](devmode.md) re-arms a try, so that the next boot comes up in the devmode revision again; normal updates and rollbacks leave it to U-Boot. `PV_BOOTLOADER_TRYING_ENV` tells Pantavisor where the file is:
+
+| Value | File |
+|-------|------|
+| `part:<n>:<path>` | `<path>` on partition `<n>` (hex, as U-Boot prints it) of the disk that holds the storage partition; the generic boot script passes `part:${pv_bootpart}:/pv.env` on the kernel command line |
+| `LABEL=<x>:<path>`, `UUID=<x>:<path>` | `<path>` on the partition with that label or UUID |
+| empty | probe `LABEL=boot`, then the storage root, for `/pv.env` |
+
+Pantavisor only rewrites a `pv.env` that already exists, mounting the partition (vfat or ext4) for the write if it is not the storage partition. If the file is missing or cannot be written, it logs and the device boots the last committed revision after the reboot.
+
+To check on the device, look at the kernel command line and at what Pantavisor logged:
+
+```
+tr ' ' '\n' < /proc/cmdline | grep PV_BOOTLOADER_TRYING_ENV
+grep -r uboot-env-file /storage/logs/devmode/
+```
+
 ### uboot-ab
 
 This mode is similar to [uboot](#uboot) but it will use [fit images](https://github.com/devicetree-org/devicetree-specification) stored in two mtd partitions so the Kernel can be loaded in a faster manner by the bootloader. The selection of the partition to be booted is done by Pantavisor using U-Boot env variables, as well as the writing of the Kernel images in each partition.

@@ -199,7 +199,12 @@ add_executable(pantavisor
 			ctrl/ctrl_caller.h
 			ctrl/ctrl_containers_ep.c
 			ctrl/ctrl_daemons_ep.c
+			ctrl/ctrl_devmode_ep.c
+			ctrl/ctrl_devmode_files_ep.c
+			ctrl/ctrl_devmode_tar.c
+			ctrl/ctrl_devmode_tar.h
 			ctrl/ctrl_endpoints.h
+			ctrl/ctrl_exec_ep.c
 			ctrl/ctrl_file.c
 			ctrl/ctrl_file.h
 			ctrl/ctrl_groups_ep.c
@@ -347,6 +352,8 @@ add_executable(pantavisor
 			trestclient.c
 			trestclient.h
 			uboot.c
+			uboot_env_file.c
+			uboot_env_file.h
 			ubootab.c
 			update/update.c
 			update/update.h

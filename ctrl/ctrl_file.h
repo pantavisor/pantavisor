@@ -33,6 +33,9 @@ struct pv_ctrl_file {
 	char path[PATH_MAX];
 	bool ok;
 	struct evhttp_request *req;
+	// owned by the file, freed with it by priv_free
+	void *priv;
+	void (*priv_free)(void *priv);
 };
 
 enum pv_ctrl_file_type { PV_CTRL_FILE_READ, PV_CTRL_FILE_WRITE };
@@ -40,6 +43,10 @@ enum pv_ctrl_file_type { PV_CTRL_FILE_READ, PV_CTRL_FILE_WRITE };
 struct pv_ctrl_file *pv_ctrl_file_new(struct evhttp_request *req,
 				      const char *path,
 				      enum pv_ctrl_file_type type);
+
+// takes over an open fd instead of opening a path
+struct pv_ctrl_file *pv_ctrl_file_new_fd(struct evhttp_request *req, int fd,
+					 const char *path);
 
 void pv_ctrl_file_free(struct pv_ctrl_file *file);
 

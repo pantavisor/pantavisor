@@ -9,7 +9,7 @@
 echo "== pv-example-mgmt (mgmt role): pvcontrol access =="
 # The listing includes the device's baseline containers (target-dependent), so
 # keep it device-agnostic by reporting only the containers this test installs.
-pventer -c "pv-example-mgmt" pvcontrol ls | jq -Mc 'map(select(.name | startswith("pv-example")))'
+pventer -c "pv-example-mgmt" pvcontrol ls | jq -Mc 'map(select(.name | startswith("pv-example")) | del(.pid, .started_at, .restarts))'
 
 REV=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
 
