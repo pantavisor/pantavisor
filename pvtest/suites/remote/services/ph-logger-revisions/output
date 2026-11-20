@@ -1,0 +1,16 @@
+== wait for device idle ==
+== a line in a revision from the Hub ==
+updated: yes
+arrives: yes
+== backlog left behind by an update ==
+config off: yes
+updated: yes
+backlog not pushed while off: yes
+== push back on ==
+config on: yes
+backlog arrives under the previous revision: yes
+new line arrives under the new revision: yes
+== reboot ==
+back up: yes
+line after the reboot arrives: yes
+no line pushed twice: first yes, backlog yes, second yes, rebooted yes

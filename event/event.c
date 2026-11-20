@@ -166,3 +166,37 @@ struct event_base *pv_event_get_base()
 {
 	return base;
 }
+
+void pv_event_timer_arm(struct pv_event_timer *timer, int timeout,
+			event_callback_fn cb, void *arg)
+{
+	if (!base || !timer)
+		return;
+
+	if (!timer->ev) {
+		timer->ev = evtimer_new(base, cb, arg);
+		if (!timer->ev) {
+			pv_log(ERROR, "could not create timer event");
+			return;
+		}
+	}
+
+	// 0 still goes through the timer heap, see pv_event_one_shot()
+	struct timeval when = { timeout, timeout ? 0 : 1 };
+	if (evtimer_add(timer->ev, &when) < 0) {
+		pv_log(ERROR, "could not add timer event");
+		return;
+	}
+
+	pv_log(TRACE, "add event: type='timer' cb=%p timeout=%d", (void *)cb,
+	       timeout);
+}
+
+void pv_event_timer_stop(struct pv_event_timer *timer)
+{
+	if (!timer || !timer->ev)
+		return;
+
+	event_free(timer->ev);
+	timer->ev = NULL;
+}

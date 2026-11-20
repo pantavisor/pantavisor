@@ -23,11 +23,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "pantahub/pantahub.h"
+#include "pantahub/pantahub_logger.h"
 #include "pantahub/pantahub_msg.h"
 #include "pantahub/pantahub_proto.h"
 #include "pantahub/pantahub_struct.h"
@@ -142,6 +144,11 @@ struct pv_pantahub_session {
 	bool sync_initialized;
 	bool post_trail_active;
 	struct evhttp_request *post_trail_req;
+
+	bool post_logs_push_active;
+	struct evhttp_request *post_logs_push_req;
+	bool post_logs_range_active;
+	struct evhttp_request *post_logs_range_req;
 	struct dl_list object_sync_list; // struct pv_object_sync
 };
 
@@ -245,6 +252,10 @@ void pv_pantahub_proto_init()
 	session.sync_initialized = false;
 	session.post_trail_active = false;
 	session.post_trail_req = NULL;
+	session.post_logs_push_active = false;
+	session.post_logs_push_req = NULL;
+	session.post_logs_range_active = false;
+	session.post_logs_range_req = NULL;
 	dl_list_init(&session.object_sync_list);
 }
 
@@ -377,8 +388,12 @@ void _free_token()
 	pv_log(DEBUG, "removed token");
 }
 
+static void _cancel_logs(pv_logs_req_t which);
+
 void pv_pantahub_proto_close()
 {
+	_cancel_logs(PV_LOGS_PUSH);
+	_cancel_logs(PV_LOGS_RANGE);
 	_free_object_transfer_list(&session.object_transfer_list);
 	_free_token();
 	pv_pantahub_proto_free_sync();
@@ -2084,4 +2099,71 @@ void pv_pantahub_proto_post_trail()
 	}
 
 	free(json);
+}
+
+static bool *_logs_active(pv_logs_req_t which)
+{
+	return which == PV_LOGS_PUSH ? &session.post_logs_push_active :
+				       &session.post_logs_range_active;
+}
+
+static struct evhttp_request **_logs_req(pv_logs_req_t which)
+{
+	return which == PV_LOGS_PUSH ? &session.post_logs_push_req :
+				       &session.post_logs_range_req;
+}
+
+static void _cancel_logs(pv_logs_req_t which)
+{
+	if (*_logs_active(which) && *_logs_req(which))
+		pv_event_rest_cancel_request(*_logs_req(which));
+	*_logs_active(which) = false;
+	*_logs_req(which) = NULL;
+}
+
+static void _recv_post_logs_cb(struct evhttp_request *req, void *ctx)
+{
+	pv_logs_req_t which = (pv_logs_req_t)(intptr_t)ctx;
+	char *body = NULL;
+	int res;
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_logs_cb);
+
+	*_logs_active(which) = false;
+	*_logs_req(which) = NULL;
+
+	res = _recv_buffer_status(req, &body);
+	pv_pantahub_logger_on_posted(which, res, body);
+
+	free(body);
+	// a 401 or 403 dropped the token: the client has to log in again
+	pv_pantahub_evaluate_state();
+}
+
+int pv_pantahub_proto_post_logs(pv_logs_req_t which, const char *json)
+{
+	if (!session.token) {
+		pv_log(DEBUG, "session must be opened first");
+		return -1;
+	}
+
+	if (*_logs_active(which)) {
+		pv_log(DEBUG,
+		       "POST /logs/ already active; skip sending another");
+		return -1;
+	}
+
+	if (_send_by_endpoint(EVHTTP_REQ_POST, "/logs/", NULL, session.token,
+			      json, _recv_post_logs_cb, (void *)(intptr_t)which,
+			      _logs_req(which)))
+		return -1;
+
+	*_logs_active(which) = true;
+
+	return 0;
+}
+
+bool pv_pantahub_proto_is_posting_logs(pv_logs_req_t which)
+{
+	return *_logs_active(which);
 }

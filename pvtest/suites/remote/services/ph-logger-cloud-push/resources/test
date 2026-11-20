@@ -1,24 +1,112 @@
 #!/bin/sh
+#
+# Log push to the Hub (docs/overview/remote-control.md#pantacor-hub-client)
+#
+# Lines are appended to a file of their own in the running revision's file
+# tree (platform pvtest, source /<file>) and read back from the Hub with
+# `pvr device logs`, which is polled until they arrive: Hub ingestion takes a
+# variable time, so no fixed sleep decides the result.
+#
+#  1. a single line arrives.
+#  2. a burst of more lines than fit in one request (200) arrives, each line
+#     exactly once.
+#  3. PV_LOG_PUSH=0 from the Hub user meta stops the push at run time: a line
+#     written meanwhile does not arrive. Back to 1, it arrives from where the
+#     push stopped.
+#
+# Every line carries a per-run nonce: the log tree and the Hub logs outlive a
+# test, so a line from an earlier run must never count. The nonce never reaches
+# stdout.
 
 . "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1
+
+KEY=PV_LOG_PUSH
+BURST=500
+RUN="$$$(date +%s)"
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+SRC="/ph-logger-$RUN.log"
+DEVFILE="$LOGROOT/current/pvtest$SRC"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+rev=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+bearer=$(jq -r 'first(.tokens[]) | .["access-token"] // empty' "$HOME/.pvr/auth.json" 2>/dev/null)
+TMP=$(mktemp -d)
+
+hub_get_usrmeta() {
+	curl -s -H "Authorization: Bearer $bearer" "$PVTEST_HUB_URL/devices/$device_id" | jq -c '."user-meta" // {}'
+}
+hub_put_usrmeta() {
+	curl -s -X PUT -H "Authorization: Bearer $bearer" -H "Content-Type: application/json" \
+		-d "$1" "$PVTEST_HUB_URL/devices/$device_id/user-meta" > /dev/null
+}
+# $1 = new value of the key; other user meta is kept
+hub_set_key() { hub_put_usrmeta "$(jq -c --arg v "$1" ".\"$KEY\" = \$v" "$TMP/orig")"; }
+wait_for_conf() { wait_for_status "[ \"\$(pvcontrol conf ls | jq -r --arg k $KEY '.[] | select(.key == \$k) | .value')\" = $1 ]" 0 "${2:-60}"; }
+
+# $1 = line to append to the test log file on the target
+emit() { pv_exec sh -c "printf '%s\n' '$1' >> '$DEVFILE'"; }
+# appends lines "<nonce> burst 1" .. "<nonce> burst $BURST"
+emit_burst() {
+	pv_exec sh -c "i=1; while [ \$i -le $BURST ]; do echo '$RUN burst' \$i; i=\$((i + 1)); done >> '$DEVFILE'"
+}
+# Fills $TMP/hub with the lines of the test log file the Hub has so far
+hub_fetch() {
+	pvr device logs -n -r "$rev" --platform pvtest --source "$SRC" "$device_id" 2>/dev/null \
+		| tr -d '\r' | grep -o "$RUN [a-z]*[ 0-9]*" > "$TMP/hub"
+}
+hub_count() { hub_fetch; grep -c -x "$1" "$TMP/hub"; }
+# Polls the Hub every 5 seconds until at least $2 lines match $1, for $3 seconds
+hub_wait() {
+	local waited=0
+	while [ $waited -lt "$3" ]; do
+		[ "$(hub_count "$1")" -ge "$2" ] && return 0
+		sleep 5
+		waited=$((waited + 5))
+	done
+	return 1
+}
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+
+hub_get_usrmeta > "$TMP/orig"
+jq -e . "$TMP/orig" > /dev/null 2>&1 || { echo "ERROR: could not read user meta from the Hub" >&2; rm -rf "$TMP"; exit 1; }
+trap 'hub_put_usrmeta "$(cat "$TMP/orig")"; pv_exec rm -f "$DEVFILE"; rm -rf "$TMP"' EXIT
 
 echo "== ph-logger cloud push config =="
-pvcontrol conf ls | jq '.[] | select(.key == "PV_LOG_PUSH")'
+pvcontrol conf ls | jq -M -r --arg k "$KEY" '.[] | select(.key == $k) | "\($k) = \(.value) (\(.modified))"' | tr -d '\r'
 
-echo "== wait for ph-logger to push logs =="
-sleep 20
+echo "== wait for device idle =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+	|| { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+pv_exec mkdir -p "$LOGROOT/current/pvtest"
 
-echo "== fetch device logs from Hub =="
-device_id=`pv_exec cat /run/pantavisor/pv/device-id`
-rev=`pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]'`
-output=`mktemp`
-pvr device logs "$device_id" -r "$rev" > "$output" &
+echo "== a single line =="
+emit "$RUN single"
+echo "arrives: $(yesno hub_wait "$RUN single" 1 180)"
 
-sleep 20
+echo "== a burst of $BURST lines =="
+emit_burst
+echo "all arrive: $(yesno hub_wait "$RUN burst [0-9]*" "$BURST" 300)"
+hub_fetch
+grep "^$RUN burst " "$TMP/hub" > "$TMP/burst"
+echo "each exactly once: $([ "$(wc -l < "$TMP/burst")" -eq "$BURST" ] && [ "$(sort -u "$TMP/burst" | wc -l)" -eq "$BURST" ] && echo yes || echo no)"
+echo "burst lines on the Hub: $(wc -l < "$TMP/burst"), distinct: $(sort -u "$TMP/burst" | wc -l)" >&2
 
-echo "== logs received from Hub =="
-if [ -s "$output" ]; then
-	echo "true"
-else
-	echo "false"
-fi
+echo "== push off at run time =="
+hub_set_key 0
+echo "config off: $(yesno wait_for_conf 0 120)"
+emit "$RUN paused"
+sleep 30
+echo "line written while off does not arrive: $([ "$(hub_count "$RUN paused")" -eq 0 ] && echo yes || echo no)"
+
+echo "== push back on =="
+hub_set_key 1
+echo "config on: $(yesno wait_for_conf 1 120)"
+echo "line written while off arrives: $(yesno hub_wait "$RUN paused" 1 180)"
+echo "only once: $([ "$(hub_count "$RUN paused")" -eq 1 ] && echo yes || echo no)"

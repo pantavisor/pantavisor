@@ -23,27 +23,27 @@ openssl x509 -in cert.pem -pubkey -noout | openssl pkey -pubin -outform DER | sh
 e04a022ce32f4ccf2c7f6046287b828a32a909f5e751447f83fd2c71f6fd8173
 ```
 
-Pantavisor reads the file from `/etc/thttp/denylist` unless you point `PV_LIBTHTTP_DENYLIST` at another path. A missing file means no denylist. Keep the file outside the certificates directory (`PV_LIBTHTTP_CERTSDIR`).
+Pantavisor reads the file from `/etc/thttp/denylist` unless you point `PV_TLS_DENYLIST` at another path. A missing file means no denylist. Keep the file outside the certificates directory (`PV_TLS_CERTSDIR`).
 
 ## Set the path
 
-`PV_LIBTHTTP_DENYLIST` can be set at these [levels](pantavisor-configuration-levels.md): `pantavisor.config`, policy, OEM config, `pv_` kernel command line and environment variable. It cannot be set from `pantahub.config`, which holds only the credentials and Hub settings the device negotiates at run time.
+`PV_TLS_DENYLIST` can be set at these [levels](pantavisor-configuration-levels.md): `pantavisor.config`, policy, OEM config, `pv_` kernel command line and environment variable. It cannot be set from `pantahub.config`, which holds only the credentials and Hub settings the device negotiates at run time.
 
 For example, in `pantavisor.config`:
 
 ```text
-PV_LIBTHTTP_DENYLIST=/storage/my-denylist
+PV_TLS_DENYLIST=/storage/my-denylist
 ```
 
 Or in the [OEM config](pantavisor-configuration-levels.md#oem) file of a revision, so an update can move the path:
 
 ```bash
 mkdir -p myoem
-echo 'PV_LIBTHTTP_DENYLIST=/storage/my-denylist' >> myoem/default.config
+echo 'PV_TLS_DENYLIST=/storage/my-denylist' >> myoem/default.config
 pvr add . && pvr commit && pvr post
 ```
 
-On the kernel command line the `pv_` prefix is stripped before the key is looked up, so the full key follows it: `pv_PV_LIBTHTTP_DENYLIST=/storage/my-denylist`. Prefer an [environment variable](pantavisor-configuration-levels.md#environment-variables).
+On the kernel command line the `pv_` prefix is stripped before the key is looked up, so the full key follows it: `pv_PV_TLS_DENYLIST=/storage/my-denylist`. Prefer an [environment variable](pantavisor-configuration-levels.md#environment-variables).
 
 ## When a change takes effect
 
@@ -72,4 +72,4 @@ When a listed certificate is in the chain, requests to the Hub fail without an a
 
 ## Reference
 
-- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_LIBTHTTP_DENYLIST`, with its levels
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_TLS_DENYLIST`, with its levels

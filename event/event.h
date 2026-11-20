@@ -33,6 +33,15 @@ void pv_event_base_loopbreak(void);
 void pv_event_timeout(int timeout, event_callback_fn cb);
 void pv_event_one_shot(event_callback_fn cb);
 
+struct pv_event_timer {
+	struct event *ev;
+};
+
+// runs cb(arg) once after timeout seconds; arming again moves the pending run
+void pv_event_timer_arm(struct pv_event_timer *timer, int timeout,
+			event_callback_fn cb, void *arg);
+void pv_event_timer_stop(struct pv_event_timer *timer);
+
 // do not use outside event/
 struct event_base *pv_event_get_base(void);
 

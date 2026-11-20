@@ -29,7 +29,7 @@ The main features offered by remote control are:
 
 * Keeping the device up to date: the [revisions](revisions.md) form a trail of steps in Pantacor Hub. This trail is ordered according to the time of [deploying](../../meta-pantavisor/getting-started/develop/cli-tools/workflows.md) and will be consumed by Pantavisor step by step. After founding a new step, Pantavisor will parse the [revision State JSON](../reference/pantavisor-state-format-v2.md), download the artifacts into the [storage](storage.md#trails-and-objects) and [transition](updates.md) to the new revision.
 * Sending [device metadata](storage.md#device-metadata) and receiving [user metadata](storage.md#user-metadata).
-* Sending logs: sending [stored logs](storage.md#logs) up.
+* Sending logs: sending [stored logs](storage.md#logs) up. With `PV_LOG_PUSH` on and the [file tree](storage.md#file-tree) output enabled, the client sends the lines of the running revision as they are written, and then the ones left unsent in older revisions, starting from the newest. Each line is sent once: the client keeps how far it got in each file, and when logs are not on a temporary file system the position also survives reboots. The running revision's lines are sent in the **report**, **idle**, **prep download** and **download** states, so they keep flowing during an update; the older revisions only while **idle**.
 
 #### State Machine
 

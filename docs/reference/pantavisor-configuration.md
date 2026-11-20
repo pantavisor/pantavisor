@@ -97,9 +97,6 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_DISK_WRITABLEDIR` | path | `/writable` | set writable directory |
 | `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) cache directory |
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
-| `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
-| `PV_LIBTHTTP_DENYLIST` | path | `/etc/thttp/denylist` | file with SHA-256 hashes of public keys of certificates that HTTPS connections must refuse, see [certificate denylist](../overview/certificate-denylist.md); a missing file means no denylist |
-| `PV_LIBTHTTP_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` ALL | `3` | set libthttp log verbosity level |
 | `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../overview/storage.md#logs) buffer size |
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
@@ -171,6 +168,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSTEM_MOUNT_SECURITYFS` | `0` or `1` | `0` | mount securityfs |
 | `PV_SYSTEM_RUNDIR` | path | `/pv` | set system run directory |
 | `PV_SYSTEM_USRDIR` | path | `/usr` | set system usr directory |
+| `PV_TLS_CERTSDIR` | path | `/certs` | set the directory of CA certificates that HTTPS connections trust |
+| `PV_TLS_DENYLIST` | path | `/etc/thttp/denylist` | file with SHA-256 hashes of public keys of certificates that HTTPS connections must refuse, see [certificate denylist](../overview/certificate-denylist.md); a missing file means no denylist |
 | `PV_UPDATER_COMMIT_DELAY` | time (in seconds) | `25` | delay before committing an update |
 | `PV_UPDATER_GOALS_TIMEOUT` | time (in seconds) | `120` | timeout for reaching update goals |
 | `PV_UPDATER_USE_TMP_OBJECTS` | `0` or `1` | `0` | use temporary objects during updates |
@@ -238,9 +237,6 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_DISK_WRITABLEDIR`                | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_DROPBEAR_CACHE_DIR`              | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LIBEVENT_DEBUG_MODE`             | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| `PV_LIBTHTTP_CERTSDIR`               | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
-| `PV_LIBTHTTP_DENYLIST`               | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| `PV_LIBTHTTP_LOG_LEVEL`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_AUTO_DEVLOG`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_BUF_NITEMS`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_CAPTURE`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
@@ -312,6 +308,8 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_SYSTEM_MOUNT_SECURITYFS`         | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_RUNDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_USRDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_TLS_CERTSDIR`                    | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_TLS_DENYLIST`                    | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_UPDATER_COMMIT_DELAY`            | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_UPDATER_GOALS_TIMEOUT`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_UPDATER_USE_TMP_OBJECTS`         | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
