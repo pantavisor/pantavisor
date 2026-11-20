@@ -552,6 +552,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 				buf, "initrd", tokv, tokc);
 		}
 	}
+	s->bsp.uki = pv_json_get_value_toplevel(buf, "uki", tokv, tokc);
 	s->bsp.firmware =
 		pv_json_get_value_toplevel(buf, "firmware", tokv, tokc);
 
@@ -577,7 +578,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	}
 
 	if ((!s->bsp.img.std.kernel || !s->bsp.img.std.initrd) &&
-	    !s->bsp.img.ut.fit && !s->bsp.img.rpiab.bootimg) {
+	    !s->bsp.img.ut.fit && !s->bsp.img.rpiab.bootimg && !s->bsp.uki) {
 		pv_log(ERROR,
 		       "kernel or initrd not configured in bsp/run.json");
 		ret = 0;
@@ -587,6 +588,12 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	if ((pv_config_get_bootloader_type() == BL_RPIAB) &&
 	    !s->bsp.img.rpiab.bootimg) {
 		pv_log(ERROR, "bootimg not configured but required by config");
+		ret = 0;
+		goto out;
+	}
+
+	if ((pv_config_get_bootloader_type() == BL_SDBOOT) && !s->bsp.uki) {
+		pv_log(ERROR, "uki not configured but required by config");
 		ret = 0;
 		goto out;
 	}

@@ -63,6 +63,7 @@ In regards of how the interaction with the bootloader is done, Pantavisor can be
 * [uboot-ab](#uboot-ab)
 * [rpiab](#rpiab)
 * [grub](#grub)
+* [sdboot](#sdboot)
 
 ### uboot
 
@@ -88,6 +89,34 @@ This mode sets Pantavisor up to work with [tryboot_a-b for Raspberry Pi](https:/
 ### grub
 
 In this mode, both Pantavisor and GRUB will write and read to and from a file in [storage](storage.md) that contains the revision information that GRUB needs to boot up at any moment. With that information, Kernel and initrd will be loaded from that same [storage](storage.md) by GRUB.
+
+### sdboot
+
+This mode is for UEFI machines that boot [systemd-boot](https://www.freedesktop.org/software/systemd/man/latest/systemd-boot.html) and a unified kernel image (UKI): a single EFI binary holding the kernel, the Pantavisor initrd and the kernel command line. The BSP ships the UKI under the `uki` key of `bsp/run.json`:
+
+```json
+{
+    "uki": "pantavisor.efi",
+    "firmware": "firmware.squashfs",
+    "modules": "modules.squashfs"
+}
+```
+
+Each revision boots its own copy, `EFI/Linux/pv-<rev>.efi` on the EFI system partition, which systemd-boot lists without any entry file. Pantavisor selects between them with systemd-boot's EFI variables:
+
+| Step | What Pantavisor does |
+|---|---|
+| install revision N | copies its UKI to `EFI/Linux/pv-N.efi`, sets `LoaderEntryDefault` to the running revision and `LoaderEntryOneShot` to `pv-N.efi` |
+| boot | reads the booted revision from `LoaderEntrySelected` |
+| commit revision N | sets `LoaderEntryDefault` to `pv-N.efi` and removes the other `pv-*.efi` |
+
+systemd-boot consumes the one-shot entry on the boot that tries the revision, so any later reboot before the commit lands back on the default. A revision that fails before that boot, during a non-reboot transition, has its one-shot entry removed along with `pv_try`, so the rollback reboot does not start it. `pv_rev` and `pv_try` are kept in `uboot.txt` in [storage](storage.md), as in [uboot](#uboot) mode.
+
+The EFI system partition is found by `PV_BOOTLOADER_SDBOOT_ESP` ([config key](../reference/pantavisor-configuration.md), `LABEL=ESP` by default). The kernel needs vfat, with its default iocharset, and efivarfs built in. Inspect the variables on a device with:
+
+```bash
+cat /sys/firmware/efi/efivars/LoaderEntrySelected-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f | tail -c +5 | tr -d '\0'
+```
 
 ## Reference
 

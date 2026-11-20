@@ -43,6 +43,8 @@ struct pv_bsp {
 			char *bootimg;
 		} rpiab;
 	} img;
+	// unified kernel image, alongside any of img
+	char *uki;
 	char *firmware;
 	char *modules;
 	struct dl_list drivers; // pv_driver
