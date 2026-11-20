@@ -1,0 +1,134 @@
+#!/bin/sh
+#
+# Log push across revisions (docs/overview/remote-control.md#pantacor-hub-client)
+#
+# Lines are appended to a file of their own in a revision's file tree
+# (platform pvtest, source /<file>) and read back from the Hub per revision
+# with `pvr device logs -r`, polled until they arrive.
+#
+#  1. a revision is installed from the Hub and a line in it arrives. The
+#     initial revision is local: older revisions are only sent when they are
+#     numbered, so the test needs one from the Hub to leave a backlog in.
+#  2. with the push off, a backlog line is left in that revision and a new
+#     revision is installed from the Hub.
+#  3. push back on: the backlog line arrives under the previous revision, and a
+#     line in the new one arrives under the new one.
+#  4. after a reboot no line is pushed twice: the positions saved in the log
+#     files survive it (the logs are not on a temporary file system here).
+#
+# Every line carries a per-run nonce; it never reaches stdout.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_TOKEN" pvr login > /dev/null 2>&1
+
+KEY=PV_LOG_PUSH
+RUN="$$$(date +%s)"
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value')
+LOGROOT=${LOGROOT%/}
+if [ -z "$LOGROOT" ]; then
+	echo "ERROR: could not read PV_LOG_DIR from the target" >&2
+	exit 1
+fi
+SRC="/ph-logger-$RUN.log"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+rev1=
+rev2=
+bearer=$(jq -r 'first(.tokens[]) | .["access-token"] // empty' "$HOME/.pvr/auth.json" 2>/dev/null)
+TMP=$(mktemp -d)
+
+hub_get_usrmeta() {
+	curl -s -H "Authorization: Bearer $bearer" "$PVTEST_HUB_URL/devices/$device_id" | jq -c '."user-meta" // {}'
+}
+hub_put_usrmeta() {
+	curl -s -X PUT -H "Authorization: Bearer $bearer" -H "Content-Type: application/json" \
+		-d "$1" "$PVTEST_HUB_URL/devices/$device_id/user-meta" > /dev/null
+}
+# $1 = new value of the key; other user meta is kept
+hub_set_key() { hub_put_usrmeta "$(jq -c --arg v "$1" ".\"$KEY\" = \$v" "$TMP/orig")"; }
+wait_for_conf() { wait_for_status "[ \"\$(pvcontrol conf ls | jq -r --arg k $KEY '.[] | select(.key == \$k) | .value')\" = $1 ]" 0 "${2:-60}"; }
+
+# $1 = revision, $2 = line to append to its test log file on the target
+emit() {
+	pv_exec mkdir -p "$LOGROOT/$1/pvtest"
+	pv_exec sh -c "printf '%s\n' '$2' >> '$LOGROOT/$1/pvtest$SRC'"
+}
+# $1 = revision, $2 = line: how many times the Hub has the line
+hub_count() {
+	pvr device logs -n -r "$1" --platform pvtest --source "$SRC" "$device_id" 2>/dev/null \
+		| tr -d '\r' | grep -o "$RUN [a-z-]*" | grep -c -x "$2"
+}
+# $1 = revision, $2 = line: polls the Hub every 5 seconds for $3 seconds
+hub_wait() {
+	local waited=0
+	while [ $waited -lt "$3" ]; do
+		[ "$(hub_count "$1" "$2")" -ge 1 ] && return 0
+		sleep 5
+		waited=$((waited + 5))
+	done
+	return 1
+}
+yesno() { if "$@" > /dev/null 2>&1; then echo yes; else echo no; fi; }
+once() { [ "$(hub_count "$1" "$2")" -eq 1 ] && echo yes || echo no; }
+wait_idle() {
+	wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+		|| { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+}
+
+hub_get_usrmeta > "$TMP/orig"
+jq -e . "$TMP/orig" > /dev/null 2>&1 || { echo "ERROR: could not read user meta from the Hub" >&2; rm -rf "$TMP"; exit 1; }
+trap 'hub_put_usrmeta "$(cat "$TMP/orig")"; pv_exec rm -f ${rev1:+"$LOGROOT/$rev1/pvtest$SRC"} ${rev2:+"$LOGROOT/$rev2/pvtest$SRC"}; rm -rf "$TMP"' EXIT
+
+# $1 = message: posts the device's current state as a new revision and waits for it
+post_rev() {
+	local checkout rev
+	checkout="$(mktemp -d)/checkout"
+	pvr_clone_local_or_die "$checkout"
+	cd "$checkout"
+	rev=$(pvr_post_rev -m "$1" "$trail_url")
+	cd /
+	[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+	wait_for_revision_state "$rev" "UPDATED" \
+		|| { echo "ERROR: timeout waiting for revision $rev to reach UPDATED" >&2; exit 1; }
+	printf '%s\n' "$rev"
+}
+
+echo "== wait for device idle =="
+wait_idle
+
+echo "== a line in a revision from the Hub =="
+rev1=$(post_rev "ph-logger-revisions first") || exit 1
+echo "updated: yes"
+emit "$rev1" "$RUN first"
+echo "arrives: $(yesno hub_wait "$rev1" "$RUN first" 180)"
+
+echo "== backlog left behind by an update =="
+hub_set_key 0
+echo "config off: $(yesno wait_for_conf 0 120)"
+emit "$rev1" "$RUN backlog"
+rev2=$(post_rev "ph-logger-revisions second") || exit 1
+echo "updated: yes"
+emit "$rev2" "$RUN second"
+echo "backlog not pushed while off: $([ "$(hub_count "$rev1" "$RUN backlog")" -eq 0 ] && echo yes || echo no)"
+
+echo "== push back on =="
+hub_set_key 1
+echo "config on: $(yesno wait_for_conf 1 120)"
+echo "backlog arrives under the previous revision: $(yesno hub_wait "$rev1" "$RUN backlog" 180)"
+echo "new line arrives under the new revision: $(yesno hub_wait "$rev2" "$RUN second" 180)"
+
+echo "== reboot =="
+pvcontrol commands reboot "pvtest: ph-logger-revisions" > /dev/null 2>&1
+if wait_for_down 30 && wait_for_target_ready "after reboot" "$rev2" "DONE|UPDATED" > /dev/null 2>&1; then
+	echo "back up: yes"
+else
+	echo "back up: no"
+fi
+wait_idle
+emit "$rev2" "$RUN rebooted"
+echo "line after the reboot arrives: $(yesno hub_wait "$rev2" "$RUN rebooted" 180)"
+# both jobs had time to resend anything they lost track of
+sleep 30
+echo "no line pushed twice: first $(once "$rev1" "$RUN first"), backlog $(once "$rev1" "$RUN backlog"), second $(once "$rev2" "$RUN second"), rebooted $(once "$rev2" "$RUN rebooted")"

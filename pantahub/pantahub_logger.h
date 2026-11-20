@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022 Pantacor Ltd.
+ * Copyright (c) 2020-2026 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,24 +19,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_TRESTCLIENT_H
-#define PV_TRESTCLIENT_H
+#ifndef PV_PANTAHUB_LOGGER_H
+#define PV_PANTAHUB_LOGGER_H
 
-#include <trest.h>
-#include "pantavisor.h"
+#include "pantahub/pantahub_proto.h"
 
-struct pv_connection {
-	char *hostorip;
-	int port;
-};
+// pushes the running revision's file tree logs as they are written
+void pv_pantahub_logger_start_push(void);
+// pushes what is left in older revisions, newest first
+void pv_pantahub_logger_start_range(void);
+// no new pushes until started again; in-flight ones still complete
+void pv_pantahub_logger_pause(void);
+// forgets the positions kept in memory
+void pv_pantahub_logger_stop(void);
 
-struct pv_connection *pv_get_instance_connection();
+// response to a POST /logs/: HTTP status, or -1 without response
+void pv_pantahub_logger_on_posted(pv_logs_req_t which, int status,
+				  const char *body);
 
-trest_ptr pv_get_trest_client(struct pantavisor *pv,
-			      struct pv_connection *conn);
-
-const char **pv_ph_get_certs();
-void pv_ph_free_certs(const char **certs);
-struct thttp_denylist *pv_ph_load_denylist(void);
-
-#endif /* PV_TRESTCLIENT_H */
+#endif

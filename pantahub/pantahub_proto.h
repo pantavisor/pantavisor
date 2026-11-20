@@ -74,4 +74,10 @@ void pv_pantahub_proto_free_sync(void);
 
 void pv_pantahub_proto_queue_progress(const char *rev, const char *progress);
 
+// at most one POST /logs/ in flight for each
+typedef enum { PV_LOGS_PUSH, PV_LOGS_RANGE } pv_logs_req_t;
+
+int pv_pantahub_proto_post_logs(pv_logs_req_t which, const char *json);
+bool pv_pantahub_proto_is_posting_logs(pv_logs_req_t which);
+
 #endif

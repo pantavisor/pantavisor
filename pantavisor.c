@@ -56,7 +56,6 @@
 #include "metadata.h"
 #include "signature.h"
 #include "paths.h"
-#include "ph_logger.h"
 #include "logserver/logserver.h"
 #include "mount.h"
 #include "debug.h"
@@ -197,9 +196,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// for non-reboot updates...
 		pv_logserver_transition(pv_update_get_rev());
 
-		ph_logger_stop_lenient();
-		ph_logger_stop_force();
-
 		pv_log(INFO, "transitioning...");
 
 		pv_state_transition(pv_update_get_state(), pv->state);
@@ -291,9 +287,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(INFO,
 		       "running in local mode. Will not consume new updates from Pantahub");
 
-	// only start local ph logger, start cloud services if connected
 	pv_logserver_reconfigure();
-	ph_logger_toggle(pv->state->rev);
 
 	if (!pv_update_get_state()) {
 		if (pv_metadata_init()) {
@@ -414,8 +408,6 @@ void pv_reset_identity()
 		pv_log(WARN,
 		       "could not remove unclaimed credentials from disk");
 	pv_pantahub_stop();
-	ph_logger_stop_lenient();
-	ph_logger_stop_force();
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_CLAIMED, "0");
 	// restart from init so the client registers again
 	if (pv->remote_mode)
@@ -444,8 +436,6 @@ void pv_reset_identity_transition()
 static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timer_state tstate;
-
-	ph_logger_toggle(pv->state->rev);
 
 	// we don't want to rollback local revisions because of failing Hub comms
 	// which could happen when remote mode is forced on them
@@ -835,12 +825,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 
 	// stop childs leniently
 	pv_state_stop_lenient(pv->state);
-	ph_logger_stop_lenient();
 
 	// force stop childs
 	pv_state_stop_force(pv->state);
-	ph_logger_stop_force();
-	ph_logger_close();
 
 	pv_event_periodic_stop(&heartbeat_timer);
 	pv_pantahub_stop();
@@ -1196,8 +1183,6 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->issued_transition = PV_SYSTEM_TRANSITION_NONE;
 
 	pv_cgroup_print();
-
-	ph_logger_init();
 
 	return 0;
 }

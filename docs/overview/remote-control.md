@@ -29,7 +29,7 @@ The main features offered by remote control are:
 
 * Keeping the device up to date: the [revisions](revisions.md) form a trail of steps in Pantacor Hub. This trail is ordered according to the time of [deploying](../../meta-pantavisor/getting-started/develop/cli-tools/workflows.md) and will be consumed by Pantavisor step by step. After founding a new step, Pantavisor will parse the [revision State JSON](../reference/pantavisor-state-format-v2.md), download the artifacts into the [storage](storage.md#trails-and-objects) and [transition](updates.md) to the new revision.
 * Sending [device metadata](storage.md#device-metadata) and receiving [user metadata](storage.md#user-metadata).
-* Sending logs: sending [stored logs](storage.md#logs) up.
+* Sending logs: sending [stored logs](storage.md#logs) up. With `PV_LOG_PUSH` on and the [file tree](storage.md#file-tree) output enabled, the client sends the lines of the running revision as they are written, and then the ones left unsent in the other revisions, highest number first. Local revisions are not pushed.
 
 #### State Machine
 
@@ -54,10 +54,10 @@ The client state can be consulted at any moment via [device metadata](../referen
 * **prep sync**: objects that [checksum validation](storage.md#integrity) did not cover are hashed. The ones that no longer match their ID, such as writable images, are left out. The device then asks Hub for an upload URL for each object.
 * **sync objects**: device is uploading the [artifacts](revisions.md) that are not yet present in Hub.
 * **sync state**: device is posting its [state JSON](revisions.md) to Hub, which becomes the first step of its trail.
-* **report**: an update finished and device will continue uploading devmeta, downloading usrmeta while reporting its update status.
-* **idle**: device has checked all objects and state JSON is in the cloud. This is where the device will spend most of its time, uploading devmeta, downloading usrmeta and waiting for new updates.
-* **prep download**: a new update (same as a new state JSON) has been received and the device will now download the object metadata information for each of its objects. This includes object size, sha and download URL.
-* **download**: all object metadata is now on memory and we can proceed dowloading all objects that are not already installed in disk (for a sense of scale, see [meta-pantavisor's firmware size guide](https://docs.pantavisor.io/development/meta-pantavisor/getting-started/solutions/firmware-size)). Then we will continue with progressing to the new revision.
+* **report**: an update finished and device will continue uploading devmeta, downloading usrmeta while reporting its update status. It also pushes current logs.
+* **idle**: device has checked all objects and state JSON is in the cloud. This is where the device will spend most of its time, pushing current and pending previous logs, uploading devmeta, downloading usrmeta and waiting for new updates.
+* **prep download**: a new update (same as a new state JSON) has been received and the device will now download the object metadata information for each of its objects. This includes object size, sha and download URL. It keeps pushing current logs.
+* **download**: all object metadata is now on memory and we can proceed dowloading all objects that are not already installed in disk (for a sense of scale, see [meta-pantavisor's firmware size guide](https://docs.pantavisor.io/development/meta-pantavisor/getting-started/solutions/firmware-size)). Then we will continue with progressing to the new revision. It keeps pushing current logs.
 
 #### Proxy
 

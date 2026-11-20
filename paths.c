@@ -443,7 +443,7 @@ void pv_paths_lxc_file(char *buf, size_t size, const char *name)
 void pv_paths_cert(char *buf, size_t size, const char *name)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_CERT_PATHF,
-			pv_config_get_str(PV_LIBTHTTP_CERTSDIR), name);
+			pv_config_get_str(PV_TLS_CERTSDIR), name);
 }
 
 #define PV_TRUST_CERTS_PATHF "%s/%s/%s.crt"

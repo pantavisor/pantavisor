@@ -271,6 +271,6 @@ In order to limit the time usage of the CI runners, we run the smallest set of t
 | `pvtest/suites/local/` | ✓ | ✓ | | |
 | `pvtest/suites/remote/` | | | ✓ | ✓ |
 | `pvtest/tester`, `pvtest/shared`, `pvtest/host` | ✓ | ✓ | ✓ | ✓ |
-| `pantahub/`, `ph_logger`, `trestclient`, `updater`, `event/event_rest` | | | ✓ | |
+| `pantahub/`, `updater`, `event/event_rest` | | | ✓ | |
 | `config` | ✓ | | ✓ | |
 | any other file outside `docs/` | ✓ | | | |

@@ -104,8 +104,8 @@ typedef enum {
 #define DISK_VOLDIR_DEF "/volumes"
 #define DISK_WRITABLEDIR_DEF "/writable"
 #define DROPBEAR_CACHE_DIR_DEF "/storage/cache/dropbear"
-#define LIBTHTTP_CERTSDIR_DEF "/certs"
-#define LIBTHTTP_DENYLIST_DEF "/etc/thttp/denylist"
+#define TLS_CERTSDIR_DEF "/certs"
+#define TLS_DENYLIST_DEF "/etc/thttp/denylist"
 #define LOG_DIR_DEF "/storage/logs/"
 #define LOG_SERVER_OUTPUTS_DEF "filetree"
 #define NET_BRADDRESS4_DEF "10.0.3.1"
@@ -217,12 +217,6 @@ static struct pv_config_entry entries[] = {
 	  .value.s = DROPBEAR_CACHE_DIR_DEF },
 	{ BOOL, "PV_LIBEVENT_DEBUG_MODE", PV | OEM, 0, false,
 	  .value.b = false },
-	{ STR, "PV_LIBTHTTP_CERTSDIR", PV, 0, false,
-	  .value.s = LIBTHTTP_CERTSDIR_DEF },
-	{ STR, "PV_LIBTHTTP_DENYLIST", PV | OEM, 0, false,
-	  .value.s = LIBTHTTP_DENYLIST_DEF },
-	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV | OEM | RUN, 0, false,
-	  .value.i = 3 },
 	{ BOOL, "PV_LOG_AUTO_DEVLOG", PV | OEM, 0, false, .value.b = true },
 	{ BOOL, "PV_LOG_CAPTURE", PV | OEM, 0, false, .value.b = true },
 	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | OEM, 0, false, .value.b = true },
@@ -320,6 +314,9 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_SYSTEM_DISKSDIR", PV, 0, false,
 	  .value.s = SYSTEM_DISKSDIR_DEF },
 	{ STR, "PV_SYSTEM_USRDIR", PV, 0, false, .value.s = SYSTEM_USRDIR_DEF },
+	{ STR, "PV_TLS_CERTSDIR", PV, 0, false, .value.s = TLS_CERTSDIR_DEF },
+	{ STR, "PV_TLS_DENYLIST", PV | OEM, 0, false,
+	  .value.s = TLS_DENYLIST_DEF },
 	{ INT, "PV_UPDATER_COMMIT_DELAY", PV | OEM, 0, false, .value.i = 25 },
 	{ INT, "PV_UPDATER_GOALS_TIMEOUT", PV | OEM, 0, false, .value.i = 120 },
 	{ BOOL, "PV_UPDATER_USE_TMP_OBJECTS", PV | OEM, 0, .value.b = false },
@@ -370,8 +367,7 @@ static struct pv_config_alias aliases[] = {
 	{ "disk.voldir", "PV_DISK_VOLDIR" },
 	{ "disk.writabledir", "PV_DISK_WRITABLEDIR" },
 	{ "dropbear.cache.dir", "PV_DROPBEAR_CACHE_DIR" },
-	{ "libthttp.certdir", "PV_LIBTHTTP_CERTSDIR" },
-	{ "libthttp.log.level", "PV_LIBTHTTP_LOG_LEVEL" },
+	{ "libthttp.certdir", "PV_TLS_CERTSDIR" },
 	{ "log.capture", "PV_LOG_CAPTURE" },
 	{ "log.capture.dmesg", "PV_LOG_CAPTURE_DMESG" },
 	{ "log.buf_nitems", "PV_LOG_BUF_NITEMS" },
@@ -429,6 +425,8 @@ static struct pv_config_alias aliases[] = {
 	{ "pantahub.log.push", "PV_LOG_PUSH" },
 	{ "updater.keep_factory", "PV_STORAGE_GC_KEEP_FACTORY" },
 	{ "PV_SECUREBOOT_OEM_TRUSTORE", "PV_SECUREBOOT_OEM_TRUSTSTORE" },
+	{ "PV_LIBTHTTP_CERTSDIR", "PV_TLS_CERTSDIR" },
+	{ "PV_LIBTHTTP_DENYLIST", "PV_TLS_DENYLIST" },
 };
 
 bool pv_config_get_bool(config_index_t ci)

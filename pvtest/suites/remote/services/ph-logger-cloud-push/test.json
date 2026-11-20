@@ -1,6 +1,6 @@
 {
 	"#spec": "pv-test@1",
-	"description": "ph logger push",
+	"description": "ph logger push: a line, a burst over one request each exactly once, and PV_LOG_PUSH=0 from user meta stops it at run time",
 	"setup": {
 		"config": {
 			"env": "PV_CONTROL_REMOTE=1",

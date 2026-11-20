@@ -38,8 +38,6 @@
 
 #include "config.h"
 #include "utils/fs.h"
-#include "thttp.h"
-#include "trest.h"
 #include "paths.h"
 #include "utils/str.h"
 #include "utils/math.h"
@@ -69,8 +67,6 @@ static struct level_name level_names[] = {
 	LEVEL_NAME(TRACE),
 };
 
-static pid_t log_init_pid = -1;
-
 static const int MAX_BUFFER_COUNT = 10;
 
 static void __vlog(char *module, int level, const char *fmt, va_list args)
@@ -79,22 +75,9 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 			       args);
 }
 
-static void log_libthttp(int level, const char *fmt, va_list args)
-{
-	if (level > pv_config_get_int(PV_LIBTHTTP_LOG_LEVEL))
-		return;
-
-	if (log_init_pid != getpid())
-		return;
-
-	__vlog("ph_client_libthttp", DEBUG, fmt, args);
-}
-
 static void pv_log_init(const char *rev)
 {
 	char pv_logs_path[PATH_MAX], storage_logs_path[PATH_MAX];
-
-	log_init_pid = getpid();
 
 	pv_paths_pv_log(pv_logs_path, PATH_MAX, "");
 	pv_fs_mkdir_p(pv_logs_path, 0755);
@@ -109,9 +92,6 @@ static void pv_log_init(const char *rev)
 		pv_log(ERROR, "logserver initialization failed");
 
 	pv_log(DEBUG, "initialized pantavisor logs...");
-
-	// enable libthttp debug logs
-	thttp_set_log_func(log_libthttp);
 }
 
 void exit_error(int err, char *msg)

@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Certificate denylist (PV_LIBTHTTP_DENYLIST): one SHA-256 of a certificate's
+# Certificate denylist (PV_TLS_DENYLIST): one SHA-256 of a certificate's
 # public key per line. A certificate of the Hub chain on the list makes every
 # TLS connection to the Hub fail, so the device never gets past the login
 # state. The list is read once at boot, so each change needs a reboot. The
@@ -42,7 +42,7 @@ post_oem_path() {
 	pvr_clone_local_or_die "$tmp/checkout"
 	cd "$tmp/checkout"
 	mkdir -p "$oem"
-	printf 'PV_LIBTHTTP_DENYLIST=%s\n' "$2" > "$oem/${policy:-default}.config"
+	printf 'PV_TLS_DENYLIST=%s\n' "$2" > "$oem/${policy:-default}.config"
 	pvr add . > /dev/null 2>&1
 	pvr commit > /dev/null 2>&1
 	pvr post --rev "$1" > /dev/null 2>&1

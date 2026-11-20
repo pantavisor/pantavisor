@@ -54,6 +54,7 @@
 #include "event/event.h"
 #include "event/event_rest.h"
 
+#include "pantahub/pantahub_logger.h"
 #include "pantahub/pantahub_proto.h"
 
 #include "power/wakelock.h"
@@ -162,6 +163,7 @@ static void _close_state()
 	pv_event_periodic_stop(&ph->request_timer);
 	pv_event_periodic_stop(&ph->devmeta_timer);
 	pv_event_periodic_stop(&ph->usrmeta_timer);
+	pv_pantahub_logger_pause();
 
 	if (!pv_pantahub_proto_is_auth()) {
 		pv_wakelock_devmeta_deauth();
@@ -178,6 +180,8 @@ int pv_pantahub_stop()
 	_close_state();
 	// not in _close_state: a state change must not push the next line back
 	pv_event_periodic_stop(&ph->summary_timer);
+
+	pv_pantahub_logger_stop();
 
 	// callbacks of still in-flight requests must find no client
 	global_ph = NULL;
@@ -485,6 +489,7 @@ static void _run_state_report()
 	pv_event_periodic_start(&ph->devmeta_timer,
 				pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
 				_devmeta_cb);
+	pv_pantahub_logger_start_push();
 }
 
 static void _updater_cb(evutil_socket_t fd, short event, void *arg)
@@ -508,6 +513,8 @@ static void _run_state_idle()
 	pv_event_periodic_start(&ph->devmeta_timer,
 				pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
 				_devmeta_cb);
+	pv_pantahub_logger_start_push();
+	pv_pantahub_logger_start_range();
 }
 
 static void _prep_download_cb(evutil_socket_t fd, short event, void *arg)
@@ -539,6 +546,7 @@ static void _run_state_prep_download()
 	pv_event_periodic_start(&ph->devmeta_timer,
 				pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
 				_devmeta_cb);
+	pv_pantahub_logger_start_push();
 }
 
 static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
@@ -572,6 +580,7 @@ static void _run_state_download()
 	pv_event_periodic_start(&ph->devmeta_timer,
 				pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
 				_devmeta_cb);
+	pv_pantahub_logger_start_push();
 }
 
 static void _run_state_cb(evutil_socket_t fd, short events, void *arg)

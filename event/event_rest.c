@@ -51,7 +51,6 @@
 #include "pantavisor.h"
 #include "paths.h"
 #include "pantahub/pantahub.h"
-#include "trestclient.h"
 
 #include "utils/fs.h"
 #include "utils/list.h"
@@ -323,6 +322,23 @@ static struct pv_rest_tunnel *_find_tunnel_by_req(struct evhttp_request *req);
 static struct evhttp_request *_discard_tunnel(struct pv_rest_tunnel *t);
 static void _free_tunnels(void);
 
+// loads the certificate denylist and logs how many entries it has
+static thttp_denylist_t *_load_denylist(void)
+{
+	const char *path = pv_config_get_str(PV_TLS_DENYLIST);
+	int count = 0;
+	thttp_denylist_t *dl = thttp_denylist_load(path, &count);
+
+	if (dl) {
+		pv_log(INFO, "loaded %d certificate denylist entries from %s",
+		       count, path);
+	} else {
+		pv_log(INFO, "no certificate denylist at %s", path);
+	}
+
+	return dl;
+}
+
 int pv_event_rest_init(void)
 {
 	if (rest_initialized)
@@ -360,7 +376,7 @@ int pv_event_rest_init(void)
 	}
 	mbedtls_ssl_conf_ca_chain(&config, &cacert, NULL);
 
-	denylist = pv_ph_load_denylist();
+	denylist = _load_denylist();
 	thttp_denylist_install(&config, denylist);
 
 	pv_log(DEBUG, "HTTP REST initialized");

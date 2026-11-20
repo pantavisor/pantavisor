@@ -312,6 +312,8 @@ add_executable(pantavisor
 			objects.h
 			pantahub/pantahub.c
 			pantahub/pantahub.h
+			pantahub/pantahub_logger.c
+			pantahub/pantahub_logger.h
 			pantahub/pantahub_msg.c
 			pantahub/pantahub_msg.h
 			pantahub/pantahub_proto.c
@@ -327,8 +329,6 @@ add_executable(pantavisor
 			parser/parser_system1.h
 			paths.c
 			paths.h
-			ph_logger.c
-			ph_logger.h
 			platforms.c
 			platforms.h
 			power/wakelock.c
@@ -344,8 +344,6 @@ add_executable(pantavisor
 			state.h
 			storage.c
 			storage.h
-			trestclient.c
-			trestclient.h
 			uboot.c
 			ubootab.c
 			update/update.c
