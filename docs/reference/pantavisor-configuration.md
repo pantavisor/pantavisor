@@ -76,7 +76,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_BOOTLOADER_FITCONFIG` | string | empty | set FIT configuration name |
 | `PV_BOOTLOADER_MTD_ENV` | string | empty | set MTD name for bootloader env |
 | `PV_BOOTLOADER_MTD_ONLY` | `0` or `1` | `0` | enable MTD for bootloader env |
-| `PV_BOOTLOADER_TYPE` | `uboot`, `uboot-ab`, `uboot-pvk`, `rpiab` or `grub` | `uboot` | set [bootloader](../overview/bsp.md#bootloader) type |
+| `PV_BOOTLOADER_SDBOOT_ESP` | `LABEL=`, `UUID=` or device path | `LABEL=ESP` | EFI system partition the [sdboot](../overview/bsp.md#sdboot) bootloader type installs UKIs to |
+| `PV_BOOTLOADER_TYPE` | `uboot`, `uboot-ab`, `uboot-pvk`, `rpiab`, `grub` or `sdboot` | `uboot` | set [bootloader](../overview/bsp.md#bootloader) type |
 | `PV_BOOTLOADER_UBOOTAB_A_NAME` | string | `fitA` | name of the partition to use as "A" in uboot-ab mode |
 | `PV_BOOTLOADER_UBOOTAB_B_NAME` | string | `fitB` | name of the partition to use as "B" in uboot-ab mode |
 | `PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME` | string | empty | name of the partition where the uboot environment is backed up |
@@ -217,6 +218,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_BOOTLOADER_FITCONFIG`            | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_MTD_ENV`              | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_MTD_ONLY`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_BOOTLOADER_SDBOOT_ESP`           | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_TYPE`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_UBOOTAB_A_NAME`       | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_UBOOTAB_B_NAME`       | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
