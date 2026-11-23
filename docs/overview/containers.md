@@ -216,6 +216,38 @@ Stopping a container via the API is fundamentally different from a crash. It set
 
 When a container transitions to [STOPPED](#status), its volumes are unmounted. This ensures clean state for a subsequent start.
 
+#### Stop signal
+
+Pantavisor first asks the container to stop and gives it 5 seconds to exit before it kills it. The signal sent to the container's init depends on what that init handles, read from the `SigCgt` line of `/proc/<pid>/status`:
+
+| Init handles | Pantavisor does |
+|--------------|-----------------|
+| `lxc.signal.halt` set in the container config | Sends that signal (LXC `shutdown`). |
+| SIGPWR | Sends SIGPWR (LXC `shutdown`, which picks the systemd halt signal for systemd). |
+| SIGTERM only | Sends SIGTERM to init. |
+| Neither | Kills init right away, without the 5 second wait. |
+| Could not be read | Falls back to LXC `shutdown`. |
+
+The kernel drops signals sent from outside a PID namespace to its PID 1 unless PID 1 handles them. A plain program run as PID 1, such as nginx, handles SIGTERM but not SIGPWR, so it gets SIGTERM. SIGTERM is only used when init does not handle SIGPWR, because a systemd init re-executes on SIGTERM and a busybox init reboots.
+
+Each stop logs one line saying which signal was used:
+
+```
+$ pvcontrol containers stop nginx
+$ grep "init of 'nginx'" /storage/logs/current/pantavisor/pantavisor.log
+init of 'nginx' does not catch SIGPWR, sending SIGTERM
+```
+
+To force a signal, set `lxc.signal.halt` in the container's `args.json` through `PV_LXC_EXTRA_CONF`:
+
+```json
+{
+    "PV_LXC_EXTRA_CONF": "lxc.signal.halt = SIGUSR1"
+}
+```
+
+Without that key no action is needed; the choice is automatic.
+
 ### Start
 
 Starting a [STAGED](#status) or previously stopped container.
