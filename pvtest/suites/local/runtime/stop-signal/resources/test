@@ -1,0 +1,76 @@
+#!/bin/sh
+#
+# Stop signal: docs/overview/containers.md#stop-signal
+#
+# Pantavisor stops a container with a signal that its init handles (read from
+# SigCgt in /proc/<pid>/status): SIGPWR first, then SIGTERM. When init handles
+# neither, it is killed at once instead of after the 5 second lenient stop.
+# The test sets the container's init command (lxc.init.cmd in its
+# lxc.container.conf) to get each kind of init, stops the container through
+# the control socket and checks the time it took and the log line pantavisor
+# wrote.
+#
+#  1. pv-example-app as shipped: handles SIGPWR and SIGTERM
+#  2. a shell that handles SIGTERM only
+#  3. sleep, which handles no signal
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+NAME=pv-example-app
+LENIENT_STOP=5
+
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+LOGROOT=$(pvcontrol conf ls | jq -r '.[] | select(.key == "PV_LOG_DIR") | .value'); LOGROOT=${LOGROOT%/}
+LOG="$LOGROOT/current/pantavisor/pantavisor.log"
+
+container_status() {
+	pvcontrol containers ls | jq -r --arg n "$NAME" 'map(select(.name==$n))[0].status'
+}
+
+# time in seconds of the last time the container got status $1, from pantavisor.log
+status_time() {
+	pv_exec grep "platform '$NAME' status is now $1" "$LOG" | tr -d '\r' | tail -n 1 | awk '{print $2}'
+}
+
+# $1: init command; lxc splits it on spaces and ignores quotes, so a shell script uses ${IFS}
+set_init_cmd() {
+	conf="$NAME/lxc.container.conf"
+	tmp=$(mktemp)
+	grep -v '^lxc.init.cmd' "$conf" > "$tmp"
+	printf 'lxc.init.cmd = %s\n' "$1" >> "$tmp"
+	mv "$tmp" "$conf"
+	pvr add "$conf" > /dev/null 2>&1
+}
+
+# $1: case label, $2: init command (empty keeps the running one), $3: revision name suffix
+run_case() {
+	echo "== $1 =="
+	if [ -n "$2" ]; then
+		set_init_cmd "$2"
+		pvr commit -m "$1" > /dev/null 2>&1
+		pvr post --rev "locals/stop-signal-$$-$3" > /dev/null 2>&1
+		wait_for_revision_state "locals/stop-signal-$$-$3" "UPDATED" > /dev/null 2>&1 \
+			|| { echo "ERROR: timeout waiting for the revision of '$1' to reach UPDATED" >&2; exit 1; }
+	fi
+	wait_for_value container_status "STARTED" 60 > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $NAME to reach STARTED" >&2; exit 1; }
+
+	pvcontrol containers stop "$NAME" > /dev/null
+	wait_for_value container_status "STOPPED" 60 > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $NAME to reach STOPPED" >&2; exit 1; }
+	took=$(( $(status_time STOPPED) - $(status_time STOPPING) ))
+	echo "stopped before the lenient stop time: $([ "$took" -lt "$LENIENT_STOP" ] && echo yes || echo no)"
+
+	# the last matching line is the one from this stop
+	pv_exec grep "init of '$NAME'" "$LOG" 2>/dev/null | tr -d '\r' | tail -n 1 | sed 's/^.*\(init of\)/\1/'
+	pvcontrol containers start "$NAME" > /dev/null
+	wait_for_value container_status "STARTED" 60 > /dev/null 2>&1 \
+		|| { echo "ERROR: timeout waiting for $NAME to start again" >&2; exit 1; }
+}
+
+run_case "init handles SIGPWR and SIGTERM" "" pwr
+run_case "init handles SIGTERM only" '/bin/sh -c trap${IFS}exit${IFS}TERM;sleep${IFS}1000&wait' term
+run_case "init handles no signal" "/bin/sleep 1000" none

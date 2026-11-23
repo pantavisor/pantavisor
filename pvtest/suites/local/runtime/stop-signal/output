@@ -1,0 +1,9 @@
+== init handles SIGPWR and SIGTERM ==
+stopped before the lenient stop time: yes
+init of 'pv-example-app' catches SIGPWR, sending SIGPWR
+== init handles SIGTERM only ==
+stopped before the lenient stop time: yes
+init of 'pv-example-app' does not catch SIGPWR, sending SIGTERM
+== init handles no signal ==
+stopped before the lenient stop time: yes
+init of 'pv-example-app' catches neither SIGPWR nor SIGTERM, not waiting for it to exit

@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "stopping a container sends the signal its init handles, and does not wait when init handles none",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled PV_LOG_LEVEL=5 PV_LOG_SERVER_OUTPUTS=filetree",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

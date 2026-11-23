@@ -60,6 +60,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/config-overlay` | Configuration Overlay | |
 | `local/runtime/resource-constraints` | Resource Constraints (CPU/Mem) | |
 | `local/runtime/status-goal-success-failure` | Status Goal Success and Failure | ✓ |
+| `local/runtime/stop-signal` | Container stop signal follows what init handles; no lenient wait when init handles none | ✓ |
 | `local/runtime/forward-compat-parse` | Forward compatibility: unknown status_goal/restart_policy values, an unknown extra key, and a prefix-sharing key never reject a revision | ✓ |
 | `local/runtime/container-exports` | Container Exports to Host | |
 | `local/runtime/remount-policies` | Remount Policies (PV_REMOUNT_POLICY) | |
