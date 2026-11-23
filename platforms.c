@@ -114,7 +114,7 @@ struct pv_cont_ctrl {
 		void (*cb)(uint32_t ip_host_order, void *ctx), void *ctx);
 	int (*start)(struct pv_platform *p, const char *rev, char *conf_file,
 		     int logfd, int pipefd);
-	void (*stop)(struct pv_platform *p, char *conf_file);
+	int (*stop)(struct pv_platform *p, char *conf_file);
 	int (*get_console_fd)(struct pv_platform *p,
 			      struct pv_platform_log *log);
 };
@@ -1425,6 +1425,7 @@ static void pv_platform_close_logs_fd(struct pv_platform *p)
 int pv_platform_stop(struct pv_platform *p)
 {
 	const struct pv_cont_ctrl *ctrl;
+	bool no_stop_signal = false;
 
 	pv_platform_stop_loggers(p);
 	pv_platform_close_logs_fd(p);
@@ -1441,13 +1442,17 @@ int pv_platform_stop(struct pv_platform *p)
 	pv_log(DEBUG, "leniently stopping platform '%s'", p->name);
 	ctrl = _pv_platforms_get_ctrl(p->type);
 	if (ctrl && ctrl->stop)
-		ctrl->stop(p, NULL);
+		no_stop_signal = ctrl->stop(p, NULL) < 0;
 	else
 		pv_log(ERROR, "no plugin for platform type '%s'", p->type);
 	pv_platform_set_status(p, PLAT_STOPPING);
 
-	// Grace period for lenient stop — force-stop after 5 seconds
-	timer_start(&p->timer_status_goal, 5, 0, RELATIV_TIMER);
+	// init handles no stop signal, so waiting would only delay the kill
+	if (no_stop_signal)
+		timer_start(&p->timer_status_goal, 0, 0, RELATIV_TIMER);
+	else
+		// Grace period for lenient stop — force-stop after 5 seconds
+		timer_start(&p->timer_status_goal, 5, 0, RELATIV_TIMER);
 
 	pv_platform_remove_config_overlay(p->name);
 

@@ -1046,12 +1046,44 @@ out_failure:
 	return -1;
 }
 
-// cannot fail if data is valid
-void pv_stop_container(struct pv_platform *p, char *conf_file)
+// signal mask of the signals pid has a handler for, from /proc/<pid>/status
+static bool pv_lxc_get_caught_signals(pid_t pid, unsigned long long *mask)
 {
-	bool s;
-	char path[PATH_MAX];
+	char path[PATH_MAX], line[256];
+	bool found = false;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "/proc/%d/status", pid);
+	f = fopen(path, "r");
+	if (!f)
+		return false;
+
+	while (fgets(line, sizeof(line), f)) {
+		if (strncmp(line, "SigCgt:", 7))
+			continue;
+		errno = 0;
+		*mask = strtoull(line + 7, NULL, 16);
+		found = !errno;
+		break;
+	}
+	fclose(f);
+
+	return found;
+}
+
+static bool pv_lxc_catches(unsigned long long mask, int sig)
+{
+	return mask & (1ULL << (sig - 1));
+}
+
+// stops the container with a signal its init handles; returns -1 if init handles none
+int pv_stop_container(struct pv_platform *p, char *conf_file)
+{
+	char path[PATH_MAX], halt[32] = { 0 };
 	struct lxc_container *c = NULL;
+	unsigned long long mask = 0;
+	pid_t init_pid;
+	int ret = 0;
 
 	pv_log(DEBUG, "stopping LXC container '%s'", p->name);
 
@@ -1060,13 +1092,50 @@ void pv_stop_container(struct pv_platform *p, char *conf_file)
 	if (!c) {
 		pv_log(ERROR, "failed to take control of LXC container '%s'",
 		       p->name);
-		return;
+		return 0;
 	}
 
-	s = c->shutdown(c, 0);
-	lxc_container_put(c);
+	// a halt signal set in the container config is always honoured
+	if (c->get_config_item(c, "lxc.signal.halt", halt, sizeof(halt)) > 0 &&
+	    atoi(halt) != 0) {
+		pv_log(INFO, "stopping '%s' with its configured halt signal %s",
+		       p->name, halt);
+		goto shutdown;
+	}
 
-	return;
+	init_pid = c->init_pid(c);
+	if (init_pid <= 0 || !pv_lxc_get_caught_signals(init_pid, &mask)) {
+		pv_log(INFO,
+		       "could not read the signals init of '%s' handles, sending the default halt signal",
+		       p->name);
+		goto shutdown;
+	}
+
+	if (pv_lxc_catches(mask, SIGPWR)) {
+		pv_log(INFO, "init of '%s' catches SIGPWR, sending SIGPWR",
+		       p->name);
+		goto shutdown;
+	}
+
+	if (pv_lxc_catches(mask, SIGTERM)) {
+		pv_log(INFO,
+		       "init of '%s' does not catch SIGPWR, sending SIGTERM",
+		       p->name);
+		kill(init_pid, SIGTERM);
+		goto out;
+	}
+
+	pv_log(INFO,
+	       "init of '%s' catches neither SIGPWR nor SIGTERM, not waiting for it to exit",
+	       p->name);
+	ret = -1;
+	goto out;
+
+shutdown:
+	c->shutdown(c, 0);
+out:
+	lxc_container_put(c);
+	return ret;
 }
 
 int pv_console_log_getfd(struct pv_platform *p, struct pv_platform_log *log)
