@@ -242,6 +242,8 @@ Containers can [reference](../reference/pantavisor-state-format-v2.md#7-containe
 * optional: these drivers will be loaded on the way to [STARTED](#status) (or [STAGED](#status)) too. In this case the revision will not fail if the drivers are not defined in the BSP.
 * manual: drivers can be loaded from within containers trough [local control](local-control.md). The success or failure of loading drivers using the REST API will not determine whether a revision fails or not, but the [calls](../reference/pantavisor-commands.md#drivers) will return an error response if necessary.
 
+Whatever the type, a container that lists a driver with a BSP [driver volume](../reference/pantavisor-state-format-v2.md#driver-volumes) gets that volume bind-mounted read-only at the path the BSP sets for it.
+
 ## Loggers
 
 Containers, by default, will automatically direct these logs from the container to the [Log Server](storage.md#logs):

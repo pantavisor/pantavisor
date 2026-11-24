@@ -39,6 +39,16 @@ struct pv_driver {
 	struct dl_list list;
 };
 
+// Userspace that must match the kernel modules (libcuda for nvidia) comes from
+// the BSP, so containers listing the driver get it bind-mounted at path rather
+// than carrying a copy that a BSP update would leave behind.
+struct pv_driver_volume {
+	char *alias;
+	char *volume;
+	char *path;
+	struct dl_list list;
+};
+
 const char *pv_drivers_state_str(char *match);
 const char *pv_drivers_type_str(plat_driver_t type);
 int pv_drivers_state(char *match);
@@ -50,6 +60,12 @@ void pv_drivers_load_early(void);
 struct pv_driver *pv_drivers_add(struct pv_state *s, char *alias, int len,
 				 char **modules);
 void pv_drivers_empty(struct pv_state *s);
+
+struct pv_driver_volume *pv_driver_volumes_add(struct pv_state *s,
+					       const char *alias,
+					       const char *volume,
+					       const char *path);
+void pv_driver_volumes_empty(struct pv_state *s);
 
 static inline void pv_driver_free(struct pv_driver *driver)
 {

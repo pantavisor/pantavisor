@@ -85,6 +85,7 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->jsons);
 		dl_list_init(&s->groups);
 		dl_list_init(&s->bsp.drivers);
+		dl_list_init(&s->bsp.driver_volumes);
 		s->using_runlevels = false;
 		s->done = false;
 	}
@@ -140,6 +141,7 @@ void pv_state_free(struct pv_state *s)
 		free(s->bsp.modules);
 
 	pv_drivers_empty(s);
+	pv_driver_volumes_empty(s);
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
 	pv_disk_empty(&s->disks);

@@ -79,6 +79,29 @@ Defines the core system boot assets.
 | `uki` | path string | Path to a unified kernel image (replaces linux/initrd/fdt); required by the `sdboot` bootloader type. |
 | `addons` | array of paths | List of CPIO addons to merge into the initrd rootfs. |
 | `initrd_config` | path string | Custom configuration for the initrd process. |
+| `driver_volumes` | object | [Driver volumes](#driver-volumes): userspace shipped with a [managed driver](#3-drivers-bspdriversjson). |
+
+### Driver volumes
+
+Maps a driver alias from `bsp/drivers.json` to a BSP volume. Pantavisor mounts the volume with
+the other BSP volumes and bind-mounts it read-only at `path` in every container that lists the
+alias in its [`drivers`](#7-container-containerrunjson), whether required, optional or manual.
+
+| Key | Value Type | Description |
+|:---|:---|:---|
+| `volume` | path string | squashfs image in `bsp/`, mounted at `/volumes/bsp/<volume>`. |
+| `path` | absolute path | Where containers see it. No whitespace or `..` components. |
+
+```json
+"driver_volumes": {
+    "nvidia": {
+        "volume": "driver-nvidia.squashfs",
+        "path": "/usr/local/nvidia"
+    }
+}
+```
+
+An entry with a missing or invalid field is skipped with a warning; the revision still boots.
 
 ---
 

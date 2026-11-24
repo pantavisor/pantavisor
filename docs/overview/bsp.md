@@ -51,6 +51,12 @@ Pantavisor offers a [declarative way](../reference/pantavisor-state-format-v2.md
 
 The modules that are part of a driver will only be loaded if referenced from a [container](containers.md#drivers). Therefore, the loading order of the drivers will depend on their [start up order](containers.md#groups).
 
+Some drivers come with a userspace that only works with the exact release of their modules, such as `libcuda` for the NVIDIA GPU driver. A container that carried its own copy would break on the next BSP update, so the BSP can ship that userspace as a [driver volume](../reference/pantavisor-state-format-v2.md#driver-volumes): every container that lists the driver gets it bind-mounted read-only at a fixed path. To check what a container got, run from inside it:
+
+```bash
+grep /usr/local/nvidia /proc/mounts
+```
+
 ## Bootloader
 
 To natively run Pantavisor on a device, it is necessary to have some on-disk artifacts that fall out of the umbrella of Pantavisor [revisions](revisions.md). This is the case of the bootloader, which will load the Linux kernel and directly execute the initrd (Pantavisor) after that. Pantavisor and the bootloader communicate through [storage](storage.md): Pantavisor is solely responsible for writing the target revision into the bootloader environment; the bootloader only reads from it at boot time to locate the kernel and initrd to load.
