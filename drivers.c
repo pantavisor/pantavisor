@@ -377,3 +377,44 @@ void pv_drivers_empty(struct pv_state *s)
 
 	pv_log(DEBUG, "cleared %d drivers", num_obj);
 }
+
+struct pv_driver_volume *pv_driver_volumes_add(struct pv_state *s,
+					       const char *alias,
+					       const char *volume,
+					       const char *path)
+{
+	struct pv_driver_volume *this = calloc(1, sizeof(*this));
+
+	if (!this)
+		return NULL;
+
+	this->alias = strdup(alias);
+	this->volume = strdup(volume);
+	this->path = strdup(path);
+	if (!this->alias || !this->volume || !this->path) {
+		free(this->alias);
+		free(this->volume);
+		free(this->path);
+		free(this);
+		return NULL;
+	}
+
+	dl_list_init(&this->list);
+	dl_list_add_tail(&s->bsp.driver_volumes, &this->list);
+	return this;
+}
+
+void pv_driver_volumes_empty(struct pv_state *s)
+{
+	struct pv_driver_volume *curr, *tmp;
+
+	dl_list_for_each_safe(curr, tmp, &s->bsp.driver_volumes,
+			      struct pv_driver_volume, list)
+	{
+		dl_list_del(&curr->list);
+		free(curr->alias);
+		free(curr->volume);
+		free(curr->path);
+		free(curr);
+	}
+}

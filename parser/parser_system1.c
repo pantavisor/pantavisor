@@ -19,6 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -517,6 +518,90 @@ static int parse_disks(struct pv_state *s, char *value)
 	return parse_disks_ex(s, value, true);
 }
 
+// The path ends up in an lxc.mount.entry line, which splits on whitespace.
+static bool driver_volume_path_valid(const char *path)
+{
+	const char *c;
+
+	if (path[0] != '/' || !path[1])
+		return false;
+	for (c = path; *c; c++)
+		if (isspace((unsigned char)*c))
+			return false;
+	for (c = path; c; c = strchr(c + 1, '/'))
+		if (!strncmp(c, "/..", 3) && (c[3] == '/' || !c[3]))
+			return false;
+	return true;
+}
+
+static void parse_bsp_driver_volumes(struct pv_state *s, char *buf,
+				     jsmntok_t *tokv, int tokc)
+{
+	char *value, *entry, *alias, *volume, *path;
+	int tokc_v, tokc_e, n;
+	jsmntok_t *tokv_v = NULL, *tokv_e;
+	jsmntok_t **keys, **k;
+	struct pv_volume *v;
+
+	value = pv_json_get_value_toplevel(buf, "driver_volumes", tokv, tokc);
+	if (!value)
+		return;
+
+	// a bad entry only costs that driver its volume: the revision still boots
+	if (jsmnutil_parse_json(value, &tokv_v, &tokc_v) < 0 ||
+	    tokv_v->type != JSMN_OBJECT) {
+		pv_log(WARN, "driver_volumes is not an object, ignoring it");
+		goto out;
+	}
+
+	keys = jsmnutil_get_object_keys(value, tokv_v);
+	for (k = keys; k && *k; k++) {
+		n = (*k)->end - (*k)->start;
+		alias = strndup(value + (*k)->start, n);
+		n = (*k + 1)->end - (*k + 1)->start;
+		entry = strndup(value + (*k + 1)->start, n);
+		volume = path = NULL;
+		tokv_e = NULL;
+
+		if (!alias || !entry || (*k + 1)->type != JSMN_OBJECT ||
+		    jsmnutil_parse_json(entry, &tokv_e, &tokc_e) < 0) {
+			pv_log(WARN, "driver volume '%s' is not an object",
+			       alias ? alias : "");
+			goto next;
+		}
+
+		volume = pv_json_get_value_toplevel(entry, "volume", tokv_e,
+						    tokc_e);
+		path = pv_json_get_value_toplevel(entry, "path", tokv_e,
+						  tokc_e);
+		if (!volume || !*volume || strchr(volume, '/') || !path ||
+		    !driver_volume_path_valid(path)) {
+			pv_log(WARN,
+			       "driver volume '%s' needs a volume name and an absolute path",
+			       alias);
+			goto next;
+		}
+
+		if (!pv_driver_volumes_add(s, alias, volume, path))
+			goto next;
+		v = pv_volume_add(s, volume);
+		v->plat = NULL;
+		v->type = VOL_LOOPIMG;
+		pv_log(DEBUG, "driver %s gets volume %s at %s", alias, volume,
+		       path);
+	next:
+		free(alias);
+		free(entry);
+		free(volume);
+		free(path);
+		free(tokv_e);
+	}
+	jsmnutil_tokv_free(keys);
+out:
+	free(tokv_v);
+	free(value);
+}
+
 static int parse_bsp(struct pv_state *s, char *value, int n)
 {
 	int ret = 0, tokc, size;
@@ -576,6 +661,8 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 		v->plat = NULL;
 		v->type = VOL_LOOPIMG;
 	}
+
+	parse_bsp_driver_volumes(s, buf, tokv, tokc);
 
 	if ((!s->bsp.img.std.kernel || !s->bsp.img.std.initrd) &&
 	    !s->bsp.img.ut.fit && !s->bsp.img.rpiab.bootimg && !s->bsp.uki) {

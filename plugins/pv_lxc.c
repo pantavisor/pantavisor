@@ -45,6 +45,7 @@
 #include "utils/list.h"
 #include "pvlogger.h"
 #include "state.h"
+#include "drivers.h"
 #include "platforms.h"
 #include "pantavisor.h"
 #include "paths.h"
@@ -602,6 +603,48 @@ static void pv_setup_lxc_network(struct lxc_container *c, struct pv_platform *p)
 	}
 }
 
+static void pv_mount_driver_volumes(struct pv_platform *p,
+				    struct lxc_container *c)
+{
+	struct pv_platform_driver *d;
+	struct pv_driver_volume *dv;
+	char src[PATH_MAX], entry[PATH_MAX * 2];
+	const char *name;
+	struct stat st;
+
+	if (!p->state)
+		return;
+
+	dl_list_for_each(d, &p->drivers, struct pv_platform_driver, list)
+	{
+		dl_list_for_each(dv, &p->state->bsp.driver_volumes,
+				 struct pv_driver_volume, list)
+		{
+			if (strcmp(d->match, dv->alias))
+				continue;
+
+			// pv_volume_mount drops the "<handler>:" prefix too
+			name = strchr(dv->volume, ':');
+			name = name ? name + 1 : dv->volume;
+			__pv_paths_volumes_plat_file(src, PATH_MAX, "bsp",
+						     name);
+			if (stat(src, &st)) {
+				pv_log(WARN,
+				       "volume %s of driver %s is not mounted",
+				       dv->volume, dv->alias);
+				continue;
+			}
+
+			snprintf(entry, sizeof(entry),
+				 "%s %s none bind,ro,create=dir 0 0", src,
+				 dv->path + 1);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+			pv_log(DEBUG, "driver %s: mounting %s at %s", dv->alias,
+			       src, dv->path);
+		}
+	}
+}
+
 static void pv_setup_lxc_container(struct lxc_container *c,
 				   struct pv_platform *p, const char *rev)
 {
@@ -727,6 +770,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
 	}
+	pv_mount_driver_volumes(p, c);
 	// Strip consoles from kernel cmdline
 	mkstemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
