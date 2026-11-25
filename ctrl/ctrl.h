@@ -31,6 +31,9 @@ struct evhttp_request;
 
 int pv_ctrl_start(void);
 void pv_ctrl_stop(void);
+// calls fn(arg) once the answer to req has been written (at once if req is unknown)
+void pv_ctrl_after_reply(struct evhttp_request *req, void (*fn)(void *arg),
+			 void *arg);
 int pv_ctrl_add_endpoint(const char *path, const int methods, bool mgmt,
 			 pv_ctrl_fn fn);
 

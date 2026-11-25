@@ -580,7 +580,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if we need to run garbage collector
 	pv_storage_gc_run_threshold();
 
-	if (pv->cmd)
+	if (pv_ctrl_cmd_is_ready(pv->cmd))
 		next_state = PV_STATE_COMMAND;
 
 out:

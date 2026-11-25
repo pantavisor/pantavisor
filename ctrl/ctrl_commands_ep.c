@@ -25,6 +25,7 @@
 #include "ctrl_cmd.h"
 #include "ctrl_caller.h"
 #include "ctrl_util.h"
+#include "pantavisor.h"
 
 #include <event2/http.h>
 #include <stdio.h>
@@ -57,10 +58,12 @@ static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
+	pv_ctrl_cmd_hold(cmd);
 	struct pv_ctrl_cmd_add_result rs = pv_ctrl_cmd_add(cmd);
 
 	if (rs.ok) {
 		pv_ctrl_utils_send_ok(req);
+		pv_ctrl_cmd_release_after_reply(pv_get_instance()->cmd, req);
 		goto out;
 	}
 

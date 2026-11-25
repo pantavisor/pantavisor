@@ -22,6 +22,7 @@
 
 #include "ctrl_cmd.h"
 #include "ctrl/ctrl_util.h"
+#include "ctrl/ctrl.h"
 #include "json.h"
 #include "pantavisor.h"
 #include "config.h"
@@ -32,6 +33,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define MODULE_NAME "cmd"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -174,6 +176,44 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 		-1,
 		NULL,
 	};
+}
+
+// a command is held for this long at most, in case the answer never completes
+#define CMD_HOLD_MAX_S (5)
+
+static long _cmd_now(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec;
+}
+
+void pv_ctrl_cmd_hold(struct pv_ctrl_cmd *cmd)
+{
+	cmd->hold_until = _cmd_now() + CMD_HOLD_MAX_S;
+}
+
+static void _cmd_release(void *arg)
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	// the pointer is only compared: the command may be gone already
+	if (pv && pv->cmd == arg) {
+		pv_log(DEBUG, "answer written, the command can run");
+		pv->cmd->hold_until = 0;
+	}
+}
+
+void pv_ctrl_cmd_release_after_reply(struct pv_ctrl_cmd *cmd,
+				     struct evhttp_request *req)
+{
+	pv_ctrl_after_reply(req, _cmd_release, cmd);
+}
+
+bool pv_ctrl_cmd_is_ready(const struct pv_ctrl_cmd *cmd)
+{
+	return cmd && (!cmd->hold_until || _cmd_now() >= cmd->hold_until);
 }
 
 void pv_ctrl_cmd_free(struct pv_ctrl_cmd *cmd)

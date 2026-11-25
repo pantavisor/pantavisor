@@ -51,6 +51,8 @@ enum pv_ctrl_cmd_op {
 struct pv_ctrl_cmd {
 	enum pv_ctrl_cmd_op op;
 	char *payload;
+	// the controller leaves the command alone until then (monotonic seconds)
+	long hold_until;
 };
 
 struct pv_ctrl_cmd_add_result {
@@ -98,5 +100,14 @@ pv_ctrl_cmd_op_from_str(const char *op_str, const size_t op_str_size)
 struct pv_ctrl_cmd *pv_ctrl_cmd_parse(const char *buf);
 struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd);
 void pv_ctrl_cmd_free(struct pv_ctrl_cmd *cmd);
+
+struct evhttp_request;
+// call before pv_ctrl_cmd_add(): the controller waits until the answer to req
+// has been written, so a command that restarts the device cannot cut it off
+void pv_ctrl_cmd_hold(struct pv_ctrl_cmd *cmd);
+// call after the answer has been sent
+void pv_ctrl_cmd_release_after_reply(struct pv_ctrl_cmd *cmd,
+				     struct evhttp_request *req);
+bool pv_ctrl_cmd_is_ready(const struct pv_ctrl_cmd *cmd);
 
 #endif

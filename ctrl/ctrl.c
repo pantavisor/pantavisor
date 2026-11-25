@@ -44,6 +44,9 @@
 
 struct ctrl_run_req {
 	struct evhttp_request *req;
+	// called once the answer has been written
+	void (*after_reply)(void *arg);
+	void *after_arg;
 	struct dl_list lst;
 };
 
@@ -118,10 +121,54 @@ static bool ctrl_is_running_req(struct evhttp_request *req)
 static void ctrl_remove_req(struct evhttp_request *req)
 {
 	struct ctrl_run_req *runq = ctrl_get_run_req(req);
+	void (*after)(void *) = NULL;
+	void *after_arg = NULL;
+
 	if (runq) {
+		after = runq->after_reply;
+		after_arg = runq->after_arg;
 		dl_list_del(&runq->lst);
 		free(runq);
 	}
+	if (after)
+		after(after_arg);
+}
+
+struct ctrl_after_reply {
+	void (*fn)(void *arg);
+	void *arg;
+};
+
+static void ctrl_after_reply_cb(struct evhttp_request *req, void *ctx)
+{
+	struct ctrl_after_reply *ar = ctx;
+
+	(void)req;
+	ar->fn(ar->arg);
+	free(ar);
+}
+
+void pv_ctrl_after_reply(struct evhttp_request *req, void (*fn)(void *arg),
+			 void *arg)
+{
+	struct ctrl_run_req *runq = ctrl_get_run_req(req);
+	struct ctrl_after_reply *ar;
+
+	// requests of routed endpoints are listed and notify through the list
+	if (runq) {
+		runq->after_reply = fn;
+		runq->after_arg = arg;
+		return;
+	}
+
+	ar = calloc(1, sizeof(*ar));
+	if (!ar) {
+		fn(arg);
+		return;
+	}
+	ar->fn = fn;
+	ar->arg = arg;
+	evhttp_request_set_on_complete_cb(req, ctrl_after_reply_cb, ar);
 }
 
 static void ctrl_auto_remove_req(struct evhttp_request *req, void *ctx)
