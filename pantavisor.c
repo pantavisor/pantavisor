@@ -449,7 +449,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 
 	// we don't want to rollback local revisions because of failing Hub comms
 	// which could happen when remote mode is forced on them
-	if (pv_update_is_local())
+	if (pv_update_is_local() || pv_update_is_devmode())
 		goto out;
 
 	if (pv_update_is_inprogress() && !pv_pantahub_is_reporting()) {
@@ -615,7 +615,9 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG,
 		       "reboot command with message '%s' received. Rebooting...",
 		       cmd->payload);
-		pv_issue_reboot();
+		// a requested reboot stays in devmode; resets still fall back
+		if (pv_update_devmode_reboot())
+			pv_issue_reboot();
 		break;
 	case CMD_POWEROFF_DEVICE:
 		if (pv->update) {
@@ -633,6 +635,13 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update) {
 			pv_log(WARN,
 			       "ignoring install local command because an update is in progress");
+			goto out;
+		}
+
+		if (pv_storage_is_revision_devmode(cmd->payload) &&
+		    !pv_config_get_bool(PV_DEVMODE_ALLOWED)) {
+			pv_log(WARN, "ignoring %s: devmode is disabled",
+			       cmd->payload);
 			goto out;
 		}
 
@@ -1129,6 +1138,9 @@ pv_system_transition_t pv_run_update()
 	// try to only stop the platforms that we need to run the new state
 	if (pv_state_stop_platforms(pv->state, new_state)) {
 		pv_log(INFO, "running new state requires reboot");
+		if (pv_storage_is_devmode_change(pv->state->rev,
+						 new_state->rev))
+			pv_log(WALL, "rebooting into %s", new_state->rev);
 		pv_issue_reboot();
 		goto out;
 	}
