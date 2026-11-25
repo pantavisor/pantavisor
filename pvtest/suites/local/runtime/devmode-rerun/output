@@ -1,0 +1,10 @@
+== run a devmode revision with a file in the inlay of pv-example-norole ==
+== pantavisor crashes ==
+devmode revision status: ERROR
+== run the devmode revision again ==
+run exit: 0
+run stdout: running devmode/l/local_runtime_devmode_rerun; the device reboots now and this connection will drop
+{"reboot":true}
+devmode active: true
+file still in the inlay: true
+committed revision status: DONE

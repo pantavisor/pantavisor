@@ -1,0 +1,24 @@
+{
+	"#spec": "pv-test@1",
+	"description": "devmode apply restarts a container with the container restart policy without a reboot and the container sees the file put into its inlay",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": "",
+			"pantavisor": [
+				"PV_DEVMODE_ALLOWED=1"
+			]
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-mgmt.pvrexport.tgz",
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# pvcontrol steps put of a devmode revision:
+#
+# - over the devmode revision that runs it is refused
+# - over a devmode revision that does not run it replaces the revision and
+#   keeps the inlay of its containers
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+writer="pv-example-mgmt"
+target="pv-example-norole"
+file_in_target="etc/devmode-file"
+
+devmode_init
+work=$(mktemp -d)
+cleanup() {
+	rm -rf "$work"
+	devmode_cleanup
+}
+trap cleanup EXIT
+
+# post_over <revision name>: put the state of the committed revision under that name
+post_over() {
+	local staged out rc
+	pvcontrol steps get "$base_rev" > "$work/state.json"
+	staged=$(pv_stage_file "$work/state.json") || exit 1
+	out=$(pvcontrol steps put "$staged" "$1" 2>&1)
+	rc=$?
+	pv_unstage_file "$staged"
+	echo "put exit: $rc"
+	echo "$out" | tr -d '\r' | grep '^{'
+}
+
+echo "== run a devmode revision with a file in the inlay of $target =="
+devmode_create "devmode revision" || exit 1
+pventer -c "$writer" pvcontrol devmode files put "$target" "$file_in_target" /dev/null > /dev/null
+
+echo "== put over the devmode revision that runs =="
+post_over "$devmode_rev"
+echo "devmode active: $(pvcontrol devmode status | jq -M '.active' | tr -d '\r')"
+echo "file in the inlay: $(pvcontrol devmode files ls "$target" | jq -M -r --arg p "$file_in_target" '[.files[].path] | index($p) != null' | tr -d '\r')"
+
+echo "== leave devmode and put over the stopped devmode revision =="
+devmode_leave || exit 1
+post_over "$devmode_rev"
+
+echo "== run it: the inlay is kept =="
+pvcontrol cmd run "$devmode_rev" > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "devmode again" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+echo "file in the inlay: $(pvcontrol devmode files ls "$target" | jq -M -r --arg p "$file_in_target" '[.files[].path] | index($p) != null' | tr -d '\r')"

@@ -1,0 +1,10 @@
+== run a devmode revision with a file in the inlay of pv-example-norole ==
+== put over the devmode revision that runs ==
+put exit: 255
+{"Error":"Revision is running or being updated"}
+devmode active: true
+file in the inlay: true
+== leave devmode and put over the stopped devmode revision ==
+put exit: 0
+== run it: the inlay is kept ==
+file in the inlay: true

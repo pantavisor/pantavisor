@@ -1,0 +1,39 @@
+== put files with modes and owners ==
+== a folder ==
+tar exit: 0
+./opt 755 0:0 directory
+./opt/devmode-tar 755 0:0 directory
+./opt/devmode-tar/conf 640 1000:1001 regular file
+./opt/devmode-tar/LONG 755 0:0 directory
+./opt/devmode-tar/LONG/LONG 755 0:0 directory
+./opt/devmode-tar/LONG/LONG/file-with-a-long-name 644 0:0 regular file
+./opt/devmode-tar/link 777 0:0 symbolic link
+./opt/devmode-tar/run.sh 4755 0:0 regular file
+./opt/devmode-tar/sub 2750 1000:1001 directory
+symlink target: run.sh
+conf: config
+long name file: long
+== a single file ==
+./opt 755 0:0 directory
+./opt/devmode-tar 755 0:0 directory
+./opt/devmode-tar/conf 640 1000:1001 regular file
+== the whole container ==
+tar exit: 0
+names starting with / or ./: 0
+devmode file: config
+changed image file: changed by devmode
+changed image file mode: 755
+image file same as in the container: yes
+image file mtime same as in the container: yes
+container has a bin folder: yes
+== a path that is not there ==
+exit: 255
+{"Error":"Not found","errno":"ENOENT"}
+== a path that leaves the container ==
+exit: 255
+{"Error":"The path must be relative to the container root and cannot contain .."}
+== a file needs a path without --tar ==
+exit: 1
+== an unknown container ==
+exit: 255
+{"Error":"Container not found"}

@@ -1,0 +1,59 @@
+#!/bin/sh
+#
+# pvcontrol devmode apply <container> restarts a container with the container
+# restart policy without a reboot of the device: the container gets a new
+# process, the device keeps running its devmode revision and the container sees
+# the file put into its inlay.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+target="pv-example-app"
+writer="pv-example-mgmt"
+file_in_target="/etc/devmode-file"
+
+devmode_init
+
+field() {
+	pvcontrol containers ls | tr -d '\r' | jq -M -r --arg n "$target" --arg f "$1" '.[] | select(.name == $n) | .[$f] // "absent"'
+}
+
+uptime_now() {
+	pv_exec cut -d. -f1 /proc/uptime | tr -d '\r'
+}
+
+target_has_file() {
+	pventer -c "$target" test -e "$file_in_target" && echo yes || echo no
+}
+
+echo "== run a devmode revision =="
+devmode_create "devmode revision" || exit 1
+wait_for_value "pvcontrol containers ls | tr -d '\r' | jq -M -r '.[] | select(.name == \"$target\") | .status'" READY 60 \
+	|| wait_for_value "pvcontrol containers ls | tr -d '\r' | jq -M -r '.[] | select(.name == \"$target\") | .status'" STARTED 10
+pid1=$(field pid)
+up1=$(uptime_now)
+echo "restarts: $(field restarts)"
+
+echo "== put a file into the inlay of $target =="
+pventer -c "$writer" pvcontrol devmode files put "$target" "${file_in_target#/}" /dev/null > /dev/null
+echo "present before the restart: $(target_has_file)"
+
+echo "== apply without --reboot =="
+apply_err=$(mktemp)
+apply_out=$(pvcontrol devmode apply "$target" 2> "$apply_err")
+echo "apply exit: $?"
+echo "apply stdout: $(echo "$apply_out" | tr -d '\r')"
+echo "apply stderr: $(tr -d '\r' < "$apply_err" | grep -v fallbear-cmd)"
+rm -f "$apply_err"
+for i in $(seq 1 60); do
+	[ "$(field restarts)" = "1" ] && [ "$(field pid)" != "$pid1" ] && break
+	sleep 1
+done
+wait_for_value "pvcontrol containers ls | tr -d '\r' | jq -M -r '.[] | select(.name == \"$target\") | .status'" STARTED 60 \
+	|| wait_for_value "pvcontrol containers ls | tr -d '\r' | jq -M -r '.[] | select(.name == \"$target\") | .status'" READY 60
+
+echo "== the container restarted, the device did not =="
+echo "restarts: $(field restarts)"
+echo "pid changed: $([ "$(field pid)" != "$pid1" ] && echo yes || echo no)"
+echo "device uptime kept counting: $([ "$(uptime_now)" -ge "$up1" ] && echo yes || echo no)"
+echo "still in the devmode revision: $(pvcontrol devmeta ls | jq -M -r --arg r "$devmode_rev" '.["pantavisor.devmode"] == $r' | tr -d '\r')"
+echo "present after the restart: $(target_has_file)"

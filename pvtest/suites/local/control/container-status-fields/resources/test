@@ -1,0 +1,67 @@
+#!/bin/sh
+#
+# pid, started_at and restarts in GET /containers (pvcontrol containers ls):
+#
+# - a running container has all three; pid is a process of the target and
+#   started_at is a time between the boot of the device and now
+# - a restart gives a new pid, a later or equal start and restarts goes up by one
+# - a stopped container has restarts but no pid and no started_at
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+name="pv-example-app"
+
+# the container is started again whatever happens below
+trap 'pvcontrol containers start "$name" > /dev/null 2>&1' EXIT
+
+field() {
+	pvcontrol containers ls | tr -d '\r' | jq -M -r --arg n "$name" --arg f "$1" '.[] | select(.name == $n) | .[$f] // "absent"'
+}
+
+# wait_container <status|status> <seconds>
+wait_container() {
+	local i st
+	for i in $(seq 1 "${2:-60}"); do
+		st=$(field status)
+		case "|$1|" in *"|$st|"*) return 0 ;; esac
+		sleep 1
+	done
+	return 1
+}
+
+uptime_now() {
+	pv_exec cut -d. -f1 /proc/uptime | tr -d '\r'
+}
+
+echo "== running container =="
+wait_container "STARTED|READY" || { echo "ERROR: $name did not start" >&2; exit 1; }
+pid1=$(field pid)
+started1=$(field started_at)
+up=$(uptime_now)
+echo "pid is a number: $([ "$pid1" -gt 0 ] 2>/dev/null && echo yes || echo no)"
+echo "pid is a process of the target: $(pv_exec test -d "/proc/$pid1" && echo yes || echo no)"
+echo "started_at is between boot and now: $([ "$started1" -gt 0 ] && [ "$started1" -le "$up" ] && echo yes || echo no)"
+echo "restarts: $(field restarts)"
+
+echo "== restart =="
+pvcontrol containers restart "$name" > /dev/null 2>&1
+# the old pid is gone and the count is up before the container counts as started again
+for i in $(seq 1 60); do
+	[ "$(field restarts)" = "1" ] && [ "$(field pid)" != "$pid1" ] && break
+	sleep 1
+done
+wait_container "STARTED|READY" || { echo "ERROR: $name did not start again" >&2; exit 1; }
+pid2=$(field pid)
+started2=$(field started_at)
+up=$(uptime_now)
+echo "restarts: $(field restarts)"
+echo "pid changed: $([ "$pid2" != "$pid1" ] && echo yes || echo no)"
+echo "started_at did not go back: $([ "$started2" -ge "$started1" ] && [ "$started2" -le "$up" ] && echo yes || echo no)"
+
+echo "== stopped container =="
+pvcontrol containers stop "$name" > /dev/null 2>&1
+wait_container STOPPED || { echo "ERROR: $name did not stop" >&2; exit 1; }
+echo "status: $(field status)"
+echo "pid: $(field pid)"
+echo "started_at: $(field started_at)"
+echo "restarts: $(field restarts)"

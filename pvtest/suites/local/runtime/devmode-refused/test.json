@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "devmode revisions are refused while PV_DEVMODE_ALLOWED is false, also when it is set through user-meta; mgmt containers have no /pantavisor/devmode",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-mgmt.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
