@@ -23,6 +23,9 @@
 #           When set, it is invoked whenever a test initialization needs a
 #           retype. That is, when test.json require a boot config that is
 #           not set on the running device. Only used by --model persistent.
+#           After the last test it is called once more with the same args
+#           minus the pantavisor.config lines of that test, so they do not
+#           stay on the board.
 #   setbootconfig_conf= optional. Config file for the setbootconfig= command.
 #   flash=  optional. Required by --model volatile, where it is invoked before
 #           every test to flash the board with a fresh storage whose only

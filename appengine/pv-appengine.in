@@ -93,6 +93,17 @@ init_storage() {
 		exit 1
 	fi
 
+	# PV_APPENGINE_CONFIG="KEY=VALUE;KEY=VALUE": settings that pantavisor only
+	# accepts from pantavisor.config, not from the environment
+	if [ -n "$PV_APPENGINE_CONFIG" ]; then
+		local _conf="@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config" _line
+		local IFS=';'
+		for _line in $PV_APPENGINE_CONFIG; do
+			[ -n "$_line" ] || continue
+			grep -qxF "$_line" "$_conf" || printf '%s\n' "$_line" >> "$_conf"
+		done
+	fi
+
 	# save authorized_keys from env
 	if [ -n "$PV_DEBUG_SSH_PUBKEY" ]; then
 		mkdir -p "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/ssh"
