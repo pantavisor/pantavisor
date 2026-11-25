@@ -6,8 +6,8 @@
 # listing and creating tests, installing per-target container tarballs, the
 # device manifest, the ctrl protocol and the run summary are identical whether
 # the tester runs in a container or natively. Anything that knows about docker
-# stays in test.docker.sh; anything that knows about namespaces stays in
-# test.native.sh.
+# stays in test.docker.sh, run.docker.sh and host-docker; anything that knows
+# about namespaces stays in test.native.sh.
 #
 # NOT the same file as pvtest/common, which is shared with the *tester* half and
 # duplicated byte-for-byte in the pantavisor repo. This one is host-only.

@@ -1,7 +1,8 @@
 # pvtest dockerized tester
 
-Run the pvtest suite from this directory with `./test.docker.sh`. One x86 tester
-container drives the tests against a target that is either one or more appengine
+Run the pvtest suite from this directory with `./test.docker.sh`. One tester
+container, built for the same architecture as the appengine (x86_64 or arm64),
+drives the tests against a target that is either one or more appengine
 containers or a real device.
 
 ## Layout
@@ -12,6 +13,8 @@ workspace-README.md <- layout of a finished run's output
 device.txt          <- device manifest template
 test.docker.sh      <- the runner
 test.native.sh      <- the runner without container runtime
+run.docker.sh       <- standalone appengine instances
+templates/          <- setup templates for run.docker.sh
 images/             <- the docker images install-docker loads
 local/  remote/     <- the suites
 targets/<type>/     <- per target container tarballs
@@ -23,7 +26,7 @@ pvtest/             <- tester scripts, shared with the tester container
 Fresh host only:
 
 ```sh
-./test.docker.sh install-deps   # docker + qemu binfmt
+./test.docker.sh install-deps   # docker, plus qemu binfmt on x86_64 hosts
 ```
 
 First install, and after every update:
@@ -31,6 +34,9 @@ First install, and after every update:
 ```sh
 ./test.docker.sh install-docker # load the bundled docker images
 ```
+
+For standalone instances only, `./run.docker.sh install-deps` installs the same
+dependencies and `./run.docker.sh install-docker` loads just the appengine image.
 
 The runner uses `sudo -n` (non-interactive) for a few commands while tests run,
 so those must be allowed without a password. Add this once with `sudo visudo`:
@@ -44,6 +50,22 @@ Hub-backed tests read credentials from the environment:
 ```sh
 export PH_USER=... PH_TOKEN=...
 ```
+
+## Standalone instances
+
+```sh
+./run.docker.sh up templates/run.docker.json -d -N demo  # boot in background as daemon, return once DONE
+./run.docker.sh ls                                       # name, status, revision, IP, workdir
+./run.docker.sh exec demo pvcontrol ls                   # any command, bash by default
+./run.docker.sh attach demo                              # follow the console, Ctrl-C detaches
+./run.docker.sh logs demo                                # print the console log
+./run.docker.sh stop demo                                # power off, keep storage
+./run.docker.sh start demo -d                            # boot it again as a daemon
+./run.docker.sh down demo                                # remove the container and its workdir
+```
+
+Each instance keeps `console.log`, `storage/`, `seed/` and `setup.json` in its
+workdir (`~/.local/share/pvtest/instances/<name>`, or `-w`).
 
 ## Appengine testing (default)
 

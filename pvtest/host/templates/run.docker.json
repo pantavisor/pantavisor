@@ -1,0 +1,15 @@
+{
+	"#spec": "pv-appengine@1",
+	"description": "pv-example-app on top of the appengine factory revision",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../targets/appengine/local/pv-example-app.pvrexport.tgz"
+			]
+		}
+	}
+}
