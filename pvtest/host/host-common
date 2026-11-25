@@ -19,7 +19,7 @@
 # --- test selection and creation ---------------------------------------
 
 # Normalized config.env of the test under dir $1
-_test_cfg() { pvtest_normalize_cfg "$(jq -r '.setup.config.env // ""' "$1/test.json")"; }
+_test_cfg() { pvtest_normalize_cfg "$(pvtest_json_cfg "$1/test.json")"; }
 
 list_tests() {
 	printf "%-50s %-10s\n" "test" "description"
@@ -362,7 +362,8 @@ _retype_handle_device() {
 	local -a script_args=("$script")
 	[ -n "$conf" ] && script_args+=(-c "$conf")
 	[ "$mech" = flash ] && script_args+=(-r "$rev" -t "$ctrl/seed/$seed")
-	script_args+=($cfg)
+	# on a device an environment token and a pantavisor.config line are both config
+	script_args+=(${cfg//conf:/})
 
 	# Log it quoted so a failing hook can be re-run by hand from the line
 	local _a _cmd=

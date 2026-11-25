@@ -47,6 +47,12 @@ pvtest_normalize_cfg() {
 	printf '%s\n' $1 | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ *$//'
 }
 
+# Config tokens of the test.json $1: setup.config.env as they are, and every
+# setup.config.pantavisor entry (a line for pantavisor.config) as conf:KEY=VALUE
+pvtest_json_cfg() {
+	jq -r '[(.setup.config.env // ""), ((.setup.config.pantavisor // [])[] | "conf:" + .)] | join(" ")' "$1"
+}
+
 # Pantavisor config tokens pointing a target at the Hub at URL $1 (https://host[:port])
 pvtest_hub_cfg() {
 	local _hp _host _port

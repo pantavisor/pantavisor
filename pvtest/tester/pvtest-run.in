@@ -278,6 +278,7 @@ _cfg_expected_value() {
 _reqcfg_satisfied() {
 	local kv k v actual
 	for kv in $(pvtest_normalize_cfg "$1"); do
+		kv=${kv#conf:}
 		k=${kv%%=*}
 		v=${kv#*=}
 		actual=$(_conf_value "$k" "$2")
@@ -1181,7 +1182,7 @@ parse_test() {
 		return 1
 	fi
 
-	required_env=$(jq -r '.setup.config.env // ""' "$j")
+	required_env=$(pvtest_json_cfg "$j")
 	# remote tests need the target pointed at the run's Hub, unless the test names its own
 	required_env=$(pvtest_cfg_with_hub "$required_env" "$PVTEST_HUB_URL")
 	usrmeta=$(jq -r '.setup.config.usrmeta // ""' "$j")
@@ -1460,7 +1461,7 @@ run_slot_pool() {
 	# One line per test: "<rank>\t<cfg>\t<jsonpath>"
 	# rank 0=self-claim
 	for _j in $test_json_list; do
-		_req=$(pvtest_cfg_with_hub "$(jq -r '.setup.config.env // ""' "$_j")" "$PVTEST_HUB_URL")
+		_req=$(pvtest_cfg_with_hub "$(pvtest_json_cfg "$_j")" "$PVTEST_HUB_URL")
 		_sc=$(jq -r '.setup."self-claim" // "false"' "$_j")
 		_rank=1
 		case " $_req " in

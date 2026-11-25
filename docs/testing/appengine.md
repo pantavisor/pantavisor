@@ -68,6 +68,7 @@ permissions.
 | `#spec` | always `"pv-test@1"` | do not change |
 | `description` | human-readable summary | keep it short |
 | `setup.config.env` | per-test env config, as space-separated `KEY=VALUE` | Prefer `setup.config.usrmeta` for keys configurable at runtime |
+| `setup.config.pantavisor` | list of `KEY=VALUE` lines for `pantavisor.config`, for settings pantavisor does not take from the environment (for example `PV_DEVMODE_ALLOWED`) | e.g. `["PV_DEVMODE_ALLOWED=1"]`. On appengine they are passed as `PV_APPENGINE_CONFIG` and `pv-appengine` adds them to `/etc/pantavisor-appengine.config` before pantavisor starts, so the test needs no reboot to set them. A target re-types for them like for `config.env`; on a real device they go to the `setbootconfig=` script as ordinary `KEY=VALUE` arguments, and a test whose lines the board cannot apply is SKIPPED |
 | `setup.config.usrmeta` | per-test runtime metadata, space-separated `KEY=VALUE` | e.g. `"PV_LOG_PUSH=1 PH_METADATA_DEVMETA_INTERVAL=5"` |
 | `setup.containers.tarballs` | list of extra container pvrexport tarballs merged on top of the device factory state to form the test initial revision | the device/appengine should provide bsp plus a container with the pvr endpoint (e.g. pvr-sdk), so do not add those |
 | `setup.self-claim` | `"true"`: claim the device in setup and delete it from hub in teardown; `"false"`: ensure the device is unclaimed in setup | requires `PH_USER`/`PH_TOKEN` when `"true"` |

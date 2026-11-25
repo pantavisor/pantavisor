@@ -287,8 +287,14 @@ _boot_appengine() {
 	local ae="$1" cfg="$2" storage_key="$3" initial_rev="$4" pvtx_extra_dir="$5"
 	local PVTEST_LOG_TAG="$ae"
 
-	local _cfg_env=() _kv
-	for _kv in $cfg; do _cfg_env+=(-e "$_kv"); done
+	local _cfg_env=() _kv _conf=
+	for _kv in $cfg; do
+		case "$_kv" in
+		conf:*) _conf="${_conf:+$_conf;}${_kv#conf:}" ;;
+		*) _cfg_env+=(-e "$_kv") ;;
+		esac
+	done
+	[ -z "$_conf" ] || _cfg_env+=(-e "PV_APPENGINE_CONFIG=$_conf")
 
 	local storage_dir="$work_path/storage/${storage_key:-$ae}"
 	mkdir -p "$storage_dir"
