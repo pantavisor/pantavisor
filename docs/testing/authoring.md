@@ -40,6 +40,7 @@ permissions.
 | `#spec` | always `"pv-test@1"` | do not change |
 | `description` | human-readable summary | keep it short |
 | `setup.config.env` | per-test env config, as space-separated `KEY=VALUE` | Prefer `setup.config.usrmeta` for keys configurable at runtime |
+| `setup.config.pantavisor` | list of `KEY=VALUE` lines for `pantavisor.config` | e.g. `["PV_DEVMODE_ALLOWED=1"]`, for settings pantavisor does not take from the environment; see the note below the table |
 | `setup.config.usrmeta` | per-test runtime metadata, space-separated `KEY=VALUE` | e.g. `"PV_LOG_PUSH=1 PH_METADATA_DEVMETA_INTERVAL=5"` |
 | `setup.containers.tarballs` | list of extra container pvrexport tarballs merged on top of the device factory state to form the test initial revision | the device/appengine should provide bsp plus a container with the pvr endpoint (e.g. pvr-sdk), so do not add those |
 | `setup.self-claim` | `"true"`: claim the device in setup and delete it from hub in teardown; `"false"`: ensure the device is unclaimed in setup | requires `PH_USER`/`PH_TOKEN` when `"true"` |
@@ -47,6 +48,8 @@ permissions.
 | `test-script` | path to the test script | `"resources/test"` |
 | `skip` | exclude test from runs | `--fail-on-skip` (used on CI/master) fails the run on any SKIPPED |
 | `devices` | allow-list of the target *classes* (`type=` in the device manifest) this test may run on | `[]` (run everywhere) |
+
+The `setup.config.pantavisor` lines are set before pantavisor starts, so the test needs no reboot. A target is re-typed for it like for `config.env`. On a real device the lines go to the `setbootconfig=` script as `KEY=VALUE` arguments, are taken off again after the last test, and a test whose lines the board cannot apply is SKIPPED.
 
 **3. Write `resources/test`**
 

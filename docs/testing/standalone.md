@@ -47,6 +47,7 @@ json file:
 |-------|---------|-------|
 | `#spec` | `"pv-appengine@1"` | `"pv-test@1"` also supported |
 | `setup.config.env` | boot config, as space-separated `KEY=VALUE` | `-e KEY=VALUE` adds to it |
+| `setup.config.pantavisor` | list of `KEY=VALUE` lines for `pantavisor.config`, for example `["PV_DEVMODE_ALLOWED=1"]` | added before pantavisor starts |
 | `setup.config.usrmeta` | user metadata, as space-separated `KEY=VALUE` | saved once the instance is ready |
 | `setup.containers.tarballs` | pvrexport tarballs added on top of the factory revision | relative to the json file or absolute |
 | `setup.self-claim` | `"false"` | `"true"` not supported |

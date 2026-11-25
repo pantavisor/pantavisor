@@ -19,7 +19,7 @@
 # --- test selection and creation ---------------------------------------
 
 # Normalized config.env of the test under dir $1
-_test_cfg() { pvtest_normalize_cfg "$(jq -r '.setup.config.env // ""' "$1/test.json")"; }
+_test_cfg() { pvtest_normalize_cfg "$(pvtest_json_cfg "$1/test.json")"; }
 
 list_tests() {
 	printf "%-50s %-10s\n" "test" "description"
@@ -331,15 +331,25 @@ _retype_handle_device() {
 	local ctrl="$1" id="$2" mech="$3" cfg="$4" rev="$5" seed="$6" release="$7"
 	local script conf tag="$id"
 
-	if [ -n "$release" ]; then
-		_retype_reply "$ctrl" "$id" "status=down"
-		return 0
-	fi
-
 	case "$mech" in
 		flash) script="$_dev_flash"; conf="$_dev_flash_conf" ;;
 		*)     script="$_dev_setbootconfig"; conf="$_dev_setbootconfig_conf" ;;
 	esac
+
+	if [ -n "$release" ]; then
+		# pantavisor.config lines set for the last test stay on the board otherwise
+		local _last="$ctrl/state/device-cfg-$id"
+		if [ "$mech" = setbootconfig ] && [ -n "$script" ] && grep -q 'conf:' "$_last" 2> /dev/null; then
+			local _rest
+			_rest=$(tr ' ' '\n' < "$_last" | grep -v '^conf:' | tr '\n' ' ')
+			pvtest_log INFO "device '$_dev_name' setbootconfig: removing the pantavisor.config lines of the last test"
+			"$script" ${conf:+-c "$conf"} $_rest >> "$work_path/dev-setbootconfig-${_dev_name}-release.log" 2>&1 \
+				|| pvtest_log WARN "device '$_dev_name' setbootconfig could not remove the pantavisor.config lines (see $work_path/dev-setbootconfig-${_dev_name}-release.log)"
+		fi
+		rm -f "$_last"
+		_retype_reply "$ctrl" "$id" "status=down"
+		return 0
+	fi
 	if [ -z "$script" ]; then
 		_retype_reply "$ctrl" "$id" "status=unsupported"
 		return 0
@@ -362,7 +372,8 @@ _retype_handle_device() {
 	local -a script_args=("$script")
 	[ -n "$conf" ] && script_args+=(-c "$conf")
 	[ "$mech" = flash ] && script_args+=(-r "$rev" -t "$ctrl/seed/$seed")
-	script_args+=($cfg)
+	# on a device an environment token and a pantavisor.config line are both config
+	script_args+=(${cfg//conf:/})
 
 	# Log it quoted so a failing hook can be re-run by hand from the line
 	local _a _cmd=
@@ -375,6 +386,7 @@ _retype_handle_device() {
 	"${script_args[@]}" >> "$script_log" 2>&1 || _rc=$?
 	if [ "$_rc" = 0 ]; then
 		_script_ok=1
+		[ "$mech" != setbootconfig ] || printf '%s\n' "$cfg" > "$ctrl/state/device-cfg-$id"
 		pvtest_log INFO "device '$_dev_name' $mech exit=0"
 	else
 		pvtest_log ERROR "device '$_dev_name' $mech exit=$_rc (see $script_log)"

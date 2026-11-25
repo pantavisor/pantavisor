@@ -291,15 +291,21 @@ cmd_up() {
 
 	_resolve_hub_url "$hub_url" || exit 1
 	local cfg usrmeta
-	cfg=$(pvtest_cfg_with_hub "$(jq -r '.setup.config.env // ""' "$json") $cli_env" "$PVTEST_HUB_URL")
+	cfg=$(pvtest_cfg_with_hub "$(pvtest_json_cfg "$json") $cli_env" "$PVTEST_HUB_URL")
 	if [ "$hub_explicit" = true ] && [ "${cfg#*PH_CREDS_HOST=}" = "$cfg" ]; then
 		cfg="$cfg $(pvtest_hub_cfg "$PVTEST_HUB_URL")"
 	fi
 	usrmeta=$(jq -r '.setup.config.usrmeta // ""' "$json")
 
 	local rev="locals/$(printf '%s' "$name" | tr '.-' '__')"
-	local env_args=() kv
-	for kv in $cfg; do env_args+=(-e "$kv"); done
+	local env_args=() kv conf=
+	for kv in $cfg; do
+		case "$kv" in
+		conf:*) conf="${conf:+$conf;}${kv#conf:}" ;;
+		*) env_args+=(-e "$kv") ;;
+		esac
+	done
+	[ -z "$conf" ] || env_args+=(-e "PV_APPENGINE_CONFIG=$conf")
 	local extra_args=()
 	[ -n "$publish" ] && extra_args+=(-p "$publish:12368")
 	if [ "$valgrind" = true ]; then
