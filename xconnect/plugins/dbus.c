@@ -306,20 +306,13 @@ static int dbus_on_link_added(struct pvx_link *link)
 		fd = pvx_helper_inject_unix_socket(link->consumer_socket,
 						   link->consumer_pid);
 	} else {
-		fd = socket(AF_UNIX, SOCK_STREAM, 0);
-		struct sockaddr_un sun;
-		memset(&sun, 0, sizeof(sun));
-		sun.sun_family = AF_UNIX;
-		strncpy(sun.sun_path, link->consumer_socket,
-			sizeof(sun.sun_path) - 1);
-		unlink(link->consumer_socket);
-		bind(fd, (struct sockaddr *)&sun, sizeof(sun));
-		listen(fd, 10);
-		// World-connectable like a real system bus socket; the role
-		// masquerade + bus policy enforce access, not the socket mode.
-		if (chmod(link->consumer_socket, 0666) < 0)
-			perror("chmod socket");
-		evutil_make_socket_nonblocking(fd);
+		fd = pvx_helper_listen_host_socket(link->consumer_socket);
+		if (fd >= 0) {
+			// World-connectable like a real system bus socket; the role
+			// masquerade + bus policy enforce access, not the socket mode.
+			if (chmod(link->consumer_socket, 0666) < 0)
+				perror("chmod socket");
+		}
 	}
 
 	if (fd < 0)
@@ -329,7 +322,7 @@ static int dbus_on_link_added(struct pvx_link *link)
 					    LEV_OPT_CLOSE_ON_FREE, -1, fd);
 
 	if (!link->listener) {
-		fprintf(stderr, "Could not create listener for %s\n",
+		pvx_err("Could not create listener for %s\n",
 			link->consumer_socket);
 		close(fd);
 		return -1;

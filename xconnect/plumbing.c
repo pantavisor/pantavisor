@@ -73,7 +73,7 @@ int pvx_helper_inject_unix_socket(const char *path, int pid)
 	// 1. Save current namespace
 	old_ns_fd = open("/proc/self/ns/mnt", O_RDONLY);
 	if (old_ns_fd < 0) {
-		perror("open current ns");
+		pvx_perror("open current ns");
 		return -1;
 	}
 
@@ -81,14 +81,14 @@ int pvx_helper_inject_unix_socket(const char *path, int pid)
 	snprintf(ns_path, sizeof(ns_path), "/proc/%d/ns/mnt", pid);
 	target_ns_fd = open(ns_path, O_RDONLY);
 	if (target_ns_fd < 0) {
-		perror("open target ns");
+		pvx_perror("open target ns");
 		close(old_ns_fd);
 		return -1;
 	}
 
 	// 3. Enter target namespace
 	if (setns(target_ns_fd, CLONE_NEWNS) < 0) {
-		perror("setns");
+		pvx_perror("setns");
 		goto out;
 	}
 
@@ -107,7 +107,7 @@ int pvx_helper_inject_unix_socket(const char *path, int pid)
 	// 5. Create and bind socket
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
-		perror("socket");
+		pvx_perror("socket");
 		goto out;
 	}
 
@@ -118,14 +118,14 @@ int pvx_helper_inject_unix_socket(const char *path, int pid)
 	strncpy(sun.sun_path, path, sizeof(sun.sun_path) - 1);
 
 	if (bind(fd, (struct sockaddr *)&sun, sizeof(sun)) < 0) {
-		perror("bind");
+		pvx_perror("bind");
 		close(fd);
 		fd = -1;
 		goto out;
 	}
 
 	if (listen(fd, 10) < 0) {
-		perror("listen");
+		pvx_perror("listen");
 		close(fd);
 		fd = -1;
 		goto out;
@@ -138,12 +138,12 @@ int pvx_helper_inject_unix_socket(const char *path, int pid)
 	// drops privileges (e.g. avahi -> uid 'avahi') must still be able to
 	// connect. Without this it inherits restrictive perms and only root can.
 	if (chmod(path, 0666) < 0)
-		perror("chmod socket");
+		pvx_perror("chmod socket");
 
 out:
 	// 7. Always switch back to host namespace
 	if (setns(old_ns_fd, CLONE_NEWNS) < 0) {
-		perror("setns back");
+		pvx_perror("setns back");
 		// This is fatal for the process if it fails
 		exit(1);
 	}
@@ -155,6 +155,37 @@ out:
 
 	return fd;
 }
+int pvx_helper_listen_host_socket(const char *path)
+{
+	struct sockaddr_un sun;
+	struct stat st;
+	int fd;
+
+	// Only replace a stale socket, never another kind of file
+	if (!lstat(path, &st) && S_ISSOCK(st.st_mode))
+		unlink(path);
+
+	fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (fd < 0) {
+		pvx_perror("socket");
+		return -1;
+	}
+
+	memset(&sun, 0, sizeof(sun));
+	sun.sun_family = AF_UNIX;
+	strncpy(sun.sun_path, path, sizeof(sun.sun_path) - 1);
+
+	if (bind(fd, (struct sockaddr *)&sun, sizeof(sun)) < 0 ||
+	    listen(fd, 10) < 0) {
+		pvx_err("Could not listen on %s: %s\n", path, strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	evutil_make_socket_nonblocking(fd);
+	return fd;
+}
+
 int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
 			      const char *source_path, int provider_pid)
 {

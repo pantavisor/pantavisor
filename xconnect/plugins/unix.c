@@ -111,16 +111,7 @@ static int unix_on_link_added(struct pvx_link *link)
 						   link->consumer_pid);
 	} else {
 		// Host-side listener
-		fd = socket(AF_UNIX, SOCK_STREAM, 0);
-		struct sockaddr_un sun;
-		memset(&sun, 0, sizeof(sun));
-		sun.sun_family = AF_UNIX;
-		strncpy(sun.sun_path, link->consumer_socket,
-			sizeof(sun.sun_path) - 1);
-		unlink(link->consumer_socket);
-		bind(fd, (struct sockaddr *)&sun, sizeof(sun));
-		listen(fd, 10);
-		evutil_make_socket_nonblocking(fd);
+		fd = pvx_helper_listen_host_socket(link->consumer_socket);
 	}
 
 	if (fd < 0)
@@ -132,7 +123,7 @@ static int unix_on_link_added(struct pvx_link *link)
 				   -1, fd);
 
 	if (!link->listener) {
-		fprintf(stderr, "Could not create listener for %s\n",
+		pvx_err("Could not create listener for %s\n",
 			link->consumer_socket);
 		close(fd);
 		return -1;

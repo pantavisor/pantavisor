@@ -71,11 +71,26 @@ extern int pvx_debug;
 			printf(__VA_ARGS__);                                   \
 	} while (0)
 
+// Set while a repeated link failure is being retried, to keep its errors out of the log
+extern int pvx_quiet;
+#define pvx_err(...)                                                           \
+	do {                                                                   \
+		if (!pvx_quiet)                                                \
+			fprintf(stderr, __VA_ARGS__);                          \
+	} while (0)
+#define pvx_perror(msg)                                                        \
+	do {                                                                   \
+		if (!pvx_quiet)                                                \
+			perror(msg);                                           \
+	} while (0)
+
 // Core Helpers
 struct event_base *pvx_get_base(void);
 // Reconcile soon and reset the backoff (e.g. a provider went away)
 void pvx_reconcile_kick(void);
 int pvx_helper_inject_unix_socket(const char *path, int pid);
+// Listening socket in the host namespace, for a consumer that is the host itself
+int pvx_helper_listen_host_socket(const char *path);
 int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
 			      const char *source_path, int provider_pid);
 
