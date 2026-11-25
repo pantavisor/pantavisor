@@ -98,6 +98,7 @@ Feature overview intended to be read top-to-bottom as a book, versioned with eac
 | **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
 | **Cgroup Version** | [docs/overview/cgroups.md](docs/overview/cgroups.md) | Cgroup v1/v2 choice and container cgroup line filtering |
 | **Certificate Denylist** | [docs/overview/certificate-denylist.md](docs/overview/certificate-denylist.md) | Blocking certificates by public key for HTTPS connections |
+| **Devmode** | [docs/overview/devmode.md](docs/overview/devmode.md) | Fast edit loop: inlay layer per container, never-committed devmode revisions |
 
 ## Docs Pipeline
 
