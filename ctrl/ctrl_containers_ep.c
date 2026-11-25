@@ -28,6 +28,9 @@
 #include "pantavisor.h"
 #include "platforms.h"
 #include "group.h"
+#include "config.h"
+#include "storage.h"
+#include "update/update.h"
 #include "utils/json.h"
 
 #include <event2/http.h>
@@ -79,6 +82,23 @@ static void ctrl_on_stopped_restart(struct pv_platform *p, void *opaque)
 	pv_platform_set_installed(p);
 }
 
+// true if one '&'-separated parameter of the query equals param exactly
+static bool ctrl_query_has(const char *query, const char *param)
+{
+	size_t len = strlen(param);
+
+	while (query && *query) {
+		const char *end = strchr(query, '&');
+		size_t n = end ? (size_t)(end - query) : strlen(query);
+
+		if (n == len && !strncmp(query, param, len))
+			return true;
+		query = end ? end + 1 : NULL;
+	}
+
+	return false;
+}
+
 static void ctrl_container_process_action(struct evbuffer *buf,
 					  const struct evbuffer_cb_info *info,
 					  void *ctx)
@@ -109,6 +129,12 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 		return;
 	}
 
+	// the name is followed by the query, e.g. my-container?reboot=1
+	char *query = strchr(split[1], '?');
+	bool reboot = query && ctrl_query_has(query + 1, "reboot=1");
+	if (query)
+		*query = '\0';
+
 	p = pv_state_fetch_platform(pv->state, split[1]);
 	if (!p) {
 		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
@@ -116,7 +142,12 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 		return;
 	}
 
-	if (p->restart_policy != RESTART_CONTAINER) {
+	// in devmode a system container can be restarted through a reboot
+	bool devmode_system = p->restart_policy != RESTART_CONTAINER &&
+			      pv_config_get_bool(PV_DEVMODE_ALLOWED) &&
+			      pv_storage_is_revision_devmode(pv->state->rev);
+
+	if (p->restart_policy != RESTART_CONTAINER && !devmode_system) {
 		pv_ctrl_utils_send_error(
 			req, HTTP_FORBIDDEN,
 			"Container has restart_policy 'system' and cannot be controlled via API");
@@ -153,6 +184,31 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 		free(data);
 		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
 					 "Missing 'action' field");
+		return;
+	}
+
+	if (devmode_system) {
+		int code = 0;
+		const char *err = NULL;
+
+		if (strcmp(action, "restart")) {
+			code = HTTP_FORBIDDEN;
+			err = "Container has restart_policy 'system' and cannot be controlled via API";
+		} else if (!reboot) {
+			code = PV_HTTP_CONFLICT;
+			err = "Container has restart_policy 'system', reboot needed; use ?reboot=1";
+		} else if (pv_update_devmode_reboot()) {
+			code = PV_HTTP_CONFLICT;
+			err = "Cannot reboot into the devmode revision now";
+		}
+
+		free(action);
+		free(tokv);
+		free(data);
+		if (err)
+			pv_ctrl_utils_send_error(req, code, err);
+		else
+			pv_ctrl_utils_send_reboot(req);
 		return;
 	}
 
