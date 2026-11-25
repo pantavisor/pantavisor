@@ -200,6 +200,7 @@ add_executable(pantavisor
 			ctrl/ctrl_containers_ep.c
 			ctrl/ctrl_daemons_ep.c
 			ctrl/ctrl_devmode_ep.c
+			ctrl/ctrl_devmode_files_ep.c
 			ctrl/ctrl_endpoints.h
 			ctrl/ctrl_exec_ep.c
 			ctrl/ctrl_file.c
