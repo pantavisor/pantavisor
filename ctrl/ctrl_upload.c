@@ -130,17 +130,15 @@ err:
 	evbuffer_drain(buf, len);
 }
 
-int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
-			 pv_ctrl_upload_fn complete_cb)
+int pv_ctrl_upload_start_file(struct evhttp_request *req,
+			      struct pv_ctrl_file *file,
+			      pv_ctrl_upload_fn complete_cb)
 {
 	struct ctrl_upload *up = calloc(1, sizeof(struct ctrl_upload));
-	if (!up)
+	if (!up || !file)
 		goto err;
 
-	up->file = pv_ctrl_file_new(req, path, PV_CTRL_FILE_WRITE);
-
-	if (!up->file)
-		goto err;
+	up->file = file;
 
 	if (complete_cb)
 		up->complete_cb = complete_cb;
@@ -156,9 +154,20 @@ int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
 	return 0;
 
 err:
-	ctrl_upload_free(up);
+	if (up)
+		ctrl_upload_free(up);
+	else
+		pv_ctrl_file_free(file);
 	pv_log(WARN, "couldn't allocate file");
 	pv_ctrl_utils_send_error(req, HTTP_INTERNAL, "Upload error");
 
 	return -1;
+}
+
+int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
+			 pv_ctrl_upload_fn complete_cb)
+{
+	return pv_ctrl_upload_start_file(
+		req, pv_ctrl_file_new(req, path, PV_CTRL_FILE_WRITE),
+		complete_cb);
 }
