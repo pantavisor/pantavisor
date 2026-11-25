@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# Create the devmode revision with the committed revision given as the base.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+base_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+devmode_rev="devmode/l/${base_rev#locals/}"
+
+cleanup() {
+	# a volatile target is thrown away after the test
+	[ "${PVTEST_MODEL:-persistent}" = volatile ] && return 0
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "back to $base_rev" "$base_rev" "DONE|UPDATED" >&2
+}
+trap cleanup EXIT
+
+# leave devmode by running the committed revision
+leave_devmode() {
+	pvcontrol cmd run "$base_rev" > /dev/null 2>&1
+	wait_for_down 30
+	wait_for_target_ready "leave devmode" "$base_rev" "DONE|UPDATED" >&2 \
+		|| { echo "ERROR: $base_rev did not come back" >&2; exit 1; }
+}
+
+# create_wait <label> <devmode create arguments...>: print the answer, wait for the devmode revision
+create_wait() {
+	local label="$1" out errfile
+	shift
+	errfile=$(mktemp)
+	out=$(pvcontrol devmode create "$@" 2> "$errfile")
+	[ -n "$out" ] || echo "ERROR: no answer from devmode create: $(tr -d '\r' < "$errfile")" >&2
+	rm -f "$errfile"
+	echo "answer: $(echo "$out" | tr -d '\r' | jq -M -c .)"
+	wait_for_down 30
+	wait_for_target_ready "$label" "$devmode_rev" "UPDATED" >&2 \
+		|| { echo "ERROR: $devmode_rev did not come up" >&2; exit 1; }
+}
+
+echo "== an explicit base =="
+create_wait "explicit base" "$base_rev"
+pvcontrol devmode status | jq -M '{active, revision, base}' | tr -d '\r'

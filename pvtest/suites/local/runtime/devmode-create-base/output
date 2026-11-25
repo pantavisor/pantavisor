@@ -1,0 +1,7 @@
+== an explicit base ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create_base","base":"locals/local_runtime_devmode_create_base","resumed":false,"reboot":true}
+{
+  "active": true,
+  "revision": "devmode/l/local_runtime_devmode_create_base",
+  "base": "locals/local_runtime_devmode_create_base"
+}

@@ -1,0 +1,7 @@
+== run a devmode revision ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create_resume","base":"locals/local_runtime_devmode_create_resume","resumed":false,"reboot":true}
+== write a file into the inlay of pv-example-norole ==
+file in the inlay: yes
+== create --resume keeps the file ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create_resume","base":"locals/local_runtime_devmode_create_resume","resumed":true,"reboot":true}
+file in the inlay: yes
