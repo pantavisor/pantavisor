@@ -72,6 +72,23 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/runtime/cgroup-v2-devices-enforced` | Containers with `lxc.cgroup2` device and pids lines run on cgroup v2, reach only the listed devices and get `pids.max = 64` | ✓ |
 | `local/runtime/cgroup-v1-only-refused` | A container with only `lxc.cgroup` device and pids lines is refused on cgroup v2 and the update rolls back | ✓ |
 | `local/runtime/invalid-signal-handling` | Invalid Signal Handling | |
+| `local/runtime/devmode-refused` | Devmode revisions are refused while `PV_DEVMODE_ALLOWED` is false, also when it is set through user-meta; mgmt containers have no `/pantavisor/devmode` | ✓ |
+| `local/runtime/devmode-create` | Enable devmode in `pantavisor.config`, create a devmode revision from the running one, list its inlays; the committed revision does not change; create again while it runs changes nothing; a devmode or unknown base is refused | ✓ |
+| `local/runtime/devmode-create-resume` | `devmode create --resume` keeps the files in the inlays of the earlier devmode revision | ✓ |
+| `local/runtime/devmode-create-plain` | A plain `devmode create` removes the files in the inlays of the earlier devmode revision | ✓ |
+| `local/runtime/devmode-create-base` | `devmode create` with the committed revision as an explicit base | ✓ |
+| `local/runtime/devmode-inlay-files` | A file put into an inlay with `pvcontrol devmode files put` shows up after a restart, survives another one and is gone after a reset | ✓ |
+| `local/runtime/devmode-overlay` | `/pantavisor/devmode/<container>` lists the image files and is read-only; removing a file or recreating a directory through `pvcontrol devmode files` hides it in the container after a restart; a reset brings both back; a file the container wrote itself shows read-only under `/pantavisor/devmode/.container-layer/<container>` | ✓ |
+| `local/runtime/exec-refused` | Running a command in a container is refused while devmode is not allowed and for a container without the mgmt role; `PV_DEVMODE_ALLOWED` is `0` | ✓ |
+| `local/runtime/exec-devmode` | Run commands in containers in devmode: exit code, stdout and stderr, stdin, timeout, output limit, arguments without a shell, namespaces, cgroup and capabilities of the container, mgmt and non-mgmt callers, `_pv_`, unknown and stopped containers, at most 4 at once; `PV_DEVMODE_ALLOWED` is `1` | ✓ |
+| `local/runtime/devmode-files` | `pvcontrol devmode files` puts a file from standard input or a file, with a mode and new directories, replaces it, lists the changes with their sha256, gets a file, removes a file of the image (listed as deleted) and a directory with `--recursive`; refuses `..`, keeps a symlink inside the container, refuses it outside devmode and for a container without the mgmt role, works from a mgmt container; the container sees the files after a restart | ✓ |
+| `local/runtime/devmode-files-tar` | `pvcontrol devmode files get --tar` returns the whole container, a folder or a file as a tar: names relative to the container root, modes with setuid and setgid, owners, a symlink, a name over 100 bytes, a file changed in devmode and an image file with the same content and mtime as in the container; a missing path, `..` and an unknown container are refused | ✓ |
+| `local/runtime/devmode-apply-container` | `devmode apply` restarts a container with the `container` restart policy without a reboot of the device, and the container sees the file put into its inlay | ✓ |
+| `local/runtime/devmode-fallback` | After a crash in devmode the device runs the committed revision again and the devmode revision shows `ERROR` | ✓ |
+| `local/runtime/devmode-rerun` | A devmode revision rolled back by a crash runs again by name, with the file in its inlay | ✓ |
+| `local/runtime/devmode-put` | `steps put` over the running devmode revision is refused; over a stopped one it keeps the inlay | ✓ |
+| `local/runtime/devmode-leave` | Running the committed revision leaves devmode and no container keeps an inlay | ✓ |
+| `local/runtime/devmode-remove` | `pvcontrol steps rm` refuses the running devmode revision and a revision that is not a devmode revision; it removes a devmode revision that does not run and a second remove is refused | ✓ |
 
 ### control
 
@@ -81,6 +98,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 |------|-------------|------|
 | `local/control/basic-endpoints` | Basic Endpoints (Containers, Objects, etc.) | ✓ |
 | `local/control/basic-endpoints-curl` | Basic Endpoints via cURL | ✓ |
+| `local/control/container-status-fields` | `pid`, `started_at` (device uptime in seconds) and `restarts` of a container in `GET /containers`, and their absence after a stop | ✓ |
 | `local/control/pvcurl-slow-answer` | pvcurl waits for an answer that takes 7 seconds when given `--max-time`, and exits with 28 when the default 5 seconds run out | ✓ |
 | `local/control/status-codes` | HTTP status-code contract (commands, signals, drivers, buildinfo) | ✓ |
 | `local/control/staged-start` | STAGED via MOUNTED + lifecycle_goal: stage, API start/stop/start, reject start on plain MOUNTED, unknown lifecycle_goal falls back | ✓ |
