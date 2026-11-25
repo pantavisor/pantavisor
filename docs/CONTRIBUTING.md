@@ -18,7 +18,7 @@ working in this repository.
 | [`docs/overview/`](overview/index.md) | *How does this work, and why is it built this way?* | Prose, rationale, diagrams, worked examples, algorithm walk-throughs | Exhaustive key / field / endpoint tables — link to reference instead |
 | [`docs/reference/`](reference/index.md) | *What exactly are the valid values?* | Tables: every key, every accepted value, every default, every field, every status code | Multi-paragraph explanation — link to overview instead |
 | [`docs/tools/`](tools/index.md) | *How do I invoke it?* | CLI synopsis, flags, exit codes, worked invocations | Subsystem theory |
-| [`docs/testing/`](testing/index.md) | *How do I test it?* | The pvtest harness, running the suite, authoring tests, the test list | Yocto build instructions — those stay in meta-pantavisor |
+| [`docs/testing/`](testing/index.md) | *How do I prototype and test it?* | Installing the appengine distro, standalone appengine, the pvtest harness, running the suite, authoring tests, the test list | Yocto build instructions — those stay in meta-pantavisor |
 
 Reference is **authoritative and complete**. Overview is **readable top-to-bottom and never
 complete** — it is allowed to skip cases, and it must say where the complete list lives.

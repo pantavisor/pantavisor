@@ -7,6 +7,7 @@ _pvtest_root="$(dirname "$0")"
 [ -r "$_pvtest_root/pvtest/common" ] || _pvtest_root="$_pvtest_root/.."
 . "$_pvtest_root/pvtest/common" || exit 1
 . "$_pvtest_root/pvtest/host-common" || exit 1
+. "$_pvtest_root/pvtest/host-docker" || exit 1
 
 # distinct per job on a shared docker daemon, so a neighbour's cleanup can't untag our images
 PVTEST_IMAGE_TAG="${PVTEST_IMAGE_TAG:-latest}"
@@ -82,52 +83,6 @@ usage() {
 }
 
 
-_image_tar() {
-	[ -f "images/$1" ] && { echo "images/$1"; return 0; }
-	[ -f "$1" ] && { echo "$1"; return 0; }
-	return 1
-}
-
-install_docker() {
-	# docker load writes <name>:latest; hold the lock across load+tag so a concurrent job's load can't slip between them
-	local lockfile=/tmp/pv_appengine.load.lock load_fd rc=0 loaded=0
-	if ! exec {load_fd}>"$lockfile"; then
-		pvtest_log ERROR "cannot open lock file '$lockfile' (owned by another user under /tmp with fs.protected_regular=1, or /tmp not writable)"
-		return 1
-	fi
-	flock "$load_fd"
-
-	NETSIM_PATH=${NETSIM_PATH:-$(_image_tar "pantavisor-appengine-netsim-docker.tar")}
-	if [ -f "$NETSIM_PATH" ]; then
-		docker load -i "$NETSIM_PATH"
-		loaded=$((loaded + 1))
-		[ "$PVTEST_IMAGE_TAG" = "latest" ] \
-			|| docker tag pantavisor-appengine-netsim:latest "pantavisor-appengine-netsim:$PVTEST_IMAGE_TAG"
-	fi
-	TESTER_PATH=${TESTER_PATH:-$(_image_tar "pantavisor-appengine-tester-docker.tar")}
-	if [ -f "$TESTER_PATH" ]; then
-		docker load -i "$TESTER_PATH"
-		loaded=$((loaded + 1))
-		[ "$PVTEST_IMAGE_TAG" = "latest" ] \
-			|| docker tag pantavisor-appengine-tester:latest "pantavisor-appengine-tester:$PVTEST_IMAGE_TAG"
-	fi
-	APPENGINE_PATH=${APPENGINE_PATH:-$(_image_tar "pantavisor-appengine-docker.tar")}
-	if [ -f "$APPENGINE_PATH" ]; then
-		docker load -i "$APPENGINE_PATH"
-		loaded=$((loaded + 1))
-		[ "$PVTEST_IMAGE_TAG" = "latest" ] \
-			|| docker tag pantavisor-appengine:latest "pantavisor-appengine:$PVTEST_IMAGE_TAG"
-	fi
-	rc=$?
-	if [ "$loaded" = 0 ]; then
-		pvtest_log ERROR "no docker image tar found (looked in images/ and .)"
-		rc=1
-	fi
-
-	exec {load_fd}>&-
-	return $rc
-}
-
 clean_docker() {
 	local names="pantavisor-appengine pantavisor-appengine-netsim pantavisor-appengine-tester"
 
@@ -146,72 +101,6 @@ clean_docker() {
 	for n in $names; do
 		docker rmi "$n:$PVTEST_IMAGE_TAG" > /dev/null 2>&1 || true
 	done
-}
-
-
-install_deps() {
-echo "This will install some packages in your system. Do you want to continue? [y/N]"
-    if [[ "$CI_MODE" == "true" ]]; then
-       answer="y"
-    else
-       read -n1 answer
-    fi
-    case "$answer" in
-        y|Y)
-            ;;
-        *)
-			exit 0
-            ;;
-    esac
-
-	sudo -v
-
-	# install and setup apt dependencies
-	sudo apt update
-	sudo apt install binfmt-support \
-		docker.io \
-		git \
-		jq \
-		iw \
-		bc \
-		linux-modules-`uname -r` \
-		linux-modules-extra-`uname -r`
-	sudo groupadd docker
-	sudo usermod -aG docker $USER
-
-	# install and setup qemu
-	sudo apt remove qemu-user-static
-	mkdir ~/bin
-	wget https://pantavisor-ci.s3.amazonaws.com/qemu/1303841432/qemu-arm -O ~/bin/qemu-arm
-	wget https://pantavisor-ci.s3.amazonaws.com/qemu/1303841432/qemu-aarch64 -O ~/bin/qemu-aarch64
-	chmod +x ~/bin/qemu-arm
-	chmod +x ~/bin/qemu-aarch64
-	sudo update-binfmts --install qemu-arm ~/bin/qemu-arm --offset 0 --magic "\x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00" --mask "\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff" --fix-binary yes
-	sudo update-binfmts --install qemu-aarch64 ~/bin/qemu-aarch64 --offset 0 --magic "\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00" --mask "\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff" --fix-binary yes
-
-	install_docker
-
-	pvtest_log INFO "Dependency installation complete"
-
-	exit 0
-}
-
-setup_network0() {
-	# flock serializes inspect/create so concurrent callers don't race on docker network create.
-	local lockfile=/tmp/pv_appengine.network0.lock
-	NET0_FD=
-	# a failed exec leaves NET0_FD empty; check it explicitly or flock/close below run on '' and wreck fd 1
-	if ! exec {NET0_FD}>"$lockfile"; then
-		pvtest_log ERROR "cannot open lock file '$lockfile' (owned by another user under /tmp with fs.protected_regular=1, or /tmp not writable)"
-		return 1
-	fi
-	flock "$NET0_FD"
-
-	if ! docker network inspect test-appengine-net >/dev/null 2>&1; then
-		docker network create --driver=bridge --opt com.docker.network.container_iface_prefix=lxcbrdock test-appengine-net >/dev/null 2>&1 || :
-	fi
-
-	eval "exec ${NET0_FD}>&-"
 }
 
 
@@ -269,19 +158,6 @@ setup_network() {
 teardown_network() {
 	sudo -n modprobe -r mac80211_hwsim
 }
-
-_AE_DOCKER_ARGS=(
-	--net=test-appengine-net
-	--cap-add NET_ADMIN --cap-add SYS_ADMIN --cap-add SYS_PTRACE --cap-add MKNOD
-	# SYSLOG: used to exercise logserver use of /dev/kmsg
-	--cap-add SYSLOG
-	--device /dev/kmsg --device /dev/hwrng --device /dev/loop-control
-	--device-cgroup-rule 'b 7:* rmw'
-	--security-opt apparmor=unconfined --security-opt seccomp=unconfined
-	--mount type=tmpfs,target=/usr/lib/lxc/rootfs
-	--mount type=tmpfs,target=/volumes
-	--mount type=tmpfs,target=/configs
-)
 
 _boot_appengine() {
 	local ae="$1" cfg="$2" storage_key="$3" initial_rev="$4" pvtx_extra_dir="$5"
@@ -958,10 +834,10 @@ case "$command" in
 		add_test "$@"
 		;;
 	install-deps)
-		install_deps
+		install_deps netsim tester appengine
 		;;
 	install-docker)
-		install_docker
+		install_docker netsim tester appengine
 		;;
 	clean-docker)
 		clean_docker

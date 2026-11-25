@@ -1,6 +1,6 @@
 ---
 title: "pvtest List"
-sidebar_position: 5
+sidebar_position: 9
 description: "Test to do list."
 ---
 # pvtest List
@@ -10,7 +10,7 @@ tree: when a pvtest is added, modified or removed, update the table below (and `
 mark completed tests `✓`.
 
 Test data lives in this repo under `pvtest/suites/{local,remote}/`. See
-[appengine.md](appengine.md) for how to add or update one.
+[authoring.md](authoring.md) for how to add or update one.
 
 ## local — local experience tests
 

@@ -1,6 +1,6 @@
 ---
 title: "The pvtest Harness"
-sidebar_position: 1
+sidebar_position: 4
 description: "Test architecture, execution models, flow, where the code lives and CI coverage."
 ---
 # The pvtest Framework
@@ -16,9 +16,11 @@ obtained and re-typed (rebooted into the test-specific env and revision), which 
 [Execution Flow](#execution-flow) describes.
 
 This page covers the framework itself, presenting its architecture and execution flow.
-For running against appengine and authoring new tests, see [appengine.md](appengine.md).
-For running against real hardware, see [device.md](device.md). For the list of tests
-that are both implemented and pending to do, see [pvtest-list.md](pvtest-list.md).
+It builds on the [standalone appengine](appengine-standalone.md), adding a tester that
+drives the targets. To run the suite against appengine, see [appengine.md](appengine.md),
+and against real hardware, see [device.md](device.md). To write tests, see
+[authoring.md](authoring.md). For the list of tests that are both implemented and pending
+to do, see [pvtest-list.md](pvtest-list.md).
 
 ## Architecture
 
@@ -50,13 +52,13 @@ target:
 **Tester + appengine pool**
 
 ```
- HOST (x86)
+ HOST (x86_64 or arm64)
  ┌────────────────────────────────────────────────────────────────────────┐
  │  test.docker.sh (slot pool: -p N slots, host re-types on demand)       │
  │                                                                        │
  │  ┌────────────────────┐         ┌──────────────────────────┐           │
  │  │  pantavisor-tester │──SSH───►│  pantavisor-appengine-0  │           │
- │  │   (x86, runner)    │ (EXEC)  │  ├─ pantavisor (PID1)    │           │
+ │  │   (host arch)      │ (EXEC)  │  ├─ pantavisor (PID1)    │           │
  │  │  pvtest-run        │──HTTP──►│  ├─ pvr-sdk (LXC)        │           │
  │  │  pvr  curl  jq     │ :12368  │  ├─ pvcontrol / pventer  │           │
  │  │  valgrind          │ (HOST)  │  └─ sshd                 │           │
@@ -104,6 +106,7 @@ and owns the example containers the suites run with.
 | `pvtest/host/test.docker.sh` | the host orchestrator for containerized tester, runs outside a container |
 | `pvtest/host/test.native.sh` | the same for a non-containerized tester |
 | `pvtest/host/host-common` | host-only library shared by the two orchestrators |
+| `pvtest/host/host-docker` | host-only docker helpers shared by `test.docker.sh` and [`run.docker.sh`](appengine-standalone.md#where-the-code-lives) |
 | `pvtest/host/device.txt` | device manifest template, to be installed in host at `~/.config/pvtest/devices/` |
 | `pvtest/host/docker-README.md` | quick reference for running the suite |
 | `pvtest/host/native-README.md` | same for a non-containerized tester |
@@ -244,7 +247,7 @@ the test data and the host scripts are staged out of *this* tree, a rebuild only
 a change here if the build is pointed at the checkout by bumping `PANTAVISOR_SRCREV`, or
 with `devtool modify pantavisor` for local work.
 
-To install, follow the tarball's own `README.md`.
+To install, see [install.md](install.md).
 
 ## Invocation
 

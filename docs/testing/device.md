@@ -1,6 +1,6 @@
 ---
 title: "Running Against a Real Device With a Containerized Tester"
-sidebar_position: 3
+sidebar_position: 7
 description: "Running tests against real devices with the help of the device manifest, hook scripts, architecture specific test containers and pvs signing."
 ---
 # Running pvtests Against a Real Device
@@ -18,11 +18,8 @@ with a minimal set of dependencies besides Docker. It is also possible to run th
 ## Installing
 
 Same as in the case of [appengine](appengine.md), everything that is needed to run pvtest
-against real devices is included in the
-[meta-pantavisor built](../../meta-pantavisor/overview/testing/automated/index.md)
-`pantavisor-appengine-distro-<machine>.tar.gz` tarball.
-
-Untar it and check the included `README.md` to know how to continue.
+against real devices is included in the `pantavisor-appengine-distro-<machine>.tar.gz`
+tarball. See [install.md](install.md).
 
 ## Setup
 
@@ -87,7 +84,7 @@ The contract for the hook is in `device.txt`.
 
 ### Building target tarballs
 
-The pvtest distro includes example container tarballs used by the test suite. They are
+The appengine distro includes example container tarballs used by the test suite. They are
 built for the [appengine pool](appengine.md) though.
 
 To run the tests in a real device, you are going to need to build those example
@@ -132,7 +129,7 @@ Every run announces the target type in `run.log`:
 
 ## Running
 
-See the `README.md` included in the pvtest distro tarball to learn how to run.
+See the `README.md` included in the appengine distro tarball to learn how to run.
 
 ## Debugging
 
@@ -146,7 +143,7 @@ non-PASSED is a bug:
 
 - **SKIPPED on target type filter:** A test.json can contain a `"devices"` allow-list
   that excludes all targets that are not on said list. In this case, the test will be
-  SKIPPED. See [test authoring rules](appengine.md#test-authoring-rules).
+  SKIPPED. See [test authoring rules](authoring.md#test-authoring-rules).
 - **SKIPPED on unmet `config.env` with no `setbootconfig=`:** When running
   [persistent model](pvtest-harness.md#persistent-model), any test that does not meet
   the boot config env requirements will be SKIPPED.

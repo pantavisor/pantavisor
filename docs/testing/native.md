@@ -1,6 +1,6 @@
 ---
 title: "Running Against a Real Device Without a Containerized Tester"
-sidebar_position: 4
+sidebar_position: 8
 description: "Natively running tests for driving tests from a host without Docker."
 ---
 # Running pvtests Without a Container Runtime
@@ -13,7 +13,7 @@ workstation, lab runner or CI box that has no Docker runtime.
 ## Getting it
 
 The [meta-pantavisor build](../../meta-pantavisor/overview/testing/automated/index.md)
-deploys a slim companion to the [appengine](appengine.md) distro tarball, holding the
+deploys a slim companion to the [appengine distro](install.md) tarball, holding the
 scripts and suites without the container images, named
 `pantavisor-pvtest-scripts-<machine>.tar.gz`.
 
