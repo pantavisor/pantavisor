@@ -56,10 +56,28 @@ err:
 	return NULL;
 }
 
+struct pv_ctrl_file *pv_ctrl_file_new_fd(struct evhttp_request *req, int fd,
+					 const char *path)
+{
+	struct pv_ctrl_file *file = calloc(1, sizeof(struct pv_ctrl_file));
+	if (!file)
+		return NULL;
+
+	file->fd = fd;
+	memccpy(file->path, path, '\0', PATH_MAX - 1);
+	file->req = req;
+	file->ok = true;
+
+	return file;
+}
+
 void pv_ctrl_file_free(struct pv_ctrl_file *file)
 {
 	if (!file)
 		return;
+
+	if (file->priv_free)
+		file->priv_free(file->priv);
 
 	if (file->fd >= 0)
 		close(file->fd);

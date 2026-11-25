@@ -690,6 +690,9 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 		return -1;
 	}
 
+	// an inlay that a devmode reset moved away is not in use any more
+	pv_volumes_devmode_sweep_old(s, p);
+
 	// Skip already-mounted volumes (e.g. re-entering here to start a STAGED platform).
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
 	{
