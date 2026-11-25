@@ -347,6 +347,8 @@ add_executable(pantavisor
 			trestclient.c
 			trestclient.h
 			uboot.c
+			uboot_env_file.c
+			uboot_env_file.h
 			ubootab.c
 			update/update.c
 			update/update.h
