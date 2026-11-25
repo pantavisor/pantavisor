@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# A devmode revision is a try that is never committed. When pantavisor crashes
+# while it runs, the device comes back in the committed revision and the
+# devmode revision shows ERROR.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+devmode_init
+
+echo "== run a devmode revision =="
+devmode_create "devmode revision" || exit 1
+echo "devmode active: $(pvcontrol devmode status | jq -M '.active' | tr -d '\r')"
+
+echo "== pantavisor crashes =="
+pv_crash > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "after the crash" "$base_rev" "DONE|UPDATED" >&2 \
+	|| { echo "ERROR: $base_rev did not come back" >&2; exit 1; }
+
+echo "== the committed revision runs again =="
+echo "pantavisor.revision is the committed revision: $(pvcontrol devmeta ls | jq -M -r --arg rev "$base_rev" '.["pantavisor.revision"] == $rev' | tr -d '\r')"
+echo "pantavisor.devmode: $(pvcontrol devmeta ls | jq -M -r '.["pantavisor.devmode"]' | tr -d '\r')"
+pvcontrol devmode status | jq -M '{enabled, active, has_containers: has("containers")}' | tr -d '\r'
+echo "committed revision status: $(pvcontrol steps show-progress "$base_rev" | jq -M -r '.status' | tr -d '\r')"
+echo "devmode revision status: $(pvcontrol steps show-progress "$devmode_rev" | jq -M -r '.status' | tr -d '\r')"

@@ -1,0 +1,7 @@
+== run a devmode revision ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create_plain","base":"locals/local_runtime_devmode_create_plain","resumed":false,"reboot":true}
+== write a file into the inlay of pv-example-norole ==
+file in the inlay: yes
+== a plain create removes the file ==
+answer: {"revision":"devmode/l/local_runtime_devmode_create_plain","base":"locals/local_runtime_devmode_create_plain","resumed":false,"reboot":true}
+file in the inlay: no

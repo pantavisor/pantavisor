@@ -1,0 +1,14 @@
+== run a devmode revision ==
+restarts: 0
+== put a file into the inlay of pv-example-app ==
+present before the restart: no
+== apply without --reboot ==
+apply exit: 0
+apply stdout: 
+apply stderr: 
+== the container restarted, the device did not ==
+restarts: 1
+pid changed: yes
+device uptime kept counting: yes
+still in the devmode revision: true
+present after the restart: yes

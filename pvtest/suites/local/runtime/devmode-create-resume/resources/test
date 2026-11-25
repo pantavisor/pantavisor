@@ -1,0 +1,32 @@
+#!/bin/sh
+#
+# Write a file into an inlay, leave devmode and create the devmode revision again
+# with --resume: the file is still in the inlay.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+writer="pv-example-mgmt"
+target="pv-example-norole"
+file_in_target="/etc/devmode-file"
+
+devmode_init
+
+file_in_inlay() {
+	pventer -c "$writer" test -e "/pantavisor/devmode/$target$file_in_target" && echo yes || echo no
+}
+
+show_answer() { echo "answer: $(echo "$devmode_answer" | jq -M -c .)"; }
+
+echo "== run a devmode revision =="
+devmode_create "devmode revision" || exit 1
+show_answer
+
+echo "== write a file into the inlay of $target =="
+pventer -c "$writer" pvcontrol devmode files put "$target" "${file_in_target#/}" /dev/null > /dev/null
+echo "file in the inlay: $(file_in_inlay)"
+
+echo "== create --resume keeps the file =="
+devmode_leave || exit 1
+devmode_create "resume" --resume || exit 1
+show_answer
+echo "file in the inlay: $(file_in_inlay)"

@@ -1,0 +1,23 @@
+{
+	"#spec": "pv-test@1",
+	"description": "pvcontrol devmode files get --tar returns a folder, a file or the whole container as a tar with names relative to the container root, modes, owners, symlinks, long names and the files changed in devmode",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": "",
+			"pantavisor": [
+				"PV_DEVMODE_ALLOWED=1"
+			]
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

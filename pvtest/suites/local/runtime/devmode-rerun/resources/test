@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# A devmode revision that a crash rolled back (status ERROR) runs again when it
+# is started by name, and its inlay is the one it had: a file put into the
+# inlay before the crash is still there.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+writer="pv-example-mgmt"
+target="pv-example-norole"
+file_in_target="etc/devmode-file"
+
+devmode_init
+
+echo "== run a devmode revision with a file in the inlay of $target =="
+devmode_create "devmode revision" || exit 1
+pventer -c "$writer" pvcontrol devmode files put "$target" "$file_in_target" /dev/null > /dev/null
+
+echo "== pantavisor crashes =="
+pv_crash > /dev/null 2>&1
+wait_for_down 30
+wait_for_target_ready "after the crash" "$base_rev" "DONE|UPDATED" >&2 \
+	|| { echo "ERROR: $base_rev did not come back" >&2; exit 1; }
+echo "devmode revision status: $(pvcontrol steps show-progress "$devmode_rev" | jq -M -r '.status' | tr -d '\r')"
+
+echo "== run the devmode revision again =="
+run_out=$(pvcontrol cmd run "$devmode_rev" 2>&1)
+echo "run exit: $?"
+echo "run stdout: $(echo "$run_out" | tr -d '\r' | grep -v fallbear-cmd)"
+wait_for_down 30
+wait_for_target_ready "devmode again" "$devmode_rev" "UPDATED" >&2 \
+	|| { echo "ERROR: $devmode_rev did not come up again" >&2; exit 1; }
+echo "devmode active: $(pvcontrol devmode status | jq -M '.active' | tr -d '\r')"
+echo "file still in the inlay: $(pvcontrol devmode files ls "$target" | jq -M -r --arg p "$file_in_target" '[.files[].path] | index($p) != null' | tr -d '\r')"
+echo "committed revision status: $(pvcontrol steps show-progress "$base_rev" | jq -M -r '.status' | tr -d '\r')"

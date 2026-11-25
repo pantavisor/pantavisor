@@ -1,0 +1,24 @@
+{
+	"#spec": "pv-test@1",
+	"description": "a devmode revision is refused while it runs; posting it again over a stopped one keeps its inlay",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": "",
+			"pantavisor": [
+				"PV_DEVMODE_ALLOWED=1"
+			]
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-mgmt.pvrexport.tgz",
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

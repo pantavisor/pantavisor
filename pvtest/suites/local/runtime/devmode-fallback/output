@@ -1,0 +1,13 @@
+== run a devmode revision ==
+devmode active: true
+== pantavisor crashes ==
+== the committed revision runs again ==
+pantavisor.revision is the committed revision: true
+pantavisor.devmode: null
+{
+  "enabled": true,
+  "active": false,
+  "has_containers": false
+}
+committed revision status: DONE
+devmode revision status: ERROR

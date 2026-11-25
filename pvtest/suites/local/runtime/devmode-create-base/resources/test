@@ -1,0 +1,12 @@
+#!/bin/sh
+#
+# Create the devmode revision with the committed revision given as the base.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+devmode_init
+
+echo "== an explicit base =="
+devmode_create "explicit base" "$base_rev" || exit 1
+echo "answer: $(echo "$devmode_answer" | jq -M -c .)"
+pvcontrol devmode status | jq -M '{active, revision, base}' | tr -d '\r'
