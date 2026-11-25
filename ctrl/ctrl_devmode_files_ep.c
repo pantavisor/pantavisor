@@ -26,6 +26,7 @@
 
 #include "ctrl_endpoints.h"
 #include "ctrl.h"
+#include "ctrl_devmode_tar.h"
 #include "ctrl_file.h"
 #include "ctrl_upload.h"
 #include "ctrl_util.h"
@@ -689,6 +690,29 @@ static void dmf_get_file(struct evhttp_request *req, struct dmf_ctx *c)
 	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
 }
 
+// a tar stream of a folder or a file; what is below it is not followed through symlinks
+static void dmf_get_tar(struct evhttp_request *req, struct dmf_ctx *c)
+{
+	const char *msg = NULL;
+	char dir[PATH_MAX], leaf[NAME_MAX];
+	int dirfd, code;
+
+	code = dmf_open_root(c, &msg);
+	if (code) {
+		dmf_send_error(req, code, msg);
+		return;
+	}
+
+	dmf_split(c->path, dir, sizeof(dir), leaf, sizeof(leaf));
+	dirfd = dmf_open_dir(c->rootfd, dir, false);
+	if (dirfd < 0 || pv_ctrl_devmode_tar_start(req, dirfd, leaf, c->path)) {
+		code = dmf_errno_code(&msg);
+		if (dirfd >= 0)
+			close(dirfd);
+		dmf_send_error(req, code, msg);
+	}
+}
+
 static void dmf_get(struct evhttp_request *req, void *ctx)
 {
 	struct dmf_ctx c;
@@ -707,7 +731,13 @@ static void dmf_get(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
-	if (*c.path)
+	if (dmf_query(&c, "format")) {
+		if (strcmp(dmf_query(&c, "format"), "tar"))
+			dmf_send_error(req, HTTP_BADREQUEST,
+				       "format must be tar");
+		else
+			dmf_get_tar(req, &c);
+	} else if (*c.path)
 		dmf_get_file(req, &c);
 	else
 		dmf_manifest(req, &c);
