@@ -56,6 +56,7 @@ extern const struct bl_ops uboot_ops;
 extern const struct bl_ops grub_ops;
 extern const struct bl_ops rpiab_ops;
 extern const struct bl_ops ubootab_ops;
+extern const struct bl_ops sdboot_ops;
 
 const struct bl_ops *ops = 0;
 
@@ -281,6 +282,9 @@ static int pv_bl_init()
 		break;
 	case BL_UBOOT_AB:
 		ops = &ubootab_ops;
+		break;
+	case BL_SDBOOT:
+		ops = &sdboot_ops;
 		break;
 	default:
 		pv_log(ERROR, "unknown bootoader type!");

@@ -183,6 +183,8 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_BOOTLOADER_FITCONFIG", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, false, .value.s = NULL },
 	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, false, .value.b = false },
+	{ STR, "PV_BOOTLOADER_SDBOOT_ESP", PV, 0, false,
+	  .value.s = "LABEL=ESP" },
 	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV, 0, false,
 	  .value.i = BL_UBOOT_PLAIN },
 	{ STR, "PV_BOOTLOADER_UBOOTAB_A_NAME", PV, 0, false,
@@ -505,6 +507,8 @@ static char *_get_bootloader_type_str(bootloader_t type)
 		return "rpiab";
 	case BL_UBOOT_AB:
 		return "uboot-ab";
+	case BL_SDBOOT:
+		return "sdboot";
 	default:
 		return "unknown";
 	}
@@ -533,6 +537,9 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 	else if (pv_str_matches(value, strlen(value), "uboot-ab",
 				strlen("uboot-ab")))
 		entry->value.i = BL_UBOOT_AB;
+	else if (pv_str_matches(value, strlen(value), "sdboot",
+				strlen("sdboot")))
+		entry->value.i = BL_SDBOOT;
 	else
 		pv_log(WARN, "unknown bootloader type '%s'", value);
 }

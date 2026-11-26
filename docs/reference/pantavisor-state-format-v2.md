@@ -76,6 +76,7 @@ Defines the core system boot assets.
 | `fdt` | path string | Path to the Flattened Device Tree binary. |
 | `fit` | path string | Path to a FIT image (replaces linux/initrd/fdt). |
 | `rpiab` | path string | Path to a Raspberry Pi boot image. |
+| `uki` | path string | Path to a unified kernel image (replaces linux/initrd/fdt); required by the `sdboot` bootloader type. |
 | `addons` | array of paths | List of CPIO addons to merge into the initrd rootfs. |
 | `initrd_config` | path string | Custom configuration for the initrd process. |
 

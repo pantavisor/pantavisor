@@ -132,6 +132,8 @@ void pv_state_free(struct pv_state *s)
 		if (s->bsp.img.std.initrd)
 			free(s->bsp.img.std.initrd);
 	}
+	if (s->bsp.uki)
+		free(s->bsp.uki);
 	if (s->bsp.firmware)
 		free(s->bsp.firmware);
 	if (s->bsp.modules)
@@ -276,6 +278,8 @@ void pv_state_print(struct pv_state *s)
 	pv_log(DEBUG, "state %s:", s->rev);
 	pv_log(DEBUG, " kernel: '%s'", s->bsp.img.std.kernel);
 	pv_log(DEBUG, " initrd: '%s'", s->bsp.img.std.initrd);
+	if (s->bsp.uki)
+		pv_log(DEBUG, " uki: '%s'", s->bsp.uki);
 	struct pv_group *g, *tmp_g;
 	struct dl_list *groups = &s->groups;
 	dl_list_for_each_safe(g, tmp_g, groups, struct pv_group, list)

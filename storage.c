@@ -1004,6 +1004,17 @@ int pv_storage_meta_link_boot(struct pv_state *s)
 			goto err;
 	}
 
+	if (s->bsp.uki) {
+		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
+					       "pv-uki.efi");
+		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
+						 s->bsp.uki);
+
+		pv_fs_path_remove(dst, false);
+		if (link(src, dst) < 0)
+			goto err;
+	}
+
 	if (s->bsp.img.std.initrd) {
 		// initrd
 		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
@@ -1066,9 +1077,9 @@ int pv_storage_meta_link_boot(struct pv_state *s)
 		pv_fs_path_remove(dst, false);
 		if (link(src, dst) < 0)
 			goto err;
-	} else {
+	} else if (!s->bsp.uki) {
 		pv_log(ERROR,
-		       "bsp type not supported. no std,fit or rpiab boot assets found for rev=%s",
+		       "bsp type not supported. no std,fit,rpiab or uki boot assets found for rev=%s",
 		       s->rev);
 		return -1;
 	}
