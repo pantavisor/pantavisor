@@ -38,9 +38,12 @@ pvcontrol steps get current        # the running revision's state.json
 ## Compatibility across Pantavisor versions
 
 A revision can upgrade Pantavisor and use a feature of the new version in the same update. Keys the
-installing Pantavisor does not know are ignored, and unknown values fall back to a safe default. See
-[Compatibility](../reference/pantavisor-state-format-v2.md#compatibility) for the fallbacks and for
-what still causes a [WONTGO](updates.md#wontgo).
+installing Pantavisor does not know are ignored. Enum values it does not know are accepted only when
+the revision changes the BSP, so the Pantavisor started after the reboot can read them. A revision
+that this Pantavisor would run itself is never run with a value it does not know: it fails with
+[WONTGO](updates.md#wontgo), or rolls back if found at boot. See
+[Compatibility](../reference/pantavisor-state-format-v2.md#compatibility) for the fields and for
+what else causes a WONTGO.
 
 ## Reference
 

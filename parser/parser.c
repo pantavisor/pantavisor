@@ -84,7 +84,8 @@ static bool pv_parser_is_compatible(state_spec_t spec)
 		((init_mode == IM_APPENGINE) && (spec == SPEC_SYSTEM1)));
 }
 
-struct pv_state *pv_parser_get_state(const char *buf, const char *rev)
+struct pv_state *pv_parser_get_state(const char *buf, const char *rev,
+				     pv_parse_mode_t mode)
 {
 	int tokc, ret;
 	char *value = 0;
@@ -121,6 +122,7 @@ struct pv_state *pv_parser_get_state(const char *buf, const char *rev)
 
 	state = pv_state_new(rev, spec);
 	if (state) {
+		state->parse_strict = (mode == PV_PARSE_RUN);
 		if (!p->parse(state, buf)) {
 			pv_state_free(state);
 			state = NULL;

@@ -1131,7 +1131,7 @@ bool pv_storage_verify_state_json(const char *rev, char *msg,
 		goto out;
 	}
 
-	state = pv_parser_get_state(json, rev);
+	state = pv_parser_get_state(json, rev, PV_PARSE_INSTALL);
 	if (!state) {
 		SNPRINTF_WTRUNC(msg, msg_len,
 				"Parser: State JSON has bad format");

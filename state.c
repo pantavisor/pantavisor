@@ -1285,6 +1285,41 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 	return false;
 }
 
+// true when the pending revision changes anything outside the containers, so that it boots another pantavisor
+bool pv_state_bsp_changed(struct pv_state *current, struct pv_state *pending)
+{
+	struct pv_object *o, *pend_o;
+	struct pv_json *j, *pend_j;
+
+	if (!current || !pending)
+		return true;
+
+	dl_list_for_each(j, &current->jsons, struct pv_json, list)
+	{
+		pend_j = pv_state_fetch_json(pending, j->name);
+		if (!j->plat && (!pend_j || strcmp(j->value, pend_j->value)))
+			return true;
+	}
+	dl_list_for_each(j, &pending->jsons, struct pv_json, list)
+	{
+		if (!j->plat && !pv_state_fetch_json(current, j->name))
+			return true;
+	}
+	dl_list_for_each(o, &current->installs, struct pv_object, list)
+	{
+		pend_o = pv_state_fetch_object(pending, o->name);
+		if (!o->plat && (!pend_o || strcmp(o->id, pend_o->id)))
+			return true;
+	}
+	dl_list_for_each(o, &pending->installs, struct pv_object, list)
+	{
+		if (!o->plat && !pv_state_fetch_object(current, o->name))
+			return true;
+	}
+
+	return false;
+}
+
 // returns: 1 in case a reboot is required because something outside of plat changed
 // returns: 0 if all good and no reboot is required
 // returns: -1 if there was an error and reboot is mandatory
