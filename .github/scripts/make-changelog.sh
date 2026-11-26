@@ -18,7 +18,8 @@
 # RC changelog sections are never committed to the repo: they live only on the
 # per-major S3 accumulator (CHANGELOG_S3_URL_BASE/CHANGELOG-<MAJOR>.md), merged
 # there by tag-changelogs.yaml as each RC is tagged. The repo file is written
-# exactly once per major, by --finalize, just before the stable tag is cut.
+# exactly once per major, by --finalize, which meta-pantavisor's tag-sync runs
+# on the stable tag's SRCREV and pushes as the stable tag (never to master).
 #
 # Modes (auto-detected by whether the tag already exists):
 #

@@ -8,7 +8,8 @@ name: "ontag: changelog gate"
 #
 # RC tags pass instantly — their sections live only on the S3 accumulator and
 # are never expected in the repo. Run `make-changelog.sh --finalize <MAJOR>`
-# and push the resulting commit before tagging the stable release.
+# and tag the resulting commit. meta-pantavisor's tag-sync does this for the
+# stable tag it mirrors here.
 #
 # Called by tag-changelogs.yaml (the changelog job needs it), so a stable tag
 # without the finalize commit publishes neither the S3 accumulator nor the
