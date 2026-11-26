@@ -1,0 +1,18 @@
+== text over 4096 bytes ==
+written bytes: 6331
+buildinfo endpoint bytes: 6331
+devmeta value bytes: 4096
+devmeta is the first 4096 bytes of buildinfo: yes
+persisted file within 4096 bytes: yes
+devmeta json parses: yes
+== short text ==
+written bytes: 661
+buildinfo endpoint bytes: 661
+devmeta value bytes: 661
+devmeta is the first 4096 bytes of buildinfo: yes
+persisted file within 4096 bytes: yes
+devmeta json parses: yes
+devmeta is the whole text: yes
+== no /etc/build ==
+<absent>
+persisted file: absent

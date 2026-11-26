@@ -130,6 +130,9 @@ pvcontrol buildinfo
 
 Plain-text build manifest. May be empty on some builds.
 
+The first 4096 bytes are also available as the `pantavisor.buildinfo` device
+metadata key: `pvcontrol devmeta ls | jq -r '.["pantavisor.buildinfo"]'`.
+
 ### Configuration
 
 ```bash

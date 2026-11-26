@@ -82,6 +82,7 @@ Local experience tests exercise Pantavisor features that operate without any clo
 | `local/control/basic-endpoints` | Basic Endpoints (Containers, Objects, etc.) | ✓ |
 | `local/control/basic-endpoints-curl` | Basic Endpoints via cURL | ✓ |
 | `local/control/status-codes` | HTTP status-code contract (commands, signals, drivers, buildinfo) | ✓ |
+| `local/control/buildinfo-devmeta` | `pantavisor.buildinfo` follows `/etc/build`: cut at 4096 bytes, removed when the file is gone | ✓ |
 | `local/control/staged-start` | STAGED via MOUNTED + lifecycle_goal: stage, API start/stop/start, reject start on plain MOUNTED, unknown lifecycle_goal falls back | ✓ |
 | `local/control/cmd-rejections` | Commands are rejected in local mode, with remote control disabled by config and while an update is ongoing | |
 | `local/control/pvcontrol-responsiveness` | pvcontrol responds normally during a time-consuming local operation (e.g. object transfer, sequential update) | |

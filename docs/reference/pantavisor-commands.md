@@ -348,6 +348,9 @@ With cURL, this would look like:
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/buildinfo"
 ```
 
+The first 4096 bytes of the same text are also published as the
+[`pantavisor.buildinfo`](pantavisor-metadata.md#build-manifest) device metadata key.
+
 ## /config
 
 Returns the active [Pantavisor configuration](pantavisor-configuration.md) as a flat object with aliased dotted keys.

@@ -1,0 +1,98 @@
+#!/bin/sh
+#
+# pantavisor.buildinfo device metadata. An appengine container has no
+# /etc/build, so the test writes one into the container and restarts
+# pantavisor to read it: first a text over 4096 bytes, then a short one, then
+# no file at all.
+
+source /usr/share/pantavisor/pvtest/utils
+
+KEY=pantavisor.buildinfo
+PERSISTED=/run/pantavisor/pv/device-meta/$KEY
+tmp=$(mktemp -d)
+dirty=0
+
+restart_and_wait() {
+	pv_crash
+	wait_for_down 30 \
+		|| { echo "ERROR: pv-ctrl never went down after $1" >&2; exit 1; }
+	wait_for_target_ready \
+		|| { echo "ERROR: device did not come back after $1" >&2; exit 1; }
+}
+
+put_etc_build() {
+	local staged
+	staged=$(pv_stage_file "$1") || return 1
+	pv_exec cp "$staged" /etc/build || return 1
+	pv_unstage_file "$staged"
+}
+
+cleanup() {
+	rm -rf "$tmp"
+	if [ "$dirty" = 1 ]; then
+		pv_exec rm -f /etc/build
+		pv_crash
+		wait_for_down 30
+		wait_for_target_ready > /dev/null 2>&1
+	fi
+}
+trap cleanup EXIT
+
+devmeta_value() {
+	pvcontrol devmeta ls | jq -j --arg k "$KEY" '.[$k] // "<absent>"' | tr -d '\r'
+}
+
+# the first line has quotes, a backslash and a tab, to check the value is escaped
+make_text() {
+	local i=1
+	printf 'NOTE = "quoted" back\\slash\ttab\n'
+	while [ "$i" -le "$1" ]; do
+		printf 'LAYER_%03d = scarthgap:%040d\n' "$i" "$i"
+		i=$((i + 1))
+	done
+}
+
+# compare the key with what the buildinfo endpoint returns, cut at 4096 bytes
+check_value() {
+	local expected actual
+	pvcontrol buildinfo | tr -d '\r' > "$tmp/full"
+	head -c 4096 "$tmp/full" > "$tmp/expected"
+	devmeta_value > "$tmp/actual"
+	echo "buildinfo endpoint bytes: $(wc -c < "$tmp/full")"
+	expected=$(cat "$tmp/expected")
+	actual=$(cat "$tmp/actual")
+	echo "devmeta value bytes: $(wc -c < "$tmp/actual")"
+	[ "$expected" = "$actual" ] \
+		&& echo "devmeta is the first 4096 bytes of buildinfo: yes" \
+		|| echo "devmeta is the first 4096 bytes of buildinfo: no"
+	pv_fetch_file "$PERSISTED" "$tmp/persisted" 2>/dev/null
+	[ "$(wc -c < "$tmp/persisted")" -le 4096 ] \
+		&& echo "persisted file within 4096 bytes: yes" \
+		|| echo "persisted file within 4096 bytes: no"
+	pvcontrol devmeta ls | jq -M . > /dev/null \
+		&& echo "devmeta json parses: yes" || echo "devmeta json parses: no"
+}
+
+echo "== text over 4096 bytes =="
+make_text 100 > "$tmp/long"
+echo "written bytes: $(wc -c < "$tmp/long")"
+dirty=1
+put_etc_build "$tmp/long" || { echo "ERROR: could not write /etc/build" >&2; exit 1; }
+restart_and_wait "long build info"
+check_value
+
+echo "== short text =="
+make_text 10 > "$tmp/short"
+echo "written bytes: $(wc -c < "$tmp/short")"
+put_etc_build "$tmp/short" || { echo "ERROR: could not write /etc/build" >&2; exit 1; }
+restart_and_wait "short build info"
+check_value
+[ "$(devmeta_value)" = "$(cat "$tmp/short")" ] \
+	&& echo "devmeta is the whole text: yes" || echo "devmeta is the whole text: no"
+
+echo "== no /etc/build =="
+pv_exec rm -f /etc/build
+restart_and_wait "no build info"
+dirty=0
+echo "$(devmeta_value)"
+pv_exec test -e "$PERSISTED" && echo "persisted file: present" || echo "persisted file: absent"

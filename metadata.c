@@ -255,6 +255,29 @@ static int pv_devmeta_read_version(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+static int pv_devmeta_read_buildinfo(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+	int size;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	if (!pv_build_manifest || !pv_build_manifest[0]) {
+		// a copy persisted by an earlier build must not linger
+		pv_metadata_rm_devmeta(pv_devmeta_read->key);
+		return -1;
+	}
+
+	// a persisted value over METADATA_MAX_SIZE cannot be loaded back
+	size = METADATA_MAX_SIZE + 1;
+	if (size > buflen)
+		size = buflen;
+	SNPRINTF_WTRUNC(buf, size, "%s", pv_build_manifest);
+	return 0;
+}
+
 static int pv_devmeta_read_arch(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
@@ -593,6 +616,8 @@ static int pv_devmeta_storage(struct pv_devmeta_read *pv_devmeta_read)
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_ARCH, .reader = pv_devmeta_read_arch },
 	{ .key = DEVMETA_KEY_PV_VERSION, .reader = pv_devmeta_read_version },
+	{ .key = DEVMETA_KEY_PV_BUILDINFO,
+	  .reader = pv_devmeta_read_buildinfo },
 	{ .key = DEVMETA_KEY_PV_DTMODEL, .reader = pv_devmeta_read_dtmodel },
 	{ .key = DEVMETA_KEY_PV_CPUMODEL, .reader = pv_devmeta_read_cpumodel },
 	{ .key = DEVMETA_KEY_PV_REVISION, .reader = pv_devmeta_read_revision },
