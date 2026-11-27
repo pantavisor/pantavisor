@@ -10,9 +10,33 @@ checkout="$(mktemp -d)/checkout"
 pvr_clone_local_or_die "$checkout"
 cd "$checkout"
 
+# A crash only counts as an update retry while the update is still downloading;
+# once the download is done, a crash rolls the revision back instead. So the
+# download is slowed down (100 kB/s from the Hub) from before the post until the
+# last crash. The 50 MB file then takes far longer than the whole test, whatever
+# the real speed is.
+hub_host="${PVTEST_HUB_URL#*://}"
+hub_host="${hub_host%%[:/]*}"
+
+hold_downloads() {
+	local ips
+	ips=$(for _ in 1 2 3; do pv_exec "nslookup $hub_host" 2>/dev/null; done \
+		| sed -n '/^Name:/,/^$/p' | grep -oE '[0-9]+(\.[0-9]+){3}' | sort -u | paste -sd, -)
+	[ -n "$ips" ] || return 1
+	pv_exec "nft add table ip pvhold && nft add chain ip pvhold in '{ type filter hook input priority 0; }' && nft add rule ip pvhold in ip saddr { $ips } tcp sport 443 limit rate over 100 kbytes/second drop"
+}
+release_downloads() { pv_exec "nft delete table ip pvhold" > /dev/null 2>&1; }
+trap release_downloads EXIT
+
+# Status and retries of the revision, as {"status":..,"retries":..}
+retry_state() {
+	pvcontrol steps show-progress "$rev" | jq -Mc '{status, retries}'
+}
+
 trail_url="$PVTEST_HUB_URL/trails/$device_id"
 
-echo "== post large revision (download takes long) =="
+echo "== slow down downloads, then post large revision =="
+hold_downloads || { echo "ERROR: could not hold the download" >&2; exit 1; }
 dd if=/dev/urandom of=pv-example-app/bigfile.bin bs=1M count=50 2>/dev/null
 pvr add pv-example-app/bigfile.bin > /dev/null 2>&1
 pvr commit -m "add large file to exercise download phase" > /dev/null 2>&1
@@ -23,7 +47,7 @@ cloud_step_url="$PVTEST_HUB_URL/trails/$device_id/steps/$rev"
 echo "== wait for posted revision to start downloading (retry 1) =="
 wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
     || { echo "ERROR: timeout waiting for revision $rev to start DOWNLOADING" >&2; exit 1; }
-pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads)'
+retry_state
 
 echo "== kill PV (crash 1, triggers retry 2) =="
 pv_crash
@@ -31,12 +55,12 @@ wait_for_down 30 \
     || { echo "ERROR: pv-ctrl never went down after crash" >&2; exit 1; }
 wait_for_target_ready \
     || { echo "ERROR: timeout waiting for device to come back after kill (1)" >&2; exit 1; }
-pvcontrol commands go-remote > /dev/null
+pvcontrol commands go-remote > /dev/null 2>&1 || true
 wait_for_value "pvcontrol steps show-progress $rev | jq -r '.retries'" "2" 120 \
     || { echo "ERROR: timeout waiting for revision $rev retries to reach 2" >&2; exit 1; }
 wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
     || { echo "ERROR: timeout waiting for revision $rev to start DOWNLOADING" >&2; exit 1; }
-pvcontrol steps show-progress $rev | jq -Mc 'del(.logs, .downloads)'
+retry_state
 
 echo "== kill PV (crash 2, triggers WONTGO via cloud) =="
 pv_crash
@@ -44,7 +68,7 @@ wait_for_down 30 \
     || { echo "ERROR: pv-ctrl never went down after crash" >&2; exit 1; }
 wait_for_target_ready \
     || { echo "ERROR: timeout waiting for device to come back after kill (2)" >&2; exit 1; }
-pvcontrol commands go-remote > /dev/null
+pvcontrol commands go-remote > /dev/null 2>&1 || true
 
 echo "== cloud step status after max retries =="
 wait_for_value "pvr stepinfo $cloud_step_url 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "WONTGO" 60 \
