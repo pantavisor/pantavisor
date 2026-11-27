@@ -140,6 +140,13 @@ if [ "$NC_EXIT" -ne 0 ]; then
     exit "$NC_EXIT"
 fi
 
+# nc leaves with 0 when the wait ran out, so an empty answer is a timeout, as in curl
+NO_ANSWER=false
+if [ ! -s "$TMPFILE_BASE".res ]; then
+    NO_ANSWER=true
+    log_err "Error: no answer within ${NC_TIMEOUT}s (operation timed out)"
+fi
+
 if [ "$VERBOSE" = true ]; then
     head -n 1 "$TMPFILE_BASE".res | tr -d '\r' >&2
 fi
@@ -175,3 +182,6 @@ if [ -n "$WRITE_OUT" ]; then
 fi
 
 rm -f "$TMPFILE_BASE".req "$TMPFILE_BASE".body "$TMPFILE_BASE".res "$TMPFILE_BASE".err
+
+[ "$NO_ANSWER" = true ] && exit 28
+exit 0

@@ -1,0 +1,6 @@
+== no --max-time: the answer after 7 s is not waited for ==
+exit: 28
+stdout: 
+== --max-time 20: the answer is waited for ==
+exit: 0
+stdout: slow-answer

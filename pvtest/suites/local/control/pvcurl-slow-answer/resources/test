@@ -1,0 +1,27 @@
+#!/bin/sh
+#
+# An answer that comes after 7 s is lost with the default 5 s wait and is
+# waited for with --max-time. A server that answers nothing is a timeout error.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+# slow_server <seconds>: a socket that answers once, after <seconds>
+slow_server() {
+	pv_exec sh -c "rm -f /tmp/slow.sock; ( sleep $1; printf 'HTTP/1.0 200 OK\r\nContent-Length: 11\r\n\r\nslow-answer' ) | nc -N -l -U /tmp/slow.sock > /dev/null 2>&1 &"
+	sleep 1
+}
+
+echo "== no --max-time: the answer after 7 s is not waited for =="
+slow_server 7
+out=$(pvcurl -s --unix-socket /tmp/slow.sock http://localhost/ 2>/dev/null)
+echo "exit: $?"
+echo "stdout: $(echo "$out" | tr -d '\r')"
+sleep 4
+
+echo "== --max-time 20: the answer is waited for =="
+slow_server 7
+out=$(pvcurl -s --max-time 20 --unix-socket /tmp/slow.sock http://localhost/ 2>/dev/null)
+echo "exit: $?"
+echo "stdout: $(echo "$out" | tr -d '\r')"
+
+pv_exec rm -f /tmp/slow.sock
