@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "pvcurl waits for a slow answer up to --max-time and fails when none comes",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
