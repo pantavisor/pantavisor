@@ -56,7 +56,9 @@ pvcurl -X PUT --unix-socket /run/pantavisor/pv/pv-ctrl /signal \
     --data '{"name":"my-app","signal":15}'
 ```
 
-Supports `-X`, `-H`, `--data`, `--upload-file`, `-s`, `-i`, `-v`, `-o`, `-w`, `--connect-timeout`.
+Supports `-X`, `-H`, `--data`, `--upload-file`, `-s`, `-i`, `-v`, `-o`, `-w`, `--connect-timeout`, `--max-time`.
+
+pvcurl gives up on an answer that does not start within `--max-time` seconds (`--connect-timeout`, 5 seconds, if `--max-time` is not given). `pvcontrol` passes `--max-time 240`, so a slow answer, like removing a devmode revision, is waited for.
 
 ## pvcontrol
 
