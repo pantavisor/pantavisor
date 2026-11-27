@@ -22,6 +22,7 @@ VERBOSE=false
 WRITE_OUT=""
 OUTPUT_FILE=""
 CONNECT_TIMEOUT=5
+MAX_TIME=
 
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 
@@ -35,7 +36,7 @@ while [ "$#" -gt 0 ]; do
         --upload-file|-T) UPLOAD_FILE="$2"; shift 2 ;;
         --unix-socket) SOCKET="$2"; shift 2 ;;
         --connect-timeout) CONNECT_TIMEOUT="$2"; shift 2 ;;
-        --max-time) shift 2 ;;
+        --max-time) MAX_TIME="$2"; shift 2 ;;
         -s|--silent) SILENT=true; shift ;;
         -v|--verbose) VERBOSE=true; shift ;;
         -o|--output) OUTPUT_FILE="$2"; shift 2 ;;
@@ -119,14 +120,18 @@ send_request() {
     fi
 }
 
+# nc ends a connection that stays idle for this long, so waiting for a slow
+# answer needs --max-time, not --connect-timeout
+NC_TIMEOUT="${MAX_TIME:-$CONNECT_TIMEOUT}"
+
 NC_EXIT=0
 # Use -N (close write on stdin EOF) for non-streaming requests.
 # For GET downloads, omit -N to keep the connection alive while the server
 # streams the response body.
 if [ -n "$OUTPUT_FILE" ] || [ "$METHOD" = "GET" ]; then
-    send_request -w "$CONNECT_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
+    send_request -w "$NC_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
 else
-    send_request -N -w "$CONNECT_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
+    send_request -N -w "$NC_TIMEOUT" -U "$SOCKET" > "$TMPFILE_BASE".res 2>"$TMPFILE_BASE".err || NC_EXIT=$?
 fi
 
 if [ "$NC_EXIT" -ne 0 ]; then
