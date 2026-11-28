@@ -115,6 +115,26 @@ bytes (FAT filename safe limit), the bootloader signals a forced reboot
 instead of appending. This converts the no-reboot update into a reboot
 update, resetting `pv_rev.txt` to a single fresh revision.
 
+### Devmode
+
+A [devmode](docs/overview/devmode.md) revision is installed like a reboot
+update and is never committed:
+
+1. **Install**: as above; the try partition gets the devmode revision's boot
+   image and `pv_rev.txt`, `pv_try` is set and the tryboot flag is armed.
+2. **Reboot**: the Pi boots the try partition once; the flag is consumed.
+3. **Run**: `rpiab_validate_state` accepts the tryboot as for any try. The
+   update ends as `UPDATED`, so `rpiab_commit_update` never runs and
+   `autoboot.txt` keeps the committed partition as default.
+4. **Requested reboot** (`rpiab_rearm_try`): `pv_bootloader_rearm_try` sets
+   `pv_try` again, which arms the tryboot flag; `rpiab_rearm_try` checks that
+   `pv_rev.txt` on the try partition still lists the devmode revision and
+   clears the flag if it does not.
+5. **Any other reboot** (reset, power loss, failed start): the flag is not
+   set, the Pi boots the committed partition, `rpiab_validate_state` takes
+   the "normal boot with `pv_try` set" path and the devmode revision is
+   marked as rolled back.
+
 ### Partition Globals Swap
 
 After `rpiab_commit_update()` swaps `autoboot.txt`, it also swaps the

@@ -235,10 +235,22 @@ pvr device get <device> | jq '."device-meta"["pantavisor.devmode"]'
 
 ### Bootloaders
 
-A reboot that devmode requests itself boots back into the devmode revision on `uboot` and `uboot-pvk` when the boot script keeps its `pv_trying` marker in a `pv.env` file (see [bootloader](bsp.md#where-pv_trying-is-stored)), and on appengine. `grub`, `rpiab` and `uboot-ab` cannot do it: a devmode revision cannot be installed and a reboot request in devmode answers an error. The same happens on `uboot` without a `pv.env`. Check what happened on the device:
+A reboot that devmode requests itself must boot back into the devmode revision, and any other reboot must boot the committed one. How that works depends on the [bootloader](bsp.md#bootloader):
+
+| Bootloader | Devmode | How a requested reboot comes back in devmode |
+|------------|---------|----------------------------------------------|
+| `uboot`, `uboot-pvk` | yes, when the boot script keeps `pv_trying` in a `pv.env` file | Pantavisor clears `pv_trying` before the reboot (see [where `pv_trying` is stored](bsp.md#where-pv_trying-is-stored)) |
+| `rpiab` | yes | Pantavisor arms the Raspberry Pi tryboot flag again before the reboot; the try partition still holds the devmode revision's boot image (see [rpiab](bsp.md#rpiab)) |
+| appengine | yes | Pantavisor clears `pv_trying` in `uboot.txt` |
+| `grub`, `uboot-ab`, `uboot` without `pv.env` | no | a devmode revision cannot be installed and a reboot request in devmode answers an error |
+
+Check what happened on the device:
 
 ```bash
+# uboot, uboot-pvk
 grep -r uboot-env-file /storage/logs/devmode/
+# rpiab
+grep -r "next reboot is a tryboot" /storage/logs/devmode/
 ```
 
 ## Garbage collection

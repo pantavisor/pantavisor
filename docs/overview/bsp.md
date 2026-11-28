@@ -81,7 +81,7 @@ Pantavisor clears `pv_trying` only when [devmode](devmode.md) re-arms a try, so 
 | `ubi::<path>` | `<path>` on the storage filesystem (for UBI boards, where U-Boot keeps nothing on a boot partition) |
 | empty | probe `LABEL=boot`, then the storage root, for `/pv.env` |
 
-Pantavisor only rewrites a `pv.env` that already exists. If the file is missing or cannot be written, the re-arm fails: a reboot request in devmode answers an error and a devmode revision cannot be installed. Only `uboot` and `uboot-pvk` can re-arm; see [bootloaders](devmode.md#bootloaders).
+Pantavisor only rewrites a `pv.env` that already exists. If the file is missing or cannot be written, the re-arm fails: a reboot request in devmode answers an error and a devmode revision cannot be installed. `rpiab` re-arms its own way, see [rpiab](#rpiab); the full list is in [bootloaders](devmode.md#bootloaders).
 
 To check on the device, look at the kernel command line and at what Pantavisor logged:
 
@@ -106,6 +106,19 @@ This mode can be tuned up with the following [config keys](../reference/pantavis
 ### rpiab
 
 This mode sets Pantavisor up to work with [tryboot_a-b for Raspberry Pi](https://www.raspberrypi.com/documentation/computers/config_txt.html#tryboot_a_b).
+
+The disk has a small selector partition with `autoboot.txt` and two boot partitions. `autoboot.txt` names the committed boot partition in `[all]` and the try partition in `[tryboot]`. To try a revision, Pantavisor writes its boot image to the try partition, records the revision in that partition's `pv_rev.txt`, stores `pv_try` in `/storage/boot/rpiab.txt` and sets the tryboot flag through the firmware mailbox. The firmware keeps that flag only until the next boot and loses it on power loss, so one reboot boots the try partition and every later reboot boots the committed one. Committing swaps the two partitions in `autoboot.txt`.
+
+[Devmode](devmode.md) uses the same try and never commits it. Before a reboot that devmode asks for, Pantavisor checks that `pv_rev.txt` on the try partition still names the devmode revision and sets the tryboot flag again. It writes nothing to `autoboot.txt` or to either boot partition, so a reset or a power loss boots the committed partition, and the devmode revision is marked as rolled back.
+
+Look at the state on the device:
+
+```
+mtype -i /dev/mmcblk0p1 ::autoboot.txt
+mtype -i /dev/mmcblk0p2 ::pv_rev.txt
+mtype -i /dev/mmcblk0p3 ::pv_rev.txt
+tr '\0' '\n' < /storage/boot/rpiab.txt
+```
 
 ### grub
 
