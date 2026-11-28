@@ -23,10 +23,27 @@ hold_downloads() {
 	ips=$(for _ in 1 2 3; do pv_exec "nslookup $hub_host" 2>/dev/null; done \
 		| sed -n '/^Name:/,/^$/p' | grep -oE '[0-9]+(\.[0-9]+){3}' | sort -u | paste -sd, -)
 	[ -n "$ips" ] || return 1
+	pv_exec "nft delete table ip pvhold" > /dev/null 2>&1
 	pv_exec "nft add table ip pvhold && nft add chain ip pvhold in '{ type filter hook input priority 0; }' && nft add rule ip pvhold in ip saddr { $ips } tcp sport 443 limit rate over 100 kbytes/second drop"
 }
 release_downloads() { pv_exec "nft delete table ip pvhold" > /dev/null 2>&1; }
 trap release_downloads EXIT
+
+# Back in remote mode after a restart. If it already is, pvcontrol exits 255
+# with no output (the answer is "204 Already in remote mode", which has no
+# body); anything else is a real error.
+go_remote() {
+	local out rc=0
+	out=$(pvcontrol commands go-remote 2>&1) || rc=$?
+	[ "$rc" -eq 0 ] && return 0
+	if [ "$rc" -eq 255 ]; then
+		case "$out" in
+		"" | *"Already in remote mode"*) return 0 ;;
+		esac
+	fi
+	echo "ERROR: go-remote failed (exit $rc): $out" >&2
+	exit 1
+}
 
 # Status and retries of the revision, as {"status":..,"retries":..}
 retry_state() {
@@ -55,7 +72,7 @@ wait_for_down 30 \
     || { echo "ERROR: pv-ctrl never went down after crash" >&2; exit 1; }
 wait_for_target_ready \
     || { echo "ERROR: timeout waiting for device to come back after kill (1)" >&2; exit 1; }
-pvcontrol commands go-remote > /dev/null 2>&1 || true
+go_remote
 
 echo "== wait for retry 2 to start downloading =="
 wait_for_value "pvcontrol steps show-progress $rev | jq -r '.retries'" "2" 120 \
@@ -70,7 +87,7 @@ wait_for_down 30 \
     || { echo "ERROR: pv-ctrl never went down after crash" >&2; exit 1; }
 wait_for_target_ready \
     || { echo "ERROR: timeout waiting for device to come back after kill (2)" >&2; exit 1; }
-pvcontrol commands go-remote > /dev/null 2>&1 || true
+go_remote
 
 echo "== wait for WONTGO after max retries =="
 wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "WONTGO" 60 \
