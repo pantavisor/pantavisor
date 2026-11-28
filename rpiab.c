@@ -98,7 +98,7 @@ static char *boot_partition_rev = NULL;
 static int mbox_property(int file_desc, void *buf);
 static int mbox_open(void);
 static void mbox_close(int file_desc);
-static int _rpiab_mark_tryboot(void);
+static int _rpiab_mark_tryboot(uint32_t flags);
 static int _rpiab_read_boot_partition_rev(void);
 
 /*
@@ -901,7 +901,7 @@ static int rpiab_set_env_key(char *key, char *value)
 	 */
 	if (strcmp(key, "pv_try") == 0 && value && strlen(value) > 0) {
 		pv_log(INFO, "pv_try set to '%s', arming tryboot flag", value);
-		if (_rpiab_mark_tryboot()) {
+		if (_rpiab_mark_tryboot(0x1)) {
 			pv_log(ERROR, "failed to arm tryboot flag");
 			ret = -1;
 		}
@@ -962,7 +962,7 @@ static int _rpiab_is_tryboot_armed(void)
 #endif
 }
 
-static int _rpiab_mark_tryboot()
+static int _rpiab_mark_tryboot(uint32_t flags)
 {
 	int rv = 0;
 	unsigned args[256] = {};
@@ -981,7 +981,7 @@ static int _rpiab_mark_tryboot()
 	args[2] = RPI_FIRMWARE_SET_REBOOT_FLAGS;
 	args[3] = 4;
 	args[4] = 0;
-	args[5] = (uint32_t)0x1;
+	args[5] = flags;
 	args[6] = 0;
 
 	int mbox = mbox_open();
@@ -1006,7 +1006,8 @@ static int _rpiab_mark_tryboot()
 		return -5;
 	}
 
-	pv_log(INFO, "tryboot flag set via mbox (response: 0x%x)", args[1]);
+	pv_log(INFO, "reboot flags set to 0x%x via mbox (response: 0x%x)",
+	       flags, args[1]);
 
 	/* Read back to verify the flag was actually set */
 	memset(args, 0, sizeof(args));
@@ -1596,6 +1597,39 @@ static int rpiab_fail_update()
 	return -1;
 }
 
+/*
+ * Make the next reboot a tryboot into pv_try again (devmode). Setting pv_try
+ * has armed the tryboot flag already; this only checks that the try
+ * partition still holds pv_try's boot image. Nothing is written to the
+ * boot partitions or autoboot.txt: the firmware keeps the tryboot flag only
+ * until the next boot and loses it on power loss, so any reboot that was not
+ * armed here boots the committed partition.
+ */
+static int rpiab_rearm_try(void)
+{
+	const char *rev = pv_bootloader_get_try();
+	char *list;
+	int found;
+
+	if (!rev || !strlen(rev))
+		return -1;
+
+	list = _rpiab_read_pv_rev_txt_from_partition(autoboot_try_partition);
+	found = _rpiab_rev_in_list(list, rev);
+	if (!found) {
+		pv_log(ERROR, "try partition %d holds '%s', not %s",
+		       autoboot_try_partition, list ? list : "", rev);
+		free(list);
+		// pv_try armed the flag already; a tryboot into the wrong image would fail
+		_rpiab_mark_tryboot(0x0);
+		return -1;
+	}
+	free(list);
+
+	pv_log(INFO, "next reboot is a tryboot into %s on partition %d", rev,
+	       autoboot_try_partition);
+	return 0;
+}
 
 /*
  * Validate boot state and determine the current revision.
@@ -1714,6 +1748,7 @@ const struct bl_ops rpiab_ops = {
 	.install_update = rpiab_install_update,
 	.commit_update = rpiab_commit_update,
 	.fail_update = rpiab_fail_update,
+	.rearm_try = rpiab_rearm_try,
 	.validate_state = rpiab_validate_state,
 };
 
